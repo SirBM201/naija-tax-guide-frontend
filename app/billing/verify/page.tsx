@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { Suspense, useEffect, useRef, useState } from "react";
 import { apiJson, isApiError } from "@/lib/api";
 import { useRouter, useSearchParams } from "next/navigation";
 
@@ -8,21 +8,21 @@ type VerifyResp = {
   ok?: boolean;
   paid?: boolean;
   reference?: string;
-  subscription?: any;
-  plan?: any;
+  subscription?: unknown;
+  plan?: unknown;
   status?: string;
-  data?: any;
+  data?: unknown;
   error?: string;
   root_cause?: string;
 };
 
-export default function BillingVerifyPage() {
+function BillingVerifyPageContent() {
   const router = useRouter();
   const sp = useSearchParams();
 
   const [busy, setBusy] = useState(true);
   const [status, setStatus] = useState("Verifying payment...");
-  const [raw, setRaw] = useState<any>(null);
+  const [raw, setRaw] = useState<unknown>(null);
   const [countdown, setCountdown] = useState<number | null>(null);
 
   const redirectedRef = useRef(false);
@@ -59,29 +59,33 @@ export default function BillingVerifyPage() {
         }
 
         setStatus(`Verification failed (${data?.error || "unknown_error"})`);
-      } catch (err: any) {
+      } catch (err: unknown) {
         if (isApiError(err)) {
           setStatus(`Verification failed (${err.status})`);
           setRaw(err.data ?? null);
         } else {
           setStatus("Verification failed");
-          setRaw(String(err?.message || err));
+          setRaw(err instanceof Error ? err.message : String(err));
         }
       } finally {
         setBusy(false);
       }
     };
 
-    run();
+    void run();
   }, [sp]);
 
   useEffect(() => {
-    if (!raw?.ok || !raw?.paid || redirectedRef.current) return;
+    const paid = Boolean((raw as VerifyResp | null)?.ok && (raw as VerifyResp | null)?.paid);
+
+    if (!paid || redirectedRef.current) return;
     if (countdown === null) return;
 
     if (countdown <= 0) {
       redirectedRef.current = true;
-      const reference = encodeURIComponent(String(raw?.reference || ""));
+      const reference = encodeURIComponent(
+        String((raw as VerifyResp | null)?.reference || "")
+      );
       router.push(`/dashboard?paid=1&reference=${reference}`);
       return;
     }
@@ -93,10 +97,13 @@ export default function BillingVerifyPage() {
     return () => window.clearTimeout(id);
   }, [countdown, raw, router]);
 
-  const paid = Boolean(raw?.ok && raw?.paid);
+  const paid = Boolean((raw as VerifyResp | null)?.ok && (raw as VerifyResp | null)?.paid);
 
   const goDashboardNow = () => {
-    const reference = encodeURIComponent(String(raw?.reference || sp?.get("reference") || ""));
+    const rawRef = raw as VerifyResp | null;
+    const reference = encodeURIComponent(
+      String(rawRef?.reference || sp?.get("reference") || "")
+    );
     router.push(`/dashboard?paid=1&reference=${reference}`);
   };
 
@@ -167,6 +174,7 @@ export default function BillingVerifyPage() {
 
           <button
             onClick={() => router.push("/billing")}
+            disabled={busy}
             style={{
               padding: "14px 18px",
               borderRadius: 16,
@@ -174,7 +182,8 @@ export default function BillingVerifyPage() {
               background: "rgba(255,255,255,0.06)",
               color: "white",
               fontWeight: 900,
-              cursor: "pointer",
+              cursor: busy ? "not-allowed" : "pointer",
+              opacity: busy ? 0.7 : 1,
             }}
           >
             Open Billing
@@ -182,6 +191,7 @@ export default function BillingVerifyPage() {
 
           <button
             onClick={() => router.push("/plans")}
+            disabled={busy}
             style={{
               padding: "14px 18px",
               borderRadius: 16,
@@ -189,7 +199,8 @@ export default function BillingVerifyPage() {
               background: "rgba(255,255,255,0.06)",
               color: "white",
               fontWeight: 900,
-              cursor: "pointer",
+              cursor: busy ? "not-allowed" : "pointer",
+              opacity: busy ? 0.7 : 1,
             }}
           >
             View Plans
@@ -197,7 +208,9 @@ export default function BillingVerifyPage() {
         </div>
 
         <div style={{ marginTop: 22 }}>
-          <div style={{ color: "white", fontWeight: 900, marginBottom: 10 }}>Raw response (debug)</div>
+          <div style={{ color: "white", fontWeight: 900, marginBottom: 10 }}>
+            Raw response (debug)
+          </div>
           <pre
             style={{
               margin: 0,
@@ -217,5 +230,43 @@ export default function BillingVerifyPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+function BillingVerifyFallback() {
+  return (
+    <div
+      style={{
+        minHeight: "100vh",
+        padding: 24,
+        display: "grid",
+        placeItems: "center",
+        background:
+          "radial-gradient(900px 700px at 20% 10%, rgba(120,140,255,0.22), transparent 60%), rgba(7,10,18,1)",
+        color: "white",
+      }}
+    >
+      <div
+        style={{
+          width: "100%",
+          maxWidth: 560,
+          borderRadius: 24,
+          border: "1px solid rgba(255,255,255,0.08)",
+          background: "rgba(255,255,255,0.03)",
+          padding: 24,
+          textAlign: "center",
+        }}
+      >
+        Loading billing verification...
+      </div>
+    </div>
+  );
+}
+
+export default function BillingVerifyPage() {
+  return (
+    <Suspense fallback={<BillingVerifyFallback />}>
+      <BillingVerifyPageContent />
+    </Suspense>
   );
 }

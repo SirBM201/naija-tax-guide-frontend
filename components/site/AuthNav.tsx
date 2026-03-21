@@ -6,11 +6,16 @@ import { useAuth } from "@/lib/auth";
 export default function AuthNav() {
   const { token, me, loading, logout } = useAuth();
 
-  if (loading) return <span style={{ color: "#aaa" }}>...</span>;
+  if (loading) {
+    return <span style={{ color: "#aaa" }}>...</span>;
+  }
 
   if (!token) {
     return (
-      <Link href="/login" style={{ color: "#fff", textDecoration: "none", fontWeight: 800 }}>
+      <Link
+        href="/login"
+        style={{ color: "#fff", textDecoration: "none", fontWeight: 800 }}
+      >
         Login
       </Link>
     );
@@ -19,10 +24,12 @@ export default function AuthNav() {
   return (
     <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
       <span style={{ color: "#bbb", fontSize: 13 }}>
-        {me?.display_name || me?.phone_e164 || "Account"}
+        {me?.email || "Account"}
       </span>
       <button
-        onClick={logout}
+        onClick={() => {
+          void logout();
+        }}
         style={{
           padding: "8px 10px",
           borderRadius: 10,
@@ -30,7 +37,7 @@ export default function AuthNav() {
           background: "rgba(255,255,255,0.03)",
           color: "#fff",
           fontWeight: 800,
-          cursor: "pointer"
+          cursor: "pointer",
         }}
       >
         Logout

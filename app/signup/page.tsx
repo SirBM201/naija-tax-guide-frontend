@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { Suspense, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { apiJson, isApiError } from "@/lib/api";
@@ -21,7 +21,7 @@ type RequestOtpResp = {
   why?: string;
   ttl_minutes?: number;
   email_to?: string;
-  debug?: any;
+  debug?: unknown;
   message?: string;
 };
 
@@ -30,7 +30,7 @@ type VerifyOtpResp = {
   token?: string;
   account_id?: string;
   error?: string;
-  debug?: any;
+  debug?: unknown;
   message?: string;
 };
 
@@ -38,7 +38,7 @@ type WebMeResp = {
   ok?: boolean;
   account_id?: string;
   error?: string;
-  debug?: any;
+  debug?: unknown;
 };
 
 type FailureExpose = {
@@ -46,11 +46,11 @@ type FailureExpose = {
   endpoint: string;
   apiBase: string;
   method: string;
-  requestBody?: any;
+  requestBody?: unknown;
   status?: number | null;
   message?: string;
   error?: string;
-  raw?: any;
+  raw?: unknown;
   likelyCause?: string;
   at: string;
 };
@@ -148,7 +148,7 @@ function clearStoredReferralCode() {
   }
 }
 
-function likelyCauseFromError(status?: number | null, payload?: any, message?: string) {
+function likelyCauseFromError(status?: number | null, payload?: unknown, message?: string) {
   const text = `${message || ""} ${JSON.stringify(payload || {})}`.toLowerCase();
 
   if (!status) {
@@ -214,7 +214,7 @@ function linkBtnStyle(primary = false): React.CSSProperties {
   };
 }
 
-export default function SignupPage() {
+function SignupPageContent() {
   const router = useRouter();
   const sp = useSearchParams();
   const { themeMode, resolvedMode, setThemeMode } = useSharedTheme();
@@ -224,7 +224,7 @@ export default function SignupPage() {
   const [otp, setOtp] = useState("");
   const [referralCode, setReferralCode] = useState("");
   const [status, setStatus] = useState<string>("Create your account with email OTP.");
-  const [raw, setRaw] = useState<any>(null);
+  const [raw, setRaw] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   const [showDebug, setShowDebug] = useState(false);
   const [failureExpose, setFailureExpose] = useState<FailureExpose | null>(null);
@@ -263,7 +263,7 @@ export default function SignupPage() {
       }
     };
 
-    run();
+    void run();
   }, [authReady, refreshSession, router, sp]);
 
   useEffect(() => {
@@ -317,7 +317,7 @@ export default function SignupPage() {
           at: new Date().toISOString(),
         });
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (isApiError(err)) {
         setStatus(`Send OTP failed (${err.status})`);
         setRaw(err.data ?? null);
@@ -329,13 +329,13 @@ export default function SignupPage() {
           requestBody,
           status: err.status,
           message: err.message,
-          error: err.data?.error || "api_error",
+          error: (err.data?.error as string | undefined) || "api_error",
           raw: err.data ?? null,
           likelyCause: likelyCauseFromError(err.status, err.data, err.message),
           at: new Date().toISOString(),
         });
       } else {
-        const msg = String(err?.message || err);
+        const msg = String(err instanceof Error ? err.message : err);
         setStatus("Send OTP failed.");
         setRaw(msg);
         setFailureExpose({
@@ -430,11 +430,11 @@ export default function SignupPage() {
 
       if (!redirectingRef.current) {
         redirectingRef.current = true;
-        setTimeout(() => {
+        window.setTimeout(() => {
           router.replace(resolvePostLoginPath(sp));
         }, 250);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (isApiError(err)) {
         setStatus(`Verify OTP failed (${err.status})`);
         setRaw(err.data ?? null);
@@ -446,13 +446,13 @@ export default function SignupPage() {
           requestBody: { ...requestBody, otp: "***hidden***" },
           status: err.status,
           message: err.message,
-          error: err.data?.error || "api_error",
+          error: (err.data?.error as string | undefined) || "api_error",
           raw: err.data ?? null,
           likelyCause: likelyCauseFromError(err.status, err.data, err.message),
           at: new Date().toISOString(),
         });
       } else {
-        const msg = String(err?.message || err);
+        const msg = String(err instanceof Error ? err.message : err);
         setStatus("Verify OTP failed.");
         setRaw(msg);
         setFailureExpose({
@@ -706,7 +706,7 @@ export default function SignupPage() {
 
               <WorkspaceActionBar
                 items={[
-                  { label: "Send OTP", onClick: sendOtp, tone: "secondary", disabled: busy },
+                  { label: "Send OTP", onClick: () => { void sendOtp(); }, tone: "secondary", disabled: busy },
                   {
                     label: "Clear Referral",
                     onClick: clearReferral,
@@ -728,7 +728,7 @@ export default function SignupPage() {
 
               <WorkspaceActionBar
                 items={[
-                  { label: "Verify OTP", onClick: verifyOtp, tone: "primary", disabled: busy },
+                  { label: "Verify OTP", onClick: () => { void verifyOtp(); }, tone: "primary", disabled: busy },
                 ]}
               />
             </WorkspaceSectionCard>
@@ -814,5 +814,42 @@ export default function SignupPage() {
         ) : null}
       </Panel>
     </div>
+  );
+}
+
+function SignupPageFallback() {
+  return (
+    <div
+      style={{
+        minHeight: "100vh",
+        display: "grid",
+        placeItems: "center",
+        padding: 24,
+        background: "var(--app-bg)",
+        color: "var(--text)",
+      }}
+    >
+      <div
+        style={{
+          width: "100%",
+          maxWidth: 560,
+          borderRadius: 24,
+          border: "1px solid rgba(255,255,255,0.08)",
+          background: "rgba(255,255,255,0.03)",
+          padding: 24,
+          textAlign: "center",
+        }}
+      >
+        Loading sign-up...
+      </div>
+    </div>
+  );
+}
+
+export default function SignupPage() {
+  return (
+    <Suspense fallback={<SignupPageFallback />}>
+      <SignupPageContent />
+    </Suspense>
   );
 }

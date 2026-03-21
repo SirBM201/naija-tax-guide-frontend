@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { apiJson, isApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -11,6 +11,7 @@ import {
   Banner,
   MetricCard,
   appInputStyle,
+  appSelectStyle,
   appTextareaStyle,
   formatDate,
   toneSurface,
@@ -95,7 +96,7 @@ function actionRowStyle(): React.CSSProperties {
   };
 }
 
-export default function AskPage() {
+function AskPageContent() {
   const router = useRouter();
   const sp = useSearchParams();
   const { refreshSession } = useAuth();
@@ -306,28 +307,28 @@ export default function AskPage() {
     dailyLimit > 0 && dailyUsage >= dailyLimit
       ? "warn"
       : creditBalance <= 0
-      ? "warn"
-      : !activeNow
-      ? "warn"
-      : "good";
+        ? "warn"
+        : !activeNow
+          ? "warn"
+          : "good";
 
   const topTitle =
     dailyLimit > 0 && dailyUsage >= dailyLimit
       ? "Daily question limit reached"
       : creditBalance <= 0
-      ? "Credit balance is empty"
-      : !activeNow
-      ? "Subscription attention needed"
-      : "Assistant is ready";
+        ? "Credit balance is empty"
+        : !activeNow
+          ? "Subscription attention needed"
+          : "Assistant is ready";
 
   const topSubtitle =
     dailyLimit > 0 && dailyUsage >= dailyLimit
       ? "You have used all visible daily question capacity for today. Wait for reset or review your plan."
       : creditBalance <= 0
-      ? "New uncached questions may fail until credits are available, even if the account still appears active."
-      : !activeNow
-      ? "Your workspace does not currently show an active subscription. You can still submit a question now to test the live flow, but the backend may still reject it until billing is active."
-      : status || "Write your question clearly and choose the reply language before submitting.";
+        ? "New uncached questions may fail until credits are available, even if the account still appears active."
+        : !activeNow
+          ? "Your workspace does not currently show an active subscription. You can still submit a question now to test the live flow, but the backend may still reject it until billing is active."
+          : status || "Write your question clearly and choose the reply language before submitting.";
 
   return (
     <AppShell
@@ -381,7 +382,7 @@ export default function AskPage() {
                 <select
                   value={language}
                   onChange={(event) => setLanguage(event.target.value)}
-                  style={appInputStyle("select")}
+                  style={appSelectStyle()}
                 >
                   {LANGUAGE_OPTIONS.map((item) => (
                     <option key={item.value} value={item.value}>
@@ -393,7 +394,9 @@ export default function AskPage() {
 
               <div style={actionRowStyle()}>
                 <button
-                  onClick={handleAsk}
+                  onClick={() => {
+                    void handleAsk();
+                  }}
                   disabled={submitDisabled}
                   style={{
                     ...appInputStyle("button"),
@@ -548,5 +551,42 @@ export default function AskPage() {
         ) : null}
       </SectionStack>
     </AppShell>
+  );
+}
+
+function AskPageFallback() {
+  return (
+    <div
+      style={{
+        minHeight: "100vh",
+        display: "grid",
+        placeItems: "center",
+        padding: 24,
+        background: "var(--app-bg)",
+        color: "var(--text)",
+      }}
+    >
+      <div
+        style={{
+          width: "100%",
+          maxWidth: 560,
+          borderRadius: 24,
+          border: "1px solid rgba(255,255,255,0.08)",
+          background: "rgba(255,255,255,0.03)",
+          padding: 24,
+          textAlign: "center",
+        }}
+      >
+        Loading ask page...
+      </div>
+    </div>
+  );
+}
+
+export default function AskPage() {
+  return (
+    <Suspense fallback={<AskPageFallback />}>
+      <AskPageContent />
+    </Suspense>
   );
 }

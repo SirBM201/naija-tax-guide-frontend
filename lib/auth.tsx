@@ -1,8 +1,31 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { apiJson, isApiError, clearStoredAuthToken } from "@/lib/api";
+
+type AuthUserLike = {
+  account_id?: string | null;
+  email?: string | null;
+  display_name?: string | null;
+  phone_e164?: string | null;
+};
+
+type AuthDebugValue =
+  | string
+  | number
+  | boolean
+  | null
+  | Record<string, unknown>
+  | unknown[];
 
 type AuthContextValue = {
   token: string | null;
@@ -21,8 +44,13 @@ type AuthContextValue = {
   setHasSeenWelcome: (v: boolean) => void;
   markWelcomeSeen: () => void;
 
-  lastAuthDebug: any;
+  lastAuthDebug: AuthDebugValue;
   clearAuthDebug: () => void;
+
+  loading: boolean;
+  bypassEnabled: boolean;
+  user: AuthUserLike | null;
+  me: AuthUserLike | null;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -35,20 +63,25 @@ const LS_WELCOME_SEEN_KEY = "ntg-welcome-seen";
 type WebMeResp = {
   ok?: boolean;
   account_id?: string;
+  email?: string | null;
+  full_name?: string | null;
+  display_name?: string | null;
+  first_name?: string | null;
+  phone_e164?: string | null;
   error?: string;
-  debug?: any;
+  debug?: unknown;
 };
 
-function safeJsonParse(s: string | null): any {
+function safeJsonParse(s: string | null): AuthDebugValue {
   if (!s) return null;
   try {
-    return JSON.parse(s);
+    return JSON.parse(s) as AuthDebugValue;
   } catch {
     return s;
   }
 }
 
-function normalizeError(e: any) {
+function normalizeError(e: unknown) {
   if (isApiError(e)) {
     return {
       kind: "ApiError",
@@ -57,29 +90,56 @@ function normalizeError(e: any) {
       data: e.data,
     };
   }
+
+  if (e instanceof Error) {
+    return {
+      kind: "UnknownError",
+      message: e.message,
+    };
+  }
+
   return {
     kind: "UnknownError",
-    message: String(e?.message || e),
+    message: String(e),
   };
 }
 
-async function probeCookieSession(): Promise<{ ok: boolean; account_id?: string; debug?: any; raw?: any }> {
+async function probeCookieSession(): Promise<{
+  ok: boolean;
+  account_id?: string;
+  email?: string | null;
+  display_name?: string | null;
+  phone_e164?: string | null;
+  debug?: unknown;
+  raw?: unknown;
+}> {
   try {
     const data = await apiJson<WebMeResp>("/web/auth/me", {
       method: "GET",
       timeoutMs: 12000,
       useAuthToken: false,
     });
+
     const ok = Boolean(data?.ok && data?.account_id);
-    return { ok, account_id: data?.account_id, debug: data?.debug, raw: data };
-  } catch (e: any) {
+
+    return {
+      ok,
+      account_id: data?.account_id,
+      email: data?.email ?? null,
+      display_name:
+        data?.display_name ?? data?.full_name ?? data?.first_name ?? data?.email ?? null,
+      phone_e164: data?.phone_e164 ?? null,
+      debug: data?.debug,
+      raw: data,
+    };
+  } catch (e: unknown) {
     return { ok: false, raw: normalizeError(e) };
   }
 }
 
 function isPublicPath(pathname: string | null) {
   if (!pathname) return false;
-  return pathname === "/" || pathname === "/login";
+  return pathname === "/" || pathname === "/login" || pathname === "/signup";
 }
 
 function isProtectedPath(pathname: string | null) {
@@ -93,24 +153,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, _setToken] = useState<string | null>(null);
   const [hasSession, _setHasSession] = useState<boolean>(false);
   const [hasSeenWelcome, _setHasSeenWelcome] = useState<boolean>(false);
-  const [lastAuthDebug, _setLastAuthDebug] = useState<any>(null);
+  const [lastAuthDebug, _setLastAuthDebug] = useState<AuthDebugValue>(null);
   const [authReady, setAuthReady] = useState(false);
+
+  const [sessionAccountId, setSessionAccountId] = useState<string | null>(null);
+  const [sessionEmail, setSessionEmail] = useState<string | null>(null);
+  const [sessionDisplayName, setSessionDisplayName] = useState<string | null>(null);
+  const [sessionPhone, setSessionPhone] = useState<string | null>(null);
 
   const redirectingRef = useRef(false);
 
-  const setLastAuthDebug = (v: any) => {
+  const bypassEnabled = process.env.NEXT_PUBLIC_BYPASS_AUTH === "1";
+
+  const setLastAuthDebug = useCallback((v: AuthDebugValue) => {
     _setLastAuthDebug(v);
     try {
-      if (v) localStorage.setItem(LS_AUTH_DEBUG_KEY, JSON.stringify(v));
+      if (v !== null) localStorage.setItem(LS_AUTH_DEBUG_KEY, JSON.stringify(v));
       else localStorage.removeItem(LS_AUTH_DEBUG_KEY);
     } catch {
       // ignore
     }
-  };
+  }, []);
 
-  const clearAuthDebug = () => setLastAuthDebug(null);
+  const clearAuthDebug = useCallback(() => {
+    setLastAuthDebug(null);
+  }, [setLastAuthDebug]);
 
-  const setHasSeenWelcome = (v: boolean) => {
+  const setHasSeenWelcome = useCallback((v: boolean) => {
     _setHasSeenWelcome(v);
     try {
       if (v) localStorage.setItem(LS_WELCOME_SEEN_KEY, "1");
@@ -118,9 +187,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch {
       // ignore
     }
-  };
+  }, []);
 
-  const markWelcomeSeen = () => setHasSeenWelcome(true);
+  const markWelcomeSeen = useCallback(() => {
+    setHasSeenWelcome(true);
+  }, [setHasSeenWelcome]);
+
+  const setToken = useCallback((t: string | null) => {
+    _setToken(t);
+    try {
+      if (t) localStorage.setItem(LS_TOKEN_KEY, t);
+      else localStorage.removeItem(LS_TOKEN_KEY);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const setHasSession = useCallback((v: boolean) => {
+    _setHasSession(v);
+    try {
+      if (v) localStorage.setItem(LS_SESSION_KEY, "1");
+      else localStorage.removeItem(LS_SESSION_KEY);
+    } catch {
+      // ignore
+    }
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -149,23 +240,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (res.ok) {
         try {
           localStorage.setItem(LS_SESSION_KEY, "1");
-        } catch {}
+        } catch {
+          // ignore
+        }
 
         _setHasSession(true);
+        setSessionAccountId(res.account_id ?? null);
+        setSessionEmail(res.email ?? null);
+        setSessionDisplayName(res.display_name ?? null);
+        setSessionPhone(res.phone_e164 ?? null);
 
         setLastAuthDebug({
           at: new Date().toISOString(),
           op: "probeCookieSession",
           ok: true,
           account_id: res.account_id,
-          debug: res.debug || null,
+          email: res.email ?? null,
+          display_name: res.display_name ?? null,
+          phone_e164: res.phone_e164 ?? null,
+          debug: res.debug ?? null,
         });
       } else {
         try {
           localStorage.removeItem(LS_SESSION_KEY);
-        } catch {}
+        } catch {
+          // ignore
+        }
 
         _setHasSession(false);
+        setSessionAccountId(null);
+        setSessionEmail(null);
+        setSessionDisplayName(null);
+        setSessionPhone(null);
 
         setLastAuthDebug({
           at: new Date().toISOString(),
@@ -178,59 +284,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setAuthReady(true);
     };
 
-    boot();
+    void boot();
 
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [setLastAuthDebug]);
 
   useEffect(() => {
-    if (!authReady) return;
-    if (!pathname) return;
-    if (redirectingRef.current) return;
+    if (!authReady || !pathname || redirectingRef.current) return;
 
     const publicPath = isPublicPath(pathname);
     const protectedPath = isProtectedPath(pathname);
 
-    if (publicPath) {
-      return;
-    }
+    if (publicPath || bypassEnabled) return;
 
     if (protectedPath && !hasSession && !token) {
       redirectingRef.current = true;
       const next = pathname !== "/login" ? `?next=${encodeURIComponent(pathname)}` : "";
       router.replace(`/login${next}`);
-      setTimeout(() => {
+      window.setTimeout(() => {
         redirectingRef.current = false;
       }, 500);
     }
-  }, [authReady, pathname, hasSession, token, router]);
+  }, [authReady, pathname, hasSession, token, router, bypassEnabled]);
 
-  const setToken = (t: string | null) => {
-    _setToken(t);
-    try {
-      if (t) localStorage.setItem(LS_TOKEN_KEY, t);
-      else localStorage.removeItem(LS_TOKEN_KEY);
-    } catch {
-      // ignore
-    }
-  };
-
-  const setHasSession = (v: boolean) => {
-    _setHasSession(v);
-    try {
-      if (v) localStorage.setItem(LS_SESSION_KEY, "1");
-      else localStorage.removeItem(LS_SESSION_KEY);
-    } catch {
-      // ignore
-    }
-  };
-
-  const refreshSession = async () => {
+  const refreshSession = useCallback(async () => {
     const res = await probeCookieSession();
 
     setHasSession(res.ok);
+    setSessionAccountId(res.account_id ?? null);
+    setSessionEmail(res.email ?? null);
+    setSessionDisplayName(res.display_name ?? null);
+    setSessionPhone(res.phone_e164 ?? null);
 
     if (res.ok) {
       clearStoredAuthToken();
@@ -247,32 +333,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       op: "refreshSession",
       ok: res.ok,
       account_id: res.account_id,
-      debug: res.debug || null,
+      email: res.email ?? null,
+      display_name: res.display_name ?? null,
+      phone_e164: res.phone_e164 ?? null,
+      debug: res.debug ?? null,
       root_cause: res.ok ? null : res.raw,
     });
 
     return res.ok;
-  };
+  }, [setHasSession, setLastAuthDebug]);
 
-  const requireAuth = () => {
-    const ok = Boolean(hasSession) || Boolean(token);
+  const requireAuth = useCallback(() => {
+    const ok = bypassEnabled || Boolean(hasSession) || Boolean(token);
 
     if (!ok) {
       const next = pathname && pathname !== "/login" ? `?next=${encodeURIComponent(pathname)}` : "";
       router.replace(`/login${next}`);
       return false;
     }
-    return true;
-  };
 
-  const logout = async () => {
+    return true;
+  }, [bypassEnabled, hasSession, token, pathname, router]);
+
+  const logout = useCallback(async () => {
     try {
       await apiJson("/web/auth/logout", {
         method: "POST",
         timeoutMs: 12000,
         useAuthToken: false,
       });
-    } catch (e: any) {
+    } catch (e: unknown) {
       setLastAuthDebug({
         at: new Date().toISOString(),
         op: "logout",
@@ -285,6 +375,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     clearStoredAuthToken();
     setHasSession(false);
     setHasSeenWelcome(false);
+    setSessionAccountId(null);
+    setSessionEmail(null);
+    setSessionDisplayName(null);
+    setSessionPhone(null);
 
     try {
       localStorage.removeItem(LS_TOKEN_KEY);
@@ -295,7 +389,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     router.replace("/login");
-  };
+  }, [router, setHasSession, setHasSeenWelcome, setLastAuthDebug, setToken]);
+
+  const derivedUser: AuthUserLike | null =
+    hasSession || Boolean(token) || bypassEnabled
+      ? {
+          account_id: sessionAccountId,
+          email: sessionEmail,
+          display_name: sessionDisplayName,
+          phone_e164: sessionPhone,
+        }
+      : null;
 
   const value = useMemo<AuthContextValue>(
     () => ({
@@ -312,8 +416,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       markWelcomeSeen,
       lastAuthDebug,
       clearAuthDebug,
+      loading: !authReady,
+      bypassEnabled,
+      user: derivedUser,
+      me: derivedUser,
     }),
-    [token, hasSession, authReady, hasSeenWelcome, lastAuthDebug]
+    [
+      token,
+      setToken,
+      hasSession,
+      setHasSession,
+      authReady,
+      logout,
+      requireAuth,
+      refreshSession,
+      hasSeenWelcome,
+      setHasSeenWelcome,
+      markWelcomeSeen,
+      lastAuthDebug,
+      clearAuthDebug,
+      bypassEnabled,
+      derivedUser,
+    ]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

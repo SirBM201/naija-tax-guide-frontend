@@ -13,8 +13,25 @@ export default function WorkspaceSectionCard({
   children: React.ReactNode;
 }) {
   return (
-    <Card title={title} subtitle={subtitle}>
-      <div style={{ display: "grid", gap: 16 }}>{children}</div>
+    <Card>
+      <div style={{ display: "grid", gap: 16 }}>
+        <div style={{ display: "grid", gap: 6 }}>
+          <div style={{ fontSize: 18, fontWeight: 800, color: "white" }}>{title}</div>
+          {subtitle ? (
+            <div
+              style={{
+                fontSize: 14,
+                lineHeight: 1.5,
+                color: "rgba(255,255,255,0.72)",
+              }}
+            >
+              {subtitle}
+            </div>
+          ) : null}
+        </div>
+
+        <div style={{ display: "grid", gap: 16 }}>{children}</div>
+      </div>
     </Card>
   );
 }

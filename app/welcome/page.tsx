@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import AppShell, {
   shellButtonPrimary,
@@ -128,7 +128,7 @@ function shouldForceOpen(sp: URLSearchParams | null) {
   );
 }
 
-export default function WelcomePage() {
+function WelcomePageContent() {
   const router = useRouter();
   const sp = useSearchParams();
   const { hasSession } = useAuth();
@@ -170,7 +170,7 @@ export default function WelcomePage() {
 
   useEffect(() => {
     if (!pageReady) return;
-    load("Loading welcome page...");
+    void load("Loading welcome page...");
   }, [pageReady, load]);
 
   const handleContinue = () => {
@@ -184,7 +184,7 @@ export default function WelcomePage() {
   };
 
   const handleRefresh = () => {
-    load("Loading welcome page...");
+    void load("Loading welcome page...");
   };
 
   if (!pageReady) {
@@ -234,8 +234,8 @@ export default function WelcomePage() {
             status === "Ready."
               ? "good"
               : status.toLowerCase().includes("partial")
-              ? "warn"
-              : "default"
+                ? "warn"
+                : "default"
           }
         />
 
@@ -462,5 +462,30 @@ export default function WelcomePage() {
         </TwoColumnSection>
       </SectionStack>
     </AppShell>
+  );
+}
+
+function WelcomePageFallback() {
+  return (
+    <AppShell
+      title="Welcome"
+      subtitle="Preparing your onboarding workspace..."
+    >
+      <SectionStack>
+        <Banner
+          title="Preparing welcome page"
+          subtitle="Please wait while your session and workspace state are being confirmed."
+          tone="default"
+        />
+      </SectionStack>
+    </AppShell>
+  );
+}
+
+export default function WelcomePage() {
+  return (
+    <Suspense fallback={<WelcomePageFallback />}>
+      <WelcomePageContent />
+    </Suspense>
   );
 }

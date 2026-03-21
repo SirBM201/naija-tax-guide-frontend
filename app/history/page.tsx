@@ -21,7 +21,6 @@ import {
 } from "@/components/page-layout";
 import WorkspaceOverviewMetrics from "@/components/workspace-overview-metrics";
 import { useWorkspaceState } from "@/hooks/useWorkspaceState";
-import { buildWorkspaceAlerts } from "@/lib/workspace-alerts";
 import { getHistoryItems, type HistoryItem as LocalHistoryItem } from "@/lib/history-storage";
 
 type BackendHistoryItem = {
@@ -59,6 +58,20 @@ type HistoryApiResponse = {
   error?: string;
   message?: string;
   root_cause?: string;
+};
+
+type NoticeTone = "good" | "warn" | "danger" | "default";
+
+type HistoryNotice = {
+  title: string;
+  subtitle: string;
+  tone: NoticeTone;
+};
+
+type PageAlert = {
+  title: string;
+  subtitle: string;
+  tone: NoticeTone;
 };
 
 function resolveApiBase(): string {
@@ -113,13 +126,19 @@ async function fetchHistoryItems(params?: {
 
   let data: HistoryApiResponse | null = null;
   try {
-    data = await res.json();
+    data = (await res.json()) as HistoryApiResponse;
   } catch {
     data = null;
   }
 
   if (!res.ok) {
-    return data || { ok: false, error: "history_fetch_failed", message: `Failed with status ${res.status}` };
+    return (
+      data || {
+        ok: false,
+        error: "history_fetch_failed",
+        message: `Failed with status ${res.status}`,
+      }
+    );
   }
 
   return data || { ok: false, error: "invalid_response", message: "Invalid history response." };
@@ -166,7 +185,7 @@ function mapBackendItem(row: BackendHistoryItem, index: number): DisplayHistoryI
 
 function mapLocalItem(row: LocalHistoryItem, index: number): DisplayHistoryItem {
   return {
-    id: String((row as any).id || `${row.created_at || "local"}-${index}`),
+    id: String(row.id || `${row.created_at || "local"}-${index}`),
     question: String(row.question || ""),
     answer: String(row.answer || ""),
     language: String(row.language || "English"),
@@ -225,7 +244,9 @@ function HistoryItemCard({
               wordBreak: "break-word",
             }}
           >
-            {expanded ? String(item.question || "Untitled question") : truncateText(String(item.question || "Untitled question"), 140)}
+            {expanded
+              ? String(item.question || "Untitled question")
+              : truncateText(String(item.question || "Untitled question"), 140)}
           </div>
         </div>
 
@@ -270,7 +291,9 @@ function HistoryItemCard({
             wordBreak: "break-word",
           }}
         >
-          {expanded ? String(item.answer || "No saved answer.") : truncateText(String(item.answer || "No saved answer."), 320)}
+          {expanded
+            ? String(item.answer || "No saved answer.")
+            : truncateText(String(item.answer || "No saved answer."), 320)}
         </div>
       </div>
 
@@ -322,11 +345,7 @@ export default function HistoryPage() {
   const [sourceFilter, setSourceFilter] = useState("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [loadingHistory, setLoadingHistory] = useState(false);
-  const [historyNotice, setHistoryNotice] = useState<{
-    title: string;
-    message: string;
-    tone: "good" | "warn" | "danger" | "default";
-  } | null>(null);
+  const [historyNotice, setHistoryNotice] = useState<HistoryNotice | null>(null);
 
   const {
     busy,
@@ -374,22 +393,23 @@ export default function HistoryPage() {
       if (result.error) {
         setHistoryNotice({
           title: "Backend history unavailable",
-          message:
+          subtitle:
             result.message ||
             result.root_cause ||
             "Falling back to local history storage because backend history is not yet fully available.",
           tone: "warn",
         });
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       const localItems = getHistoryItems().map(mapLocalItem);
       setHistoryItems(localItems);
 
       setHistoryNotice({
         title: "History fallback in use",
-        message:
-          err?.message ||
-          "A backend history error occurred, so local history storage is being shown instead.",
+        subtitle:
+          err instanceof Error
+            ? err.message
+            : "A backend history error occurred, so local history storage is being shown instead.",
         tone: "warn",
       });
     } finally {
@@ -398,21 +418,59 @@ export default function HistoryPage() {
   };
 
   useEffect(() => {
-    loadHistoryWorkspace();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    void loadHistoryWorkspace();
   }, []);
 
-  const alerts = buildWorkspaceAlerts({
-    activeNow,
-    creditBalance,
-    dailyUsage,
-    dailyLimit,
-    pendingPlanCode,
-    pendingStartsAt,
-    status,
-    includeStatusAlert: true,
-    statusTitle: "Current history workspace status",
-  });
+  const alerts = useMemo<PageAlert[]>(() => {
+    const items: PageAlert[] = [];
+
+    if (status) {
+      items.push({
+        title: "Current history workspace status",
+        subtitle: status,
+        tone: "default",
+      });
+    }
+
+    if (!activeNow) {
+      items.push({
+        title: "Subscription attention needed",
+        subtitle:
+          "Your subscription does not currently appear active. Some fresh AI actions may be restricted until billing is restored.",
+        tone: "warn",
+      });
+    }
+
+    if (creditBalance <= 0) {
+      items.push({
+        title: "Credit balance is empty",
+        subtitle:
+          "No visible AI credits are available right now. History remains accessible, but fresh AI actions may fail.",
+        tone: "warn",
+      });
+    }
+
+    if (dailyLimit > 0 && dailyUsage >= dailyLimit) {
+      items.push({
+        title: "Daily limit reached",
+        subtitle:
+          "You have reached the visible daily usage limit for today. Review your plan or wait for reset.",
+        tone: "warn",
+      });
+    }
+
+    if (pendingPlanCode) {
+      items.push({
+        title: "Pending plan change detected",
+        subtitle: pendingStartsAt
+          ? `A pending plan change to ${pendingPlanCode} is scheduled for ${formatDate(pendingStartsAt)}.`
+          : `A pending plan change to ${pendingPlanCode} is scheduled.`,
+        tone: "default",
+      });
+    }
+
+    return items;
+  }, [status, activeNow, creditBalance, dailyLimit, dailyUsage, pendingPlanCode, pendingStartsAt]);
 
   const filteredItems = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -424,7 +482,6 @@ export default function HistoryPage() {
           : String(item.source || "").toLowerCase() === sourceFilter;
 
       if (!matchesSource) return false;
-
       if (!term) return true;
 
       const question = String(item.question || "").toLowerCase();
@@ -467,13 +524,17 @@ export default function HistoryPage() {
             { label: "Credits", href: "/credits", tone: "secondary" },
             {
               label: "Refresh",
-              onClick: () => loadHistoryWorkspace("Refreshing history workspace..."),
+              onClick: () => {
+                void loadHistoryWorkspace("Refreshing history workspace...");
+              },
               tone: "secondary",
               disabled: busy || loadingHistory,
             },
             {
               label: "Logout",
-              onClick: logout,
+              onClick: () => {
+                void logout();
+              },
               tone: "danger",
               disabled: busy || loadingHistory,
             },
@@ -485,16 +546,16 @@ export default function HistoryPage() {
         {historyNotice ? (
           <Banner
             title={historyNotice.title}
-            message={historyNotice.message}
+            subtitle={historyNotice.subtitle}
             tone={historyNotice.tone}
           />
         ) : null}
 
-        {alerts.map((alert) => (
+        {alerts.map((alert, index) => (
           <Banner
-            key={alert.key}
+            key={`${alert.title}-${index}`}
             title={alert.title}
-            message={alert.message}
+            subtitle={alert.subtitle}
             tone={alert.tone}
           />
         ))}
@@ -557,7 +618,7 @@ export default function HistoryPage() {
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Search question text, answer text, source, or language..."
-                  style={appInputStyle}
+                  style={appInputStyle()}
                 />
               </div>
 
@@ -574,7 +635,7 @@ export default function HistoryPage() {
                 <select
                   value={sourceFilter}
                   onChange={(e) => setSourceFilter(e.target.value)}
-                  style={appSelectStyle}
+                  style={appSelectStyle()}
                 >
                   <option value="all">All Sources</option>
                   <option value="web">Web</option>
@@ -590,7 +651,9 @@ export default function HistoryPage() {
                   items={[
                     {
                       label: loadingHistory ? "Searching..." : "Apply Search",
-                      onClick: () => loadHistoryWorkspace("Refreshing filtered history..."),
+                      onClick: () => {
+                        void loadHistoryWorkspace("Refreshing filtered history...");
+                      },
                       tone: "primary",
                       disabled: loadingHistory || busy,
                     },
@@ -672,7 +735,7 @@ export default function HistoryPage() {
           ) : (
             <Banner
               title="No matching history found"
-              message={
+              subtitle={
                 historyItems.length > 0
                   ? "No saved items match your current search or source filter. Adjust the filters and try again."
                   : "No question history is visible yet. Once successful tax questions are saved, they will appear here for future review."
@@ -693,8 +756,8 @@ export default function HistoryPage() {
                 !activeNow
                   ? "Your account may need active paid access before new questions can continue."
                   : creditBalance <= 0
-                  ? "Your visible credits are exhausted. Review Credits or Plans before continuing."
-                  : "Ask a new tax question when saved history is no longer enough."
+                    ? "Your visible credits are exhausted. Review Credits or Plans before continuing."
+                    : "Ask a new tax question when saved history is no longer enough."
               }
               tone={!activeNow ? "warn" : creditBalance <= 0 ? "danger" : "good"}
               onClick={() => router.push("/ask")}
@@ -756,15 +819,15 @@ export default function HistoryPage() {
                   filteredItems.length > 0
                     ? "Review Saved Answers"
                     : historyItems.length > 0
-                    ? "Adjust Filters"
-                    : "Ask First Question"
+                      ? "Adjust Filters"
+                      : "Ask First Question"
                 }
                 tone={
                   filteredItems.length > 0
                     ? "good"
                     : historyItems.length > 0
-                    ? "warn"
-                    : "default"
+                      ? "warn"
+                      : "default"
                 }
                 helper="Most sensible next move based on current visible history."
               />
