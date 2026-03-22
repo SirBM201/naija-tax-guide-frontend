@@ -11,7 +11,13 @@ const navSections = [
       { href: "/dashboard", label: "Dashboard" },
       { href: "/ask", label: "Ask" },
       { href: "/channels", label: "Channels" },
+      { href: "/history", label: "History" },
       { href: "/help", label: "Help Center" },
+    ],
+  },
+  {
+    title: "ACCOUNT",
+    items: [
       { href: "/settings", label: "Settings" },
       { href: "/profile", label: "Profile" },
     ],
@@ -119,7 +125,13 @@ export default function AppShell({
         }}
       >
         <button onClick={toggleSidebar} style={styles.collapseBtn} type="button">
-          {isMobile ? (sidebarOpen ? "Close Menu" : "Open Menu") : sidebarOpen ? "Collapse" : "Menu"}
+          {isMobile
+            ? sidebarOpen
+              ? "Close Menu"
+              : "Open Menu"
+            : sidebarOpen
+            ? "Collapse"
+            : "Menu"}
         </button>
 
         <div
@@ -255,9 +267,7 @@ export default function AppShell({
                 </Link>
               </div>
 
-              <div style={styles.pageFooterSlogan}>
-                From Deep Root, We Soar.
-              </div>
+              <div style={styles.pageFooterSlogan}>From Deep Root, We Soar.</div>
             </div>
           </div>
 
@@ -274,9 +284,9 @@ export function shellButtonPrimary(): React.CSSProperties {
   return {
     padding: "10px 16px",
     borderRadius: 14,
-    border: "1px solid rgba(99,102,241,0.45)",
+    border: "1px solid var(--accent-border)",
     background: "linear-gradient(180deg, rgba(99,102,241,0.96), rgba(79,70,229,0.92))",
-    color: "white",
+    color: "#ffffff",
     fontSize: 14,
     fontWeight: 800,
     cursor: "pointer",
@@ -289,9 +299,9 @@ export function shellButtonSecondary(): React.CSSProperties {
   return {
     padding: "10px 16px",
     borderRadius: 14,
-    border: "1px solid rgba(255,255,255,0.12)",
-    background: "rgba(255,255,255,0.03)",
-    color: "white",
+    border: "1px solid var(--border)",
+    background: "var(--surface-soft)",
+    color: "var(--text)",
     fontSize: 14,
     fontWeight: 800,
     cursor: "pointer",
@@ -302,9 +312,8 @@ export function shellButtonSecondary(): React.CSSProperties {
 const styles: Record<string, React.CSSProperties> = {
   root: {
     minHeight: "100vh",
-    background:
-      "radial-gradient(circle at top left, rgba(67,97,238,0.16), transparent 22%), #050816",
-    color: "white",
+    background: "var(--app-bg)",
+    color: "var(--text)",
     position: "relative",
   },
 
@@ -320,12 +329,12 @@ const styles: Record<string, React.CSSProperties> = {
     top: 0,
     left: 0,
     height: "100vh",
-    borderRight: "1px solid rgba(255,255,255,0.08)",
+    borderRight: "1px solid var(--border)",
     padding: 18,
     display: "flex",
     flexDirection: "column",
     gap: 16,
-    background: "#040a1d",
+    background: "var(--panel-bg)",
     overflow: "hidden",
     transition: "transform 0.25s ease, width 0.25s ease",
   },
@@ -334,9 +343,9 @@ const styles: Record<string, React.CSSProperties> = {
     width: "100%",
     minHeight: 52,
     borderRadius: 18,
-    border: "1px solid rgba(255,255,255,0.12)",
-    background: "rgba(255,255,255,0.03)",
-    color: "white",
+    border: "1px solid var(--border)",
+    background: "var(--surface-soft)",
+    color: "var(--text)",
     fontSize: 16,
     fontWeight: 800,
     cursor: "pointer",
@@ -348,8 +357,8 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: "center",
     padding: 16,
     borderRadius: 20,
-    background: "rgba(255,255,255,0.03)",
-    border: "1px solid rgba(255,255,255,0.08)",
+    background: "var(--surface-soft)",
+    border: "1px solid var(--border)",
   },
 
   logoWrap: {
@@ -362,27 +371,26 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 18,
     objectFit: "cover",
     border: "1px solid rgba(234,179,8,0.32)",
-    background: "rgba(255,255,255,0.06)",
+    background: "var(--surface)",
   },
 
   brandTitle: {
     fontSize: 18,
     fontWeight: 900,
     lineHeight: 1.15,
-    color: "white",
+    color: "var(--text)",
   },
 
   brandSub: {
     fontSize: 14,
-    opacity: 0.95,
     marginTop: 4,
-    color: "#facc15",
+    color: "var(--gold)",
     fontWeight: 800,
   },
 
   brandTagline: {
     fontSize: 12,
-    opacity: 0.72,
+    color: "var(--text-muted)",
     marginTop: 6,
     lineHeight: 1.4,
   },
@@ -403,7 +411,7 @@ const styles: Record<string, React.CSSProperties> = {
   sectionTitle: {
     fontSize: 12,
     fontWeight: 900,
-    opacity: 0.7,
+    color: "var(--text-faint)",
     letterSpacing: 0.5,
     paddingLeft: 2,
   },
@@ -418,7 +426,7 @@ const styles: Record<string, React.CSSProperties> = {
     minHeight: 52,
     borderRadius: 18,
     textDecoration: "none",
-    color: "rgba(255,255,255,0.9)",
+    color: "var(--text-soft)",
     border: "1px solid transparent",
     background: "transparent",
     display: "flex",
@@ -429,9 +437,9 @@ const styles: Record<string, React.CSSProperties> = {
   },
 
   linkActive: {
-    background: "rgba(67,97,238,0.14)",
-    border: "1px solid rgba(67,97,238,0.30)",
-    color: "white",
+    background: "var(--accent-soft)",
+    border: "1px solid var(--accent-border)",
+    color: "var(--text)",
     boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.02)",
   },
 
@@ -439,8 +447,8 @@ const styles: Record<string, React.CSSProperties> = {
     marginTop: "auto",
     padding: 14,
     borderRadius: 18,
-    background: "rgba(255,255,255,0.04)",
-    border: "1px solid rgba(255,255,255,0.08)",
+    background: "var(--surface-soft)",
+    border: "1px solid var(--border)",
     display: "grid",
     gap: 8,
   },
@@ -448,12 +456,12 @@ const styles: Record<string, React.CSSProperties> = {
   footerTitle: {
     fontSize: 13,
     fontWeight: 900,
-    color: "white",
+    color: "var(--text)",
   },
 
   footerLine: {
     fontSize: 13,
-    color: "rgba(255,255,255,0.84)",
+    color: "var(--text-muted)",
     lineHeight: 1.5,
   },
 
@@ -467,7 +475,7 @@ const styles: Record<string, React.CSSProperties> = {
 
   footerLink: {
     fontSize: 12,
-    color: "#c7d2fe",
+    color: "var(--text-soft)",
     textDecoration: "none",
     fontWeight: 700,
   },
@@ -477,6 +485,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     flexDirection: "column",
     transition: "margin-left 0.25s ease",
+    background: "var(--app-bg)",
   },
 
   topbar: {
@@ -485,8 +494,8 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: "center",
     justifyContent: "space-between",
     padding: "16px 20px",
-    borderBottom: "1px solid rgba(255,255,255,0.08)",
-    background: "rgba(6, 13, 35, 0.84)",
+    borderBottom: "1px solid var(--border)",
+    background: "var(--panel-bg)",
     position: "sticky",
     top: 0,
     zIndex: 15,
@@ -506,9 +515,9 @@ const styles: Record<string, React.CSSProperties> = {
   mobileMenuBtn: {
     padding: "10px 14px",
     borderRadius: 14,
-    border: "1px solid rgba(255,255,255,0.12)",
-    background: "rgba(255,255,255,0.04)",
-    color: "white",
+    border: "1px solid var(--border)",
+    background: "var(--surface-soft)",
+    color: "var(--text)",
     fontSize: 14,
     fontWeight: 800,
     cursor: "pointer",
@@ -517,13 +526,13 @@ const styles: Record<string, React.CSSProperties> = {
   topbarTitle: {
     fontSize: 18,
     fontWeight: 900,
-    opacity: 0.98,
+    color: "var(--text)",
     lineHeight: 1.1,
   },
 
   topbarSubtitle: {
     fontSize: 14,
-    opacity: 0.72,
+    color: "var(--text-muted)",
     lineHeight: 1.45,
     maxWidth: 760,
   },
@@ -548,11 +557,12 @@ const styles: Record<string, React.CSSProperties> = {
   content: {
     padding: 20,
     flex: "1 1 auto",
+    background: "var(--app-bg)",
   },
 
   pageFooter: {
-    borderTop: "1px solid rgba(255,255,255,0.08)",
-    background: "rgba(7, 14, 34, 0.82)",
+    borderTop: "1px solid var(--border)",
+    background: "var(--panel-bg)",
     padding: "20px 20px 16px",
     marginTop: "auto",
   },
@@ -579,18 +589,18 @@ const styles: Record<string, React.CSSProperties> = {
   pageFooterTitle: {
     fontSize: 15,
     fontWeight: 900,
-    color: "white",
+    color: "var(--text)",
   },
 
   pageFooterText: {
     fontSize: 13,
-    color: "rgba(255,255,255,0.74)",
+    color: "var(--text-muted)",
     lineHeight: 1.5,
   },
 
   pageFooterSlogan: {
     fontSize: 13,
-    color: "#facc15",
+    color: "var(--gold)",
     fontWeight: 800,
     lineHeight: 1.5,
     textAlign: "right",
@@ -606,7 +616,7 @@ const styles: Record<string, React.CSSProperties> = {
 
   pageFooterLink: {
     fontSize: 13,
-    color: "#c7d2fe",
+    color: "var(--text-soft)",
     textDecoration: "none",
     fontWeight: 700,
   },
@@ -614,9 +624,9 @@ const styles: Record<string, React.CSSProperties> = {
   pageFooterBottom: {
     marginTop: 14,
     paddingTop: 14,
-    borderTop: "1px solid rgba(255,255,255,0.06)",
+    borderTop: "1px solid var(--border)",
     fontSize: 12,
-    color: "rgba(255,255,255,0.58)",
+    color: "var(--text-faint)",
     lineHeight: 1.5,
   },
 };
