@@ -96,6 +96,43 @@ function actionRowStyle(): React.CSSProperties {
   };
 }
 
+function looksLikeBrokenAnswer(text: string): boolean {
+  const raw = String(text || "").toLowerCase();
+  if (!raw.trim()) return true;
+
+  const badSignals = [
+    "candidate 1",
+    "candidate 2",
+    "candidate 3",
+    "grounded basis",
+    "grounding context",
+    "grounding summary",
+    "strict rules",
+    "question classification",
+    "trust_score",
+    "similarity",
+    "match_type",
+    "invalid_api_key",
+    "incorrect api key provided",
+    "sk-proj-",
+    "you are answering as",
+    "no evidence provided",
+  ];
+
+  return badSignals.some((signal) => raw.includes(signal));
+}
+
+function sanitizeAnswerForDisplay(text: string): string {
+  const raw = String(text || "").trim();
+  if (!raw) return "";
+
+  if (looksLikeBrokenAnswer(raw)) {
+    return "";
+  }
+
+  return raw;
+}
+
 function AskPageContent() {
   const router = useRouter();
   const sp = useSearchParams();
@@ -204,7 +241,17 @@ function AskPageContent() {
       }
 
       if (data?.ok && data?.answer) {
-        const answerText = String(data.answer || "").trim();
+        const answerText = sanitizeAnswerForDisplay(String(data.answer || "").trim());
+
+        if (!answerText) {
+          setResultOk(false);
+          setFriendlyError(
+            "We could not prepare a clean final answer for that question yet. Please ask it again in a shorter, more direct way."
+          );
+          setCitations([]);
+          setClarificationPrompt("");
+          return;
+        }
 
         setResultOk(true);
         setAnswer(answerText);
@@ -307,28 +354,28 @@ function AskPageContent() {
     dailyLimit > 0 && dailyUsage >= dailyLimit
       ? "warn"
       : creditBalance <= 0
-        ? "warn"
-        : !activeNow
-          ? "warn"
-          : "good";
+      ? "warn"
+      : !activeNow
+      ? "warn"
+      : "good";
 
   const topTitle =
     dailyLimit > 0 && dailyUsage >= dailyLimit
       ? "Daily question limit reached"
       : creditBalance <= 0
-        ? "Credit balance is empty"
-        : !activeNow
-          ? "Subscription attention needed"
-          : "Assistant is ready";
+      ? "Credit balance is empty"
+      : !activeNow
+      ? "Subscription attention needed"
+      : "Assistant is ready";
 
   const topSubtitle =
     dailyLimit > 0 && dailyUsage >= dailyLimit
       ? "You have used all visible daily question capacity for today. Wait for reset or review your plan."
       : creditBalance <= 0
-        ? "New uncached questions may fail until credits are available, even if the account still appears active."
-        : !activeNow
-          ? "Your workspace does not currently show an active subscription. You can still submit a question now to test the live flow, but the backend may still reject it until billing is active."
-          : status || "Write your question clearly and choose the reply language before submitting.";
+      ? "New uncached questions may fail until credits are available, even if the account still appears active."
+      : !activeNow
+      ? "Your workspace does not currently show an active subscription. You can still submit a question now to test the live flow, but the backend may still reject it until billing is active."
+      : status || "Write your question clearly and choose the reply language before submitting.";
 
   return (
     <AppShell
