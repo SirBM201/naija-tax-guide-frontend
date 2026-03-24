@@ -1,272 +1,117 @@
 "use client";
 
-import React, { Suspense, useEffect, useRef, useState } from "react";
-import { apiJson, isApiError } from "@/lib/api";
-import { useRouter, useSearchParams } from "next/navigation";
+import React, { useEffect, useState } from "react";
+import { apiGet } from "@/lib/api";
+import { getStoredAuthToken } from "@/lib/auth-storage";
 
 type VerifyResp = {
   ok?: boolean;
   paid?: boolean;
+  status?: string;
   reference?: string;
   subscription?: unknown;
-  plan?: unknown;
-  status?: string;
-  data?: unknown;
+  subscription_summary?: unknown;
   error?: string;
   root_cause?: string;
 };
 
-function BillingVerifyPageContent() {
-  const router = useRouter();
-  const sp = useSearchParams();
-
-  const [busy, setBusy] = useState(true);
-  const [status, setStatus] = useState("Verifying payment...");
-  const [raw, setRaw] = useState<unknown>(null);
-  const [countdown, setCountdown] = useState<number | null>(null);
-
-  const redirectedRef = useRef(false);
+export default function BillingVerifyPage() {
+  const [info, setInfo] = useState("Preparing payment verification...");
+  const token = getStoredAuthToken();
 
   useEffect(() => {
-    const run = async () => {
-      const reference = (sp?.get("reference") || "").trim();
+    let cancelled = false;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+    async function run() {
+      const url = new URL(window.location.href);
+      const reference = url.searchParams.get("reference");
 
       if (!reference) {
-        setStatus("Missing payment reference.");
-        setBusy(false);
+        setInfo("No payment reference was found. If you completed payment, contact support.");
         return;
       }
 
-      try {
-        const data = await apiJson<VerifyResp>("/billing/verify", {
-          method: "GET",
-          timeoutMs: 30000,
-          useAuthToken: false,
-          query: { reference },
-        });
-
-        setRaw(data);
-
-        if (data?.ok && data?.paid) {
-          setStatus("Payment verified successfully. Redirecting to dashboard...");
-          setCountdown(4);
-          return;
-        }
-
-        if (data?.ok && !data?.paid) {
-          setStatus(`Payment not completed (${data?.status || "unknown_status"}).`);
-          return;
-        }
-
-        setStatus(`Verification failed (${data?.error || "unknown_error"})`);
-      } catch (err: unknown) {
-        if (isApiError(err)) {
-          setStatus(`Verification failed (${err.status})`);
-          setRaw(err.data ?? null);
-        } else {
-          setStatus("Verification failed");
-          setRaw(err instanceof Error ? err.message : String(err));
-        }
-      } finally {
-        setBusy(false);
-      }
-    };
-
-    void run();
-  }, [sp]);
-
-  useEffect(() => {
-    const paid = Boolean((raw as VerifyResp | null)?.ok && (raw as VerifyResp | null)?.paid);
-
-    if (!paid || redirectedRef.current) return;
-    if (countdown === null) return;
-
-    if (countdown <= 0) {
-      redirectedRef.current = true;
-      const reference = encodeURIComponent(
-        String((raw as VerifyResp | null)?.reference || "")
+      setInfo(
+        `Payment reference received: ${reference}\n\n` +
+          `Now verifying with backend.`
       );
-      router.push(`/dashboard?paid=1&reference=${reference}`);
-      return;
+
+      try {
+        const res = await apiGet<VerifyResp>(
+          `/api/billing/verify?reference=${encodeURIComponent(reference)}`,
+          token
+        );
+
+        if (cancelled) return;
+
+        if (res?.ok && res?.paid) {
+          setInfo(
+            `✅ Payment verified successfully\n` +
+              `Reference: ${reference}\n\n` +
+              `Subscription activated.\n` +
+              `Redirecting to Billing.`
+          );
+        } else if (res?.ok && res?.paid === false) {
+          setInfo(
+            `⚠️ Payment not successful yet\n` +
+              `Reference: ${reference}\n` +
+              `Status: ${res?.status || "unknown"}\n\n` +
+              `If you already paid, it may take a short time.\n` +
+              `Redirecting to Billing for re-check.`
+          );
+        } else {
+          setInfo(
+            `⚠️ Verification returned unexpected response\n` +
+              `Reference: ${reference}\n\n` +
+              `Redirecting to Billing.`
+          );
+        }
+      } catch (e: any) {
+        if (cancelled) return;
+        setInfo(
+          `❌ Verification failed\n` +
+            `Reason: ${e?.message || "unknown_error"}\n\n` +
+            `Redirecting to Billing so you can retry/check status.`
+        );
+      }
+
+      timeoutId = setTimeout(() => {
+        window.location.href = `/billing?reference=${encodeURIComponent(reference)}`;
+      }, 1400);
     }
 
-    const id = window.setTimeout(() => {
-      setCountdown((c) => (c === null ? null : c - 1));
-    }, 1000);
+    run();
 
-    return () => window.clearTimeout(id);
-  }, [countdown, raw, router]);
-
-  const paid = Boolean((raw as VerifyResp | null)?.ok && (raw as VerifyResp | null)?.paid);
-
-  const goDashboardNow = () => {
-    const rawRef = raw as VerifyResp | null;
-    const reference = encodeURIComponent(
-      String(rawRef?.reference || sp?.get("reference") || "")
-    );
-    router.push(`/dashboard?paid=1&reference=${reference}`);
-  };
+    return () => {
+      cancelled = true;
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, [token]);
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        padding: 24,
-        display: "grid",
-        placeItems: "center",
-        background:
-          "radial-gradient(900px 700px at 20% 10%, rgba(120,140,255,0.22), transparent 60%), rgba(7,10,18,1)",
-      }}
-    >
-      <div
+    <section style={{ padding: "16px 10px", color: "#fff" }}>
+      <h1 style={{ fontSize: 34, fontWeight: 900, marginBottom: 12 }}>
+        Billing Verification
+      </h1>
+
+      <pre
         style={{
-          width: "100%",
-          maxWidth: 820,
-          borderRadius: 22,
-          border: "1px solid rgba(255,255,255,0.10)",
-          background: "rgba(255,255,255,0.04)",
-          padding: 22,
-        }}
-      >
-        <div style={{ fontSize: 42, fontWeight: 950, color: "white", letterSpacing: -1 }}>
-          Billing Verification
-        </div>
-
-        <div style={{ marginTop: 8, color: "rgba(255,255,255,0.72)" }}>{status}</div>
-
-        {paid ? (
-          <div
-            style={{
-              marginTop: 18,
-              padding: "14px 16px",
-              borderRadius: 16,
-              border: "1px solid rgba(80,220,140,0.24)",
-              background: "rgba(80,220,140,0.08)",
-              color: "white",
-            }}
-          >
-            <div style={{ fontWeight: 900 }}>Subscription has been activated successfully.</div>
-            <div style={{ marginTop: 8, color: "rgba(255,255,255,0.88)" }}>
-              {countdown !== null
-                ? `You will be redirected to the dashboard in ${countdown} second${countdown === 1 ? "" : "s"}.`
-                : "Preparing redirect..."}
-            </div>
-          </div>
-        ) : null}
-
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 18 }}>
-          {paid ? (
-            <button
-              onClick={goDashboardNow}
-              style={{
-                padding: "14px 18px",
-                borderRadius: 16,
-                border: "1px solid rgba(255,255,255,0.14)",
-                background: "rgba(255,255,255,0.08)",
-                color: "white",
-                fontWeight: 900,
-                cursor: "pointer",
-              }}
-            >
-              Go to Dashboard Now
-            </button>
-          ) : null}
-
-          <button
-            onClick={() => router.push("/billing")}
-            disabled={busy}
-            style={{
-              padding: "14px 18px",
-              borderRadius: 16,
-              border: "1px solid rgba(255,255,255,0.14)",
-              background: "rgba(255,255,255,0.06)",
-              color: "white",
-              fontWeight: 900,
-              cursor: busy ? "not-allowed" : "pointer",
-              opacity: busy ? 0.7 : 1,
-            }}
-          >
-            Open Billing
-          </button>
-
-          <button
-            onClick={() => router.push("/plans")}
-            disabled={busy}
-            style={{
-              padding: "14px 18px",
-              borderRadius: 16,
-              border: "1px solid rgba(255,255,255,0.14)",
-              background: "rgba(255,255,255,0.06)",
-              color: "white",
-              fontWeight: 900,
-              cursor: busy ? "not-allowed" : "pointer",
-              opacity: busy ? 0.7 : 1,
-            }}
-          >
-            View Plans
-          </button>
-        </div>
-
-        <div style={{ marginTop: 22 }}>
-          <div style={{ color: "white", fontWeight: 900, marginBottom: 10 }}>
-            Raw response (debug)
-          </div>
-          <pre
-            style={{
-              margin: 0,
-              padding: 16,
-              borderRadius: 16,
-              border: "1px solid rgba(255,255,255,0.10)",
-              background: "rgba(0,0,0,0.22)",
-              color: "rgba(255,255,255,0.86)",
-              whiteSpace: "pre-wrap",
-              fontFamily: "ui-monospace, Menlo, monospace",
-              fontSize: 12,
-              lineHeight: 1.5,
-            }}
-          >
-            {JSON.stringify(raw, null, 2)}
-          </pre>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function BillingVerifyFallback() {
-  return (
-    <div
-      style={{
-        minHeight: "100vh",
-        padding: 24,
-        display: "grid",
-        placeItems: "center",
-        background:
-          "radial-gradient(900px 700px at 20% 10%, rgba(120,140,255,0.22), transparent 60%), rgba(7,10,18,1)",
-        color: "white",
-      }}
-    >
-      <div
-        style={{
-          width: "100%",
-          maxWidth: 560,
-          borderRadius: 24,
-          border: "1px solid rgba(255,255,255,0.08)",
+          marginTop: 10,
+          padding: 14,
+          borderRadius: 12,
+          border: "1px solid #2a2a2a",
           background: "rgba(255,255,255,0.03)",
-          padding: 24,
-          textAlign: "center",
+          whiteSpace: "pre-wrap",
+          color: "#fff",
         }}
       >
-        Loading billing verification...
-      </div>
-    </div>
-  );
-}
+        {info}
+      </pre>
 
-export default function BillingVerifyPage() {
-  return (
-    <Suspense fallback={<BillingVerifyFallback />}>
-      <BillingVerifyPageContent />
-    </Suspense>
+      <p style={{ marginTop: 12, color: "#cfcfcf" }}>
+        If activation delays, Billing will help you verify the current state and refresh the workspace.
+      </p>
+    </section>
   );
 }
