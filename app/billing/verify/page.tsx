@@ -1,117 +1,278 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import { apiGet } from "@/lib/api";
-import { getStoredAuthToken } from "@/lib/auth-storage";
+import React, { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import AppShell from "@/components/app-shell";
+import { Card } from "@/components/ui";
+import { apiJson } from "@/lib/api";
 
 type VerifyResp = {
   ok?: boolean;
-  paid?: boolean;
+  message?: string;
   status?: string;
   reference?: string;
-  subscription?: unknown;
-  subscription_summary?: unknown;
-  error?: string;
-  root_cause?: string;
+  plan_code?: string;
+  amount_kobo?: number;
+  redirect_to?: string;
 };
 
+function StatusCard({
+  title,
+  message,
+  tone = "neutral",
+}: {
+  title: string;
+  message: string;
+  tone?: "neutral" | "success" | "warning" | "error";
+}) {
+  const borderColor =
+    tone === "success"
+      ? "rgba(34,197,94,0.35)"
+      : tone === "warning"
+      ? "rgba(245,158,11,0.35)"
+      : tone === "error"
+      ? "rgba(239,68,68,0.35)"
+      : "var(--border)";
+
+  const background =
+    tone === "success"
+      ? "rgba(34,197,94,0.08)"
+      : tone === "warning"
+      ? "rgba(245,158,11,0.08)"
+      : tone === "error"
+      ? "rgba(239,68,68,0.08)"
+      : "var(--card)";
+
+  return (
+    <Card
+      style={{
+        padding: 24,
+        border: `1px solid ${borderColor}`,
+        background,
+      }}
+    >
+      <h2
+        style={{
+          marginTop: 0,
+          marginBottom: 10,
+          fontSize: 22,
+          fontWeight: 800,
+        }}
+      >
+        {title}
+      </h2>
+      <p
+        style={{
+          margin: 0,
+          color: "var(--muted-foreground)",
+          lineHeight: 1.6,
+        }}
+      >
+        {message}
+      </p>
+    </Card>
+  );
+}
+
 export default function BillingVerifyPage() {
-  const [info, setInfo] = useState("Preparing payment verification...");
-  const token = getStoredAuthToken();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  const reference = useMemo(
+    () => searchParams.get("reference") || searchParams.get("trxref") || "",
+    [searchParams]
+  );
+
+  const [loading, setLoading] = useState(true);
+  const [result, setResult] = useState<VerifyResp | null>(null);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    let cancelled = false;
-    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    let active = true;
 
     async function run() {
-      const url = new URL(window.location.href);
-      const reference = url.searchParams.get("reference");
-
       if (!reference) {
-        setInfo("No payment reference was found. If you completed payment, contact support.");
+        setError("Payment reference is missing.");
+        setLoading(false);
         return;
       }
 
-      setInfo(
-        `Payment reference received: ${reference}\n\n` +
-          `Now verifying with backend.`
-      );
-
       try {
-        const res = await apiGet<VerifyResp>(
-          `/api/billing/verify?reference=${encodeURIComponent(reference)}`,
-          token
+        setLoading(true);
+        setError("");
+
+        const resp = await apiJson<VerifyResp>(
+          `/billing/verify?reference=${encodeURIComponent(reference)}`,
+          {
+            method: "GET",
+          }
         );
 
-        if (cancelled) return;
+        if (!active) return;
 
-        if (res?.ok && res?.paid) {
-          setInfo(
-            `✅ Payment verified successfully\n` +
-              `Reference: ${reference}\n\n` +
-              `Subscription activated.\n` +
-              `Redirecting to Billing.`
-          );
-        } else if (res?.ok && res?.paid === false) {
-          setInfo(
-            `⚠️ Payment not successful yet\n` +
-              `Reference: ${reference}\n` +
-              `Status: ${res?.status || "unknown"}\n\n` +
-              `If you already paid, it may take a short time.\n` +
-              `Redirecting to Billing for re-check.`
-          );
-        } else {
-          setInfo(
-            `⚠️ Verification returned unexpected response\n` +
-              `Reference: ${reference}\n\n` +
-              `Redirecting to Billing.`
-          );
+        setResult(resp);
+
+        if (resp?.ok && resp?.redirect_to) {
+          window.location.replace(resp.redirect_to);
+          return;
         }
-      } catch (e: any) {
-        if (cancelled) return;
-        setInfo(
-          `❌ Verification failed\n` +
-            `Reason: ${e?.message || "unknown_error"}\n\n` +
-            `Redirecting to Billing so you can retry/check status.`
-        );
-      }
 
-      timeoutId = setTimeout(() => {
-        window.location.href = `/billing?reference=${encodeURIComponent(reference)}`;
-      }, 1400);
+        if (resp?.ok) {
+          setTimeout(() => {
+            router.replace("/dashboard?billing=verified");
+          }, 1500);
+        }
+      } catch (err: any) {
+        if (!active) return;
+        setError(err?.message || "Unable to verify payment right now.");
+      } finally {
+        if (active) setLoading(false);
+      }
     }
 
     run();
 
     return () => {
-      cancelled = true;
-      if (timeoutId) clearTimeout(timeoutId);
+      active = false;
     };
-  }, [token]);
+  }, [reference, router]);
 
   return (
-    <section style={{ padding: "16px 10px", color: "#fff" }}>
-      <h1 style={{ fontSize: 34, fontWeight: 900, marginBottom: 12 }}>
-        Billing Verification
-      </h1>
-
-      <pre
+    <AppShell>
+      <div
         style={{
-          marginTop: 10,
-          padding: 14,
-          borderRadius: 12,
-          border: "1px solid #2a2a2a",
-          background: "rgba(255,255,255,0.03)",
-          whiteSpace: "pre-wrap",
-          color: "#fff",
+          display: "grid",
+          gap: 20,
         }}
       >
-        {info}
-      </pre>
+        <div>
+          <h1
+            style={{
+              margin: 0,
+              fontSize: 32,
+              fontWeight: 800,
+            }}
+          >
+            Payment Verification
+          </h1>
+          <p
+            style={{
+              marginTop: 8,
+              color: "var(--muted-foreground)",
+              fontSize: 16,
+            }}
+          >
+            We are confirming your Paystack payment and updating your
+            subscription.
+          </p>
+        </div>
 
-      <p style={{ marginTop: 12, color: "#cfcfcf" }}>
-        If activation delays, Billing will help you verify the current state and refresh the workspace.
-      </p>
-    </section>
+        {loading ? (
+          <StatusCard
+            title="Verifying payment..."
+            message="Please wait while we confirm your payment reference and activate your plan."
+            tone="neutral"
+          />
+        ) : error ? (
+          <StatusCard
+            title="Verification failed"
+            message={error}
+            tone="error"
+          />
+        ) : result?.ok ? (
+          <StatusCard
+            title="Payment verified successfully"
+            message="Your subscription has been updated successfully. You will be redirected to your dashboard shortly."
+            tone="success"
+          />
+        ) : (
+          <StatusCard
+            title="Verification incomplete"
+            message={
+              result?.message ||
+              "We could not confirm the payment yet. Please check Billing or try again shortly."
+            }
+            tone="warning"
+          />
+        )}
+
+        <Card
+          style={{
+            padding: 24,
+            display: "grid",
+            gap: 12,
+          }}
+        >
+          <div>
+            <strong>Reference:</strong>{" "}
+            <span>{reference || "Not available"}</span>
+          </div>
+
+          {result?.status ? (
+            <div>
+              <strong>Status:</strong> <span>{result.status}</span>
+            </div>
+          ) : null}
+
+          {result?.plan_code ? (
+            <div>
+              <strong>Plan:</strong> <span>{result.plan_code}</span>
+            </div>
+          ) : null}
+
+          {typeof result?.amount_kobo === "number" ? (
+            <div>
+              <strong>Amount:</strong>{" "}
+              <span>₦{(result.amount_kobo / 100).toLocaleString()}</span>
+            </div>
+          ) : null}
+        </Card>
+
+        <div
+          style={{
+            display: "flex",
+            gap: 12,
+            flexWrap: "wrap",
+          }}
+        >
+          <Link
+            href="/billing"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              minHeight: 44,
+              padding: "0 18px",
+              borderRadius: 12,
+              textDecoration: "none",
+              border: "1px solid var(--border)",
+              color: "var(--foreground)",
+              fontWeight: 700,
+            }}
+          >
+            Go to Billing
+          </Link>
+
+          <Link
+            href="/dashboard"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              minHeight: 44,
+              padding: "0 18px",
+              borderRadius: 12,
+              textDecoration: "none",
+              background: "var(--primary)",
+              color: "var(--primary-foreground)",
+              fontWeight: 700,
+            }}
+          >
+            Back to Dashboard
+          </Link>
+        </div>
+      </div>
+    </AppShell>
   );
 }
