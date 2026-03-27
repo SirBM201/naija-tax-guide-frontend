@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import AppShell from "@/components/app-shell";
@@ -75,7 +75,7 @@ function StatusCard({
   );
 }
 
-export default function BillingVerifyPage() {
+function VerifyPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -274,5 +274,53 @@ export default function BillingVerifyPage() {
         </div>
       </div>
     </AppShell>
+  );
+}
+
+function VerifyPageFallback() {
+  return (
+    <AppShell>
+      <div
+        style={{
+          display: "grid",
+          gap: 20,
+        }}
+      >
+        <div>
+          <h1
+            style={{
+              margin: 0,
+              fontSize: 32,
+              fontWeight: 800,
+            }}
+          >
+            Payment Verification
+          </h1>
+          <p
+            style={{
+              marginTop: 8,
+              color: "var(--muted-foreground)",
+              fontSize: 16,
+            }}
+          >
+            Preparing payment verification...
+          </p>
+        </div>
+
+        <StatusCard
+          title="Loading verification details..."
+          message="Please wait while we prepare your payment verification page."
+          tone="neutral"
+        />
+      </div>
+    </AppShell>
+  );
+}
+
+export default function BillingVerifyPage() {
+  return (
+    <Suspense fallback={<VerifyPageFallback />}>
+      <VerifyPageContent />
+    </Suspense>
   );
 }
