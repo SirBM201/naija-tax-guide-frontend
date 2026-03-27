@@ -149,7 +149,8 @@ const PLANS: DisplayPlan[] = [
     tier: "business",
     cycle: "monthly",
     name: "Business Monthly",
-    audience: "Best for heavier usage, business support, and ongoing tax guidance needs.",
+    audience:
+      "Best for heavier usage, business support, and ongoing tax guidance needs.",
     description:
       "Higher usage capacity and stronger support for businesses or users who expect more continuous activity.",
     price: 25000,
@@ -161,7 +162,8 @@ const PLANS: DisplayPlan[] = [
     tier: "business",
     cycle: "quarterly",
     name: "Business Quarterly",
-    audience: "Best for heavier usage, business support, and ongoing tax guidance needs.",
+    audience:
+      "Best for heavier usage, business support, and ongoing tax guidance needs.",
     description:
       "Higher usage capacity and stronger support for businesses or users who expect more continuous activity.",
     price: 70000,
@@ -173,7 +175,8 @@ const PLANS: DisplayPlan[] = [
     tier: "business",
     cycle: "yearly",
     name: "Business Yearly",
-    audience: "Best for heavier usage, business support, and ongoing tax guidance needs.",
+    audience:
+      "Best for heavier usage, business support, and ongoing tax guidance needs.",
     description:
       "Higher usage capacity and stronger support for businesses or users who expect more continuous activity.",
     price: 255000,
@@ -279,6 +282,15 @@ export default function PlansPage() {
   const subscriptionSummary =
     (billing?.subscription_summary as SafeSubscriptionSummary | undefined) || {};
 
+  const billingDates = {
+    starts_at: (billing as any)?.starts_at || (billing as any)?.started_at || "",
+    expires_at:
+      (billing as any)?.expires_at ||
+      (billing as any)?.current_period_end ||
+      (billing as any)?.ends_at ||
+      "",
+  };
+
   const currentPlanCode = safeText(
     subscription?.plan_code ||
       billing?.plan_code ||
@@ -289,7 +301,7 @@ export default function PlansPage() {
 
   const pendingPlanCode = safeText(
     subscriptionSummary.pending_plan_code ||
-      subscription?.pending_plan_code ||
+      (subscription as any)?.pending_plan_code ||
       "",
     ""
   );
@@ -303,20 +315,20 @@ export default function PlansPage() {
   );
 
   const startedAt = safeText(
-    subscription?.started_at || billing?.started_at || "",
+    subscription?.started_at || billingDates.starts_at || "",
     ""
   );
 
   const expiresAt = safeText(
-    subscription?.expires_at || billing?.expires_at || "",
+    subscription?.expires_at || billingDates.expires_at || "",
     ""
   );
 
   const creditBalance =
     Number(
       credits?.balance ??
-        billing?.credit_balance?.balance ??
-        billing?.credit_balance ??
+        (billing as any)?.credit_balance?.balance ??
+        (billing as any)?.credit_balance ??
         0
     ) || 0;
 
