@@ -52,9 +52,20 @@ type ChangePlanResp = {
   subscription_summary?: {
     current_plan_code?: string | null;
     pending_plan_code?: string | null;
+    pending_starts_at?: string | null;
     has_pending_change?: boolean;
     is_active_now?: boolean;
+    status?: string | null;
   };
+};
+
+type SafeSubscriptionSummary = {
+  current_plan_code?: string | null;
+  pending_plan_code?: string | null;
+  pending_starts_at?: string | null;
+  has_pending_change?: boolean;
+  is_active_now?: boolean;
+  status?: string | null;
 };
 
 const PLANS: DisplayPlan[] = [
@@ -206,7 +217,10 @@ function summaryBoxStyle(): React.CSSProperties {
   };
 }
 
-function planCardStyle(active: boolean, recommended: boolean): React.CSSProperties {
+function planCardStyle(
+  active: boolean,
+  recommended: boolean
+): React.CSSProperties {
   return {
     borderRadius: 22,
     border: active
@@ -262,30 +276,49 @@ export default function PlansPage() {
   const [checkoutError, setCheckoutError] = useState("");
   const [processingCode, setProcessingCode] = useState<string>("");
 
+  const subscriptionSummary =
+    (billing?.subscription_summary as SafeSubscriptionSummary | undefined) || {};
+
   const currentPlanCode = safeText(
-    subscription?.plan_code || billing?.plan_code || billing?.subscription_summary?.current_plan_code || "",
+    subscription?.plan_code ||
+      billing?.plan_code ||
+      subscriptionSummary.current_plan_code ||
+      "",
     ""
   );
+
   const pendingPlanCode = safeText(
-    billing?.subscription_summary?.pending_plan_code || subscription?.pending_plan_code || "",
+    subscriptionSummary.pending_plan_code ||
+      subscription?.pending_plan_code ||
+      "",
     ""
   );
+
   const currentPlanName = safeText(
     subscription?.plan_name || billing?.plan_name || currentPlanCode || "No active plan"
   );
+
   const currentStatus = safeText(
-    subscription?.status || billing?.status || billing?.subscription_summary?.status || "Unknown"
+    subscription?.status || billing?.status || subscriptionSummary.status || "Unknown"
   );
 
-  const startedAt = safeText(subscription?.started_at || billing?.started_at || "", "");
-  const expiresAt = safeText(subscription?.expires_at || billing?.expires_at || "", "");
+  const startedAt = safeText(
+    subscription?.started_at || billing?.started_at || "",
+    ""
+  );
 
-  const creditBalance = Number(
-    credits?.balance ??
-      billing?.credit_balance?.balance ??
-      billing?.credit_balance ??
-      0
-  ) || 0;
+  const expiresAt = safeText(
+    subscription?.expires_at || billing?.expires_at || "",
+    ""
+  );
+
+  const creditBalance =
+    Number(
+      credits?.balance ??
+        billing?.credit_balance?.balance ??
+        billing?.credit_balance ??
+        0
+    ) || 0;
 
   const plansForCycle = useMemo(
     () => PLANS.filter((plan) => plan.cycle === billingCycle),
@@ -309,7 +342,11 @@ export default function PlansPage() {
         timeoutMs: 25000,
       });
 
-      if (data?.ok && data?.action === "checkout_started" && data?.authorization_url) {
+      if (
+        data?.ok &&
+        data?.action === "checkout_started" &&
+        data?.authorization_url
+      ) {
         setCheckoutMessage("Redirecting to secure Paystack checkout...");
         window.location.href = String(data.authorization_url);
         return;
@@ -357,7 +394,10 @@ export default function PlansPage() {
           <button onClick={() => refreshAll()} style={shellButtonPrimary()}>
             Refresh Plans
           </button>
-          <button onClick={() => router.push("/billing")} style={shellButtonSecondary()}>
+          <button
+            onClick={() => router.push("/billing")}
+            style={shellButtonSecondary()}
+          >
             Open Billing
           </button>
         </>
@@ -427,7 +467,7 @@ export default function PlansPage() {
             <MetricCard
               label="Current Status"
               value={currentStatus}
-              tone={truthyValue(billing?.subscription_summary?.is_active_now) ? "good" : "warn"}
+              tone={truthyValue(subscriptionSummary.is_active_now) ? "good" : "warn"}
               helper="High-level subscription state currently visible in your workspace."
             />
             <MetricCard
