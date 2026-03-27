@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import Providers from "@/components/Providers";
+import EntryBootstrapProvider from "@/components/entry-bootstrap-provider";
 
 export const metadata: Metadata = {
   title: "NaijaTax Guide",
@@ -18,7 +19,10 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <Providers>{children}</Providers>
+        <Providers>
+          <EntryBootstrapProvider />
+          {children}
+        </Providers>
       </body>
     </html>
   );
