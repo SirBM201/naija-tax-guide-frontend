@@ -12,6 +12,7 @@ const navSections = [
       { href: "/ask", label: "Ask" },
       { href: "/channels", label: "Channels" },
       { href: "/history", label: "History" },
+      { href: "/referrals", label: "Referrals" },
       { href: "/help", label: "Help Center" },
     ],
   },
