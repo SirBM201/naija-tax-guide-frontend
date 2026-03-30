@@ -232,17 +232,25 @@ function SignupPageContent() {
   const redirectingRef = useRef(false);
   const referralInitDoneRef = useRef(false);
 
+  const queryReferralCode = normalizeReferralCode(sp?.get("ref"));
+  const hasUrlReferral = Boolean(queryReferralCode);
+
   useEffect(() => {
     if (referralInitDoneRef.current) return;
-    const urlRef = normalizeReferralCode(sp?.get("ref"));
+
     const stored = readStoredReferralCode();
-    const finalCode = urlRef || stored || "";
+    const finalCode = queryReferralCode || stored || "";
+
     if (finalCode) {
       setReferralCode(finalCode);
       persistReferralCode(finalCode);
+      setStatus(
+        `Referral code ${finalCode} detected. Continue with sign-up to apply it to your new account.`
+      );
     }
+
     referralInitDoneRef.current = true;
-  }, [sp]);
+  }, [queryReferralCode]);
 
   useEffect(() => {
     if (!authReady) return;
@@ -257,14 +265,19 @@ function SignupPageContent() {
           router.replace(resolvePostLoginPath(sp));
           return;
         }
-        setStatus("Create your account with email OTP.");
+
+        if (!referralCode) {
+          setStatus("Create your account with email OTP.");
+        }
       } catch {
-        setStatus("Create your account with email OTP.");
+        if (!referralCode) {
+          setStatus("Create your account with email OTP.");
+        }
       }
     };
 
     void run();
-  }, [authReady, refreshSession, router, sp]);
+  }, [authReady, refreshSession, router, sp, referralCode]);
 
   useEffect(() => {
     persistReferralCode(referralCode);
@@ -600,8 +613,14 @@ function SignupPageContent() {
             borderRadius: 16,
             border: hasSession
               ? "1px solid var(--success-border)"
+              : hasUrlReferral || referralCode
+              ? "1px solid var(--accent-border)"
               : "1px solid var(--border)",
-            background: hasSession ? "var(--success-bg)" : "var(--surface-soft)",
+            background: hasSession
+              ? "var(--success-bg)"
+              : hasUrlReferral || referralCode
+              ? "var(--accent-soft)"
+              : "var(--surface-soft)",
             color: "var(--text-soft)",
             fontSize: 15,
             lineHeight: 1.6,
@@ -701,7 +720,7 @@ function SignupPageContent() {
                   lineHeight: 1.6,
                 }}
               >
-                If you opened a referral link, the code is applied automatically. You can also paste a code manually.
+                If you opened a referral link, the code is applied automatically. You can also paste a code manually before verification.
               </div>
 
               <WorkspaceActionBar
@@ -749,7 +768,7 @@ function SignupPageContent() {
               <div style={sectionCardStyle()}>
                 <div style={sectionTitleStyle()}>Referral support</div>
                 <div style={sectionTextStyle()}>
-                  Sign-up is the right place to carry referral codes so onboarding stays separated from normal sign-in.
+                  Sign-up is the only page that should apply a referral code to a new account.
                 </div>
               </div>
 

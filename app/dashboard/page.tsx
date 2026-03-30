@@ -237,6 +237,12 @@ export default function DashboardPage() {
                 tone={creditBalance <= 0 ? "warn" : "default"}
                 onClick={() => router.push("/credits")}
               />
+              <ShortcutCard
+                title="Referrals"
+                subtitle="View your referral code, invite link, totals, and rewards."
+                tone="default"
+                onClick={() => router.push("/referrals")}
+              />
             </CardsGrid>
           </WorkspaceSectionCard>
 

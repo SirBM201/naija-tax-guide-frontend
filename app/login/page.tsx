@@ -221,16 +221,22 @@ function LoginPageContent() {
   const redirectingRef = useRef(false);
   const referralInitDoneRef = useRef(false);
 
+  const queryReferralCode = normalizeReferralCode(sp?.get("ref"));
+  const storedReferralCode = readStoredReferralCode();
+  const effectiveReferralCode = queryReferralCode || storedReferralCode || "";
+
   useEffect(() => {
     if (referralInitDoneRef.current) return;
-    const urlRef = normalizeReferralCode(sp?.get("ref"));
-    const stored = readStoredReferralCode();
-    const finalCode = urlRef || stored || "";
-    if (finalCode) {
-      persistReferralCode(finalCode);
+
+    if (effectiveReferralCode) {
+      persistReferralCode(effectiveReferralCode);
+      setStatus(
+        `Referral code ${effectiveReferralCode} detected. If you are a new user, create your account first so the referral can be applied.`
+      );
     }
+
     referralInitDoneRef.current = true;
-  }, [sp]);
+  }, [effectiveReferralCode]);
 
   useEffect(() => {
     if (!authReady) return;
@@ -245,7 +251,10 @@ function LoginPageContent() {
           router.replace(resolvePostLoginPath(sp));
           return;
         }
-        setStatus("Secure sign-in with email OTP.");
+
+        if (!effectiveReferralCode) {
+          setStatus("Secure sign-in with email OTP.");
+        }
       } catch (err: unknown) {
         setFailureExpose({
           stage: "refresh_session",
@@ -263,12 +272,15 @@ function LoginPageContent() {
           ),
           at: new Date().toISOString(),
         });
-        setStatus("Secure sign-in with email OTP.");
+
+        if (!effectiveReferralCode) {
+          setStatus("Secure sign-in with email OTP.");
+        }
       }
     };
 
     void run();
-  }, [authReady, refreshSession, router, sp]);
+  }, [authReady, refreshSession, router, sp, effectiveReferralCode]);
 
   const sendOtp = async () => {
     const e = email.trim().toLowerCase();
@@ -462,6 +474,9 @@ function LoginPageContent() {
 
   const goDashboard = () => router.replace("/dashboard");
   const goWelcome = () => router.replace("/welcome?force=1");
+  const signupHref = effectiveReferralCode
+    ? `/signup?ref=${encodeURIComponent(effectiveReferralCode)}`
+    : "/signup";
 
   return (
     <div
@@ -568,7 +583,7 @@ function LoginPageContent() {
             alignItems: "center",
           }}
         >
-          <Link href="/signup" style={linkBtnStyle(true)}>
+          <Link href={signupHref} style={linkBtnStyle(true)}>
             New here? Create account
           </Link>
           <Link href="/welcome" style={linkBtnStyle(false)}>
@@ -583,8 +598,14 @@ function LoginPageContent() {
             borderRadius: 16,
             border: hasSession
               ? "1px solid var(--success-border)"
+              : effectiveReferralCode
+              ? "1px solid var(--accent-border)"
               : "1px solid var(--border)",
-            background: hasSession ? "var(--success-bg)" : "var(--surface-soft)",
+            background: hasSession
+              ? "var(--success-bg)"
+              : effectiveReferralCode
+              ? "var(--accent-soft)"
+              : "var(--surface-soft)",
             color: "var(--text-soft)",
             fontSize: 15,
             lineHeight: 1.6,
@@ -695,9 +716,16 @@ function LoginPageContent() {
                   Go to the separate sign-up page to start account creation and apply referral details correctly.
                 </div>
                 <div style={{ marginTop: 12 }}>
-                  <Link href="/signup" style={linkBtnStyle(true)}>
+                  <Link href={signupHref} style={linkBtnStyle(true)}>
                     Open Sign Up
                   </Link>
+                </div>
+              </div>
+
+              <div style={sectionCardStyle()}>
+                <div style={sectionTitleStyle()}>Referral handling</div>
+                <div style={sectionTextStyle()}>
+                  Sign-in preserves detected referral codes for new users, but only sign-up should apply the code to account creation.
                 </div>
               </div>
 
@@ -705,13 +733,6 @@ function LoginPageContent() {
                 <div style={sectionTitleStyle()}>Access Method</div>
                 <div style={sectionTextStyle()}>
                   Secure email OTP sign-in for authenticated workspace access.
-                </div>
-              </div>
-
-              <div style={sectionCardStyle()}>
-                <div style={sectionTitleStyle()}>Product Scope</div>
-                <div style={sectionTextStyle()}>
-                  Nigeria-focused tax guidance workspace for freelancers, SMEs, and digital users.
                 </div>
               </div>
 

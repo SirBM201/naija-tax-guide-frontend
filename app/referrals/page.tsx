@@ -193,6 +193,32 @@ async function copyText(value: string, label: string) {
   }
 }
 
+function buildInviteMessage(referralCode: string, referralLink: string): string {
+  const code = referralCode.trim();
+  const link = referralLink.trim();
+
+  if (!link || link === "—") {
+    return "Join Naija Tax Guide and use my referral code.";
+  }
+
+  return [
+    "Join me on Naija Tax Guide for AI-powered tax guidance.",
+    "",
+    `Referral code: ${code || "Not available"}`,
+    `Signup link: ${link}`,
+  ].join("\n");
+}
+
+function openWhatsAppShare(message: string) {
+  const encoded = encodeURIComponent(message);
+  window.open(`https://wa.me/?text=${encoded}`, "_blank", "noopener,noreferrer");
+}
+
+function openTelegramShare(message: string) {
+  const encoded = encodeURIComponent(message);
+  window.open(`https://t.me/share/url?text=${encoded}`, "_blank", "noopener,noreferrer");
+}
+
 export default function ReferralsPage() {
   const { authReady, requireAuth } = useAuth();
 
@@ -278,6 +304,7 @@ export default function ReferralsPage() {
   const referralCode = safeText(profile?.referral_code, "—");
   const referralLink = safeText(profile?.referral_link, "—");
   const currency = safeText(totals.currency, "NGN");
+  const inviteMessage = buildInviteMessage(referralCode, referralLink);
 
   const statItems = useMemo(
     () => [
@@ -344,6 +371,22 @@ export default function ReferralsPage() {
           >
             Copy Link
           </button>
+
+          <button
+            type="button"
+            style={shellButtonSecondary()}
+            onClick={() => openWhatsAppShare(inviteMessage)}
+          >
+            Share WhatsApp
+          </button>
+
+          <button
+            type="button"
+            style={shellButtonSecondary()}
+            onClick={() => openTelegramShare(inviteMessage)}
+          >
+            Share Telegram
+          </button>
         </>
       }
     >
@@ -407,6 +450,24 @@ export default function ReferralsPage() {
                       }}
                     >
                       {referralLink}
+                    </div>
+                  </div>
+
+                  <div style={statCardStyle()}>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: "var(--text-muted)" }}>
+                      Ready-to-share invite message
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 14,
+                        fontWeight: 600,
+                        color: "var(--text)",
+                        lineHeight: 1.7,
+                        whiteSpace: "pre-wrap",
+                        wordBreak: "break-word",
+                      }}
+                    >
+                      {inviteMessage}
                     </div>
                   </div>
 
