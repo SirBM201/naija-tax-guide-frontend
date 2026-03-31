@@ -392,95 +392,92 @@ export default function AdminReferralPayoutsPage() {
           title="Admin access"
           subtitle="Enter the private admin key used by the backend admin payout routes."
         >
-          <TwoColumnSection
-            left={
-              <div style={{ display: "grid", gap: 12 }}>
-                <div style={{ display: "grid", gap: 6 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-muted)" }}>
-                    Admin API Key
-                  </div>
-                  <input
-                    type="password"
-                    value={adminKey}
-                    onChange={(e) => setAdminKey(e.target.value)}
-                    placeholder="Enter admin key"
-                    style={appInputStyle()}
-                    autoComplete="off"
-                  />
+          <TwoColumnSection>
+            <div style={{ display: "grid", gap: 12 }}>
+              <div style={{ display: "grid", gap: 6 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-muted)" }}>
+                  Admin API Key
                 </div>
-
-                <div style={{ display: "grid", gap: 6 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-muted)" }}>
-                    Queue Filter
-                  </div>
-                  <select
-                    value={statusFilter}
-                    onChange={(e) => setStatusFilter(e.target.value)}
-                    style={appSelectStyle()}
-                  >
-                    <option value="pending">Pending only</option>
-                    <option value="processing">Processing only</option>
-                    <option value="failed">Failed only</option>
-                    <option value="paid">Paid only</option>
-                    <option value="pending,processing,failed">Pending + Processing + Failed</option>
-                    <option value="pending,processing,failed,paid">All major statuses</option>
-                  </select>
-                </div>
-
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-                  <button
-                    type="button"
-                    style={shellButtonPrimary()}
-                    onClick={() => void loadQueue(true)}
-                  >
-                    Load Queue
-                  </button>
-
-                  <button
-                    type="button"
-                    style={shellButtonSecondary()}
-                    onClick={() => {
-                      setAdminKey("");
-                      if (typeof window !== "undefined") {
-                        window.localStorage.removeItem(ADMIN_KEY_STORAGE_KEY);
-                      }
-                    }}
-                  >
-                    Clear Admin Key
-                  </button>
-                </div>
+                <input
+                  type="password"
+                  value={adminKey}
+                  onChange={(e) => setAdminKey(e.target.value)}
+                  placeholder="Enter admin key"
+                  style={appInputStyle()}
+                  autoComplete="off"
+                />
               </div>
-            }
-            right={
-              <CardsGrid min={180}>
-                <MetricCard
-                  label="Queue Rows"
-                  value={String(metrics.totalRows)}
-                  helper="Rows currently loaded into this admin queue view."
-                />
-                <MetricCard
-                  label="Pending"
-                  value={String(metrics.pending)}
-                  helper="Requests waiting for action."
-                />
-                <MetricCard
-                  label="Processing"
-                  value={String(metrics.processing)}
-                  helper="Rows already pushed into transfer processing."
-                />
-                <MetricCard
-                  label="Failed"
-                  value={String(metrics.failed)}
-                  helper="Rows that need admin attention or retry."
-                />
-                <MetricCard
-                  label="Queue Amount"
-                  value={`NGN ${metrics.totalAmount.toFixed(2)}`}
-                  helper="Combined visible amount in the loaded queue."
-                />
-              </CardsGrid>
-            }
-          />
+
+              <div style={{ display: "grid", gap: 6 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-muted)" }}>
+                  Queue Filter
+                </div>
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  style={appSelectStyle()}
+                >
+                  <option value="pending">Pending only</option>
+                  <option value="processing">Processing only</option>
+                  <option value="failed">Failed only</option>
+                  <option value="paid">Paid only</option>
+                  <option value="pending,processing,failed">Pending + Processing + Failed</option>
+                  <option value="pending,processing,failed,paid">All major statuses</option>
+                </select>
+              </div>
+
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                <button
+                  type="button"
+                  style={shellButtonPrimary()}
+                  onClick={() => void loadQueue(true)}
+                >
+                  Load Queue
+                </button>
+
+                <button
+                  type="button"
+                  style={shellButtonSecondary()}
+                  onClick={() => {
+                    setAdminKey("");
+                    if (typeof window !== "undefined") {
+                      window.localStorage.removeItem(ADMIN_KEY_STORAGE_KEY);
+                    }
+                  }}
+                >
+                  Clear Admin Key
+                </button>
+              </div>
+            </div>
+
+            <CardsGrid min={180}>
+              <MetricCard
+                label="Queue Rows"
+                value={String(metrics.totalRows)}
+                helper="Rows currently loaded into this admin queue view."
+              />
+              <MetricCard
+                label="Pending"
+                value={String(metrics.pending)}
+                helper="Requests waiting for action."
+              />
+              <MetricCard
+                label="Processing"
+                value={String(metrics.processing)}
+                helper="Rows already pushed into transfer processing."
+              />
+              <MetricCard
+                label="Failed"
+                value={String(metrics.failed)}
+                helper="Rows that need admin attention or retry."
+              />
+              <MetricCard
+                label="Queue Amount"
+                value={`NGN ${metrics.totalAmount.toFixed(2)}`}
+                helper="Combined visible amount in the loaded queue."
+              />
+            </CardsGrid>
+          </TwoColumnSection>
         </WorkspaceSectionCard>
 
         {loading ? (
@@ -489,184 +486,181 @@ export default function AdminReferralPayoutsPage() {
             subtitle="Please wait while the admin payout queue is being fetched."
           />
         ) : (
-          <TwoColumnSection
-            left={
-              <WorkspaceSectionCard
-                title="Payout queue"
-                subtitle="Select a payout row to inspect and manage."
-              >
-                {queueRows.length === 0 ? (
+          <TwoColumnSection>
+            <WorkspaceSectionCard
+              title="Payout queue"
+              subtitle="Select a payout row to inspect and manage."
+            >
+              {queueRows.length === 0 ? (
+                <div style={infoBoxStyle()}>
+                  <div style={{ fontWeight: 800 }}>No payout rows found</div>
+                  <div style={{ color: "var(--text-muted)" }}>
+                    Try another status filter or refresh the queue again.
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display: "grid", gap: 12 }}>
+                  {queueRows.map((row) => {
+                    const active = row.id === selectedPayoutId;
+                    return (
+                      <div
+                        key={row.id}
+                        style={listRowStyle(active)}
+                        onClick={() => void loadSinglePayout(row.id)}
+                      >
+                        <div style={{ fontWeight: 800, color: "var(--text)" }}>
+                          {safeText(row.id)}
+                        </div>
+                        <div style={{ color: "var(--text-muted)" }}>
+                          Account: {safeText(row.account_id)}
+                        </div>
+                        <div style={{ color: "var(--text-muted)" }}>
+                          Amount: {safeText(row.currency, "NGN")} {safeText(row.amount, "0")}
+                        </div>
+                        <div style={{ color: "var(--text-muted)" }}>
+                          Status: {safeText(row.status)} • Requested: {formatDate(row.requested_at || row.created_at)}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </WorkspaceSectionCard>
+
+            <WorkspaceSectionCard
+              title="Payout details"
+              subtitle="Inspect the selected payout row and update its processing state."
+            >
+              {!selectedPayout ? (
+                <div style={infoBoxStyle()}>
+                  <div style={{ fontWeight: 800 }}>No payout selected</div>
+                  <div style={{ color: "var(--text-muted)" }}>
+                    Click a payout row from the queue to view its details.
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display: "grid", gap: 16 }}>
+                  <CardsGrid min={180}>
+                    <MetricCard
+                      label="Amount"
+                      value={`${safeText(selectedPayout.currency, "NGN")} ${safeText(selectedPayout.amount, "0")}`}
+                      helper="Requested payout amount."
+                    />
+                    <MetricCard
+                      label="Status"
+                      value={safeText(selectedPayout.status)}
+                      helper="Current backend payout state."
+                    />
+                    <MetricCard
+                      label="Requested"
+                      value={formatDate(selectedPayout.requested_at || selectedPayout.created_at)}
+                      helper="When this payout entered the queue."
+                    />
+                    <MetricCard
+                      label="Processed"
+                      value={formatDate(selectedPayout.processed_at)}
+                      helper="When processing last started or completed."
+                    />
+                  </CardsGrid>
+
                   <div style={infoBoxStyle()}>
-                    <div style={{ fontWeight: 800 }}>No payout rows found</div>
-                    <div style={{ color: "var(--text-muted)" }}>
-                      Try another status filter or refresh the queue again.
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-muted)" }}>
+                      Payout ID
+                    </div>
+                    <div style={{ fontWeight: 800, color: "var(--text)" }}>
+                      {safeText(selectedPayout.id)}
                     </div>
                   </div>
-                ) : (
+
                   <div style={{ display: "grid", gap: 12 }}>
-                    {queueRows.map((row) => {
-                      const active = row.id === selectedPayoutId;
-                      return (
-                        <div
-                          key={row.id}
-                          style={listRowStyle(active)}
-                          onClick={() => void loadSinglePayout(row.id)}
-                        >
-                          <div style={{ fontWeight: 800, color: "var(--text)" }}>
-                            {safeText(row.id)}
-                          </div>
-                          <div style={{ color: "var(--text-muted)" }}>
-                            Account: {safeText(row.account_id)}
-                          </div>
-                          <div style={{ color: "var(--text-muted)" }}>
-                            Amount: {safeText(row.currency, "NGN")} {safeText(row.amount, "0")}
-                          </div>
-                          <div style={{ color: "var(--text-muted)" }}>
-                            Status: {safeText(row.status)} • Requested: {formatDate(row.requested_at || row.created_at)}
-                          </div>
-                        </div>
-                      );
-                    })}
+                    <div style={{ display: "grid", gap: 6 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-muted)" }}>
+                        Provider Reference
+                      </div>
+                      <input
+                        type="text"
+                        value={providerReference}
+                        onChange={(e) => setProviderReference(e.target.value)}
+                        placeholder="Example: PSTK-TRANSFER-001"
+                        style={appInputStyle()}
+                      />
+                    </div>
+
+                    <div style={{ display: "grid", gap: 6 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-muted)" }}>
+                        Provider Transfer Code
+                      </div>
+                      <input
+                        type="text"
+                        value={providerTransferCode}
+                        onChange={(e) => setProviderTransferCode(e.target.value)}
+                        placeholder="Example: TRF-001"
+                        style={appInputStyle()}
+                      />
+                    </div>
+
+                    <div style={{ display: "grid", gap: 6 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-muted)" }}>
+                        Failure Reason
+                      </div>
+                      <input
+                        type="text"
+                        value={failureReason}
+                        onChange={(e) => setFailureReason(e.target.value)}
+                        placeholder="Use only when marking payout as failed"
+                        style={appInputStyle()}
+                      />
+                    </div>
                   </div>
-                )}
-              </WorkspaceSectionCard>
-            }
-            right={
-              <WorkspaceSectionCard
-                title="Payout details"
-                subtitle="Inspect the selected payout row and update its processing state."
-              >
-                {!selectedPayout ? (
+
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                    <button
+                      type="button"
+                      style={shellButtonSecondary()}
+                      disabled={submitting}
+                      onClick={() => void submitStatusUpdate("mark-processing")}
+                    >
+                      {submitting ? "Working." : "Mark Processing"}
+                    </button>
+
+                    <button
+                      type="button"
+                      style={shellButtonPrimary()}
+                      disabled={submitting}
+                      onClick={() => void submitStatusUpdate("mark-paid")}
+                    >
+                      {submitting ? "Working." : "Mark Paid"}
+                    </button>
+
+                    <button
+                      type="button"
+                      style={shellButtonSecondary()}
+                      disabled={submitting}
+                      onClick={() => void submitStatusUpdate("mark-failed")}
+                    >
+                      {submitting ? "Working." : "Mark Failed"}
+                    </button>
+                  </div>
+
                   <div style={infoBoxStyle()}>
-                    <div style={{ fontWeight: 800 }}>No payout selected</div>
-                    <div style={{ color: "var(--text-muted)" }}>
-                      Click a payout row from the queue to view its details.
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-muted)" }}>
+                      Provider
+                    </div>
+                    <div style={{ fontWeight: 800, color: "var(--text)" }}>
+                      {safeText(selectedPayout.provider)}
+                    </div>
+
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-muted)", marginTop: 8 }}>
+                      Last Failure Reason
+                    </div>
+                    <div style={{ fontWeight: 700, color: "var(--text)" }}>
+                      {safeText(selectedPayout.failure_reason, "None")}
                     </div>
                   </div>
-                ) : (
-                  <div style={{ display: "grid", gap: 16 }}>
-                    <CardsGrid min={180}>
-                      <MetricCard
-                        label="Amount"
-                        value={`${safeText(selectedPayout.currency, "NGN")} ${safeText(selectedPayout.amount, "0")}`}
-                        helper="Requested payout amount."
-                      />
-                      <MetricCard
-                        label="Status"
-                        value={safeText(selectedPayout.status)}
-                        helper="Current backend payout state."
-                      />
-                      <MetricCard
-                        label="Requested"
-                        value={formatDate(selectedPayout.requested_at || selectedPayout.created_at)}
-                        helper="When this payout entered the queue."
-                      />
-                      <MetricCard
-                        label="Processed"
-                        value={formatDate(selectedPayout.processed_at)}
-                        helper="When processing last started or completed."
-                      />
-                    </CardsGrid>
-
-                    <div style={infoBoxStyle()}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-muted)" }}>
-                        Payout ID
-                      </div>
-                      <div style={{ fontWeight: 800, color: "var(--text)" }}>
-                        {safeText(selectedPayout.id)}
-                      </div>
-                    </div>
-
-                    <div style={{ display: "grid", gap: 12 }}>
-                      <div style={{ display: "grid", gap: 6 }}>
-                        <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-muted)" }}>
-                          Provider Reference
-                        </div>
-                        <input
-                          type="text"
-                          value={providerReference}
-                          onChange={(e) => setProviderReference(e.target.value)}
-                          placeholder="Example: PSTK-TRANSFER-001"
-                          style={appInputStyle()}
-                        />
-                      </div>
-
-                      <div style={{ display: "grid", gap: 6 }}>
-                        <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-muted)" }}>
-                          Provider Transfer Code
-                        </div>
-                        <input
-                          type="text"
-                          value={providerTransferCode}
-                          onChange={(e) => setProviderTransferCode(e.target.value)}
-                          placeholder="Example: TRF-001"
-                          style={appInputStyle()}
-                        />
-                      </div>
-
-                      <div style={{ display: "grid", gap: 6 }}>
-                        <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-muted)" }}>
-                          Failure Reason
-                        </div>
-                        <input
-                          type="text"
-                          value={failureReason}
-                          onChange={(e) => setFailureReason(e.target.value)}
-                          placeholder="Use only when marking payout as failed"
-                          style={appInputStyle()}
-                        />
-                      </div>
-                    </div>
-
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-                      <button
-                        type="button"
-                        style={shellButtonSecondary()}
-                        disabled={submitting}
-                        onClick={() => void submitStatusUpdate("mark-processing")}
-                      >
-                        {submitting ? "Working." : "Mark Processing"}
-                      </button>
-
-                      <button
-                        type="button"
-                        style={shellButtonPrimary()}
-                        disabled={submitting}
-                        onClick={() => void submitStatusUpdate("mark-paid")}
-                      >
-                        {submitting ? "Working." : "Mark Paid"}
-                      </button>
-
-                      <button
-                        type="button"
-                        style={shellButtonSecondary()}
-                        disabled={submitting}
-                        onClick={() => void submitStatusUpdate("mark-failed")}
-                      >
-                        {submitting ? "Working." : "Mark Failed"}
-                      </button>
-                    </div>
-
-                    <div style={infoBoxStyle()}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-muted)" }}>
-                        Provider
-                      </div>
-                      <div style={{ fontWeight: 800, color: "var(--text)" }}>
-                        {safeText(selectedPayout.provider)}
-                      </div>
-
-                      <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-muted)", marginTop: 8 }}>
-                        Last Failure Reason
-                      </div>
-                      <div style={{ fontWeight: 700, color: "var(--text)" }}>
-                        {safeText(selectedPayout.failure_reason, "None")}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </WorkspaceSectionCard>
-            }
-          />
+                </div>
+              )}
+            </WorkspaceSectionCard>
+          </TwoColumnSection>
         )}
       </SectionStack>
     </AppShell>
