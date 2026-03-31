@@ -484,7 +484,9 @@ export default function AdminReferralPayoutsPage() {
           <WorkspaceSectionCard
             title="Loading payout queue"
             subtitle="Please wait while the admin payout queue is being fetched."
-          />
+          >
+            <div style={{ color: "var(--text-muted)" }}>Loading...</div>
+          </WorkspaceSectionCard>
         ) : (
           <TwoColumnSection>
             <WorkspaceSectionCard
@@ -518,7 +520,8 @@ export default function AdminReferralPayoutsPage() {
                           Amount: {safeText(row.currency, "NGN")} {safeText(row.amount, "0")}
                         </div>
                         <div style={{ color: "var(--text-muted)" }}>
-                          Status: {safeText(row.status)} • Requested: {formatDate(row.requested_at || row.created_at)}
+                          Status: {safeText(row.status)} • Requested:{" "}
+                          {formatDate(row.requested_at || row.created_at)}
                         </div>
                       </div>
                     );
@@ -543,7 +546,10 @@ export default function AdminReferralPayoutsPage() {
                   <CardsGrid min={180}>
                     <MetricCard
                       label="Amount"
-                      value={`${safeText(selectedPayout.currency, "NGN")} ${safeText(selectedPayout.amount, "0")}`}
+                      value={`${safeText(selectedPayout.currency, "NGN")} ${safeText(
+                        selectedPayout.amount,
+                        "0"
+                      )}`}
                       helper="Requested payout amount."
                     />
                     <MetricCard
@@ -650,7 +656,14 @@ export default function AdminReferralPayoutsPage() {
                       {safeText(selectedPayout.provider)}
                     </div>
 
-                    <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-muted)", marginTop: 8 }}>
+                    <div
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 700,
+                        color: "var(--text-muted)",
+                        marginTop: 8,
+                      }}
+                    >
                       Last Failure Reason
                     </div>
                     <div style={{ fontWeight: 700, color: "var(--text)" }}>
