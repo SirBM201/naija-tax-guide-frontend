@@ -56,6 +56,7 @@ type FailureExpose = {
 };
 
 const REFERRAL_STORAGE_KEY = "ntg_referral_code";
+const NEXT_PATH_STORAGE_KEY = "ntg_next_path";
 
 function Panel({ children }: { children: React.ReactNode }) {
   return (
@@ -98,9 +99,52 @@ function safeDecodeNext(nextValue: string | null): string | null {
   return raw;
 }
 
+function readStoredNextPath(): string {
+  if (typeof window === "undefined") return "";
+  try {
+    return (
+      safeDecodeNext(
+        window.sessionStorage.getItem(NEXT_PATH_STORAGE_KEY) ||
+          window.localStorage.getItem(NEXT_PATH_STORAGE_KEY)
+      ) || ""
+    );
+  } catch {
+    return "";
+  }
+}
+
+function persistNextPath(nextPath: string) {
+  if (typeof window === "undefined") return;
+  try {
+    if (nextPath) {
+      window.sessionStorage.setItem(NEXT_PATH_STORAGE_KEY, nextPath);
+      window.localStorage.setItem(NEXT_PATH_STORAGE_KEY, nextPath);
+    } else {
+      window.sessionStorage.removeItem(NEXT_PATH_STORAGE_KEY);
+      window.localStorage.removeItem(NEXT_PATH_STORAGE_KEY);
+    }
+  } catch {
+    // ignore
+  }
+}
+
+function clearStoredNextPath() {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.removeItem(NEXT_PATH_STORAGE_KEY);
+    window.localStorage.removeItem(NEXT_PATH_STORAGE_KEY);
+  } catch {
+    // ignore
+  }
+}
+
 function resolvePostLoginPath(sp: ReturnType<typeof useSearchParams>) {
-  const nextPath = safeDecodeNext(sp?.get("next"));
-  if (nextPath) return nextPath;
+  const queryNext = safeDecodeNext(sp?.get("next"));
+  if (queryNext) return queryNext;
+
+  const storedNext = readStoredNextPath();
+  if (storedNext) return storedNext;
+
   return getWelcomeSeen() ? "/dashboard" : "/welcome";
 }
 
@@ -214,6 +258,12 @@ function linkBtnStyle(primary = false): React.CSSProperties {
   };
 }
 
+function appendNext(url: string, nextPath: string): string {
+  if (!nextPath) return url;
+  const joiner = url.includes("?") ? "&" : "?";
+  return `${url}${joiner}next=${encodeURIComponent(nextPath)}`;
+}
+
 function SignupPageContent() {
   const router = useRouter();
   const sp = useSearchParams();
@@ -230,27 +280,44 @@ function SignupPageContent() {
   const [failureExpose, setFailureExpose] = useState<FailureExpose | null>(null);
 
   const redirectingRef = useRef(false);
-  const referralInitDoneRef = useRef(false);
+  const initDoneRef = useRef(false);
 
   const queryReferralCode = normalizeReferralCode(sp?.get("ref"));
+  const queryNextPath = safeDecodeNext(sp?.get("next")) || "";
   const hasUrlReferral = Boolean(queryReferralCode);
 
   useEffect(() => {
-    if (referralInitDoneRef.current) return;
+    if (initDoneRef.current) return;
 
-    const stored = readStoredReferralCode();
-    const finalCode = queryReferralCode || stored || "";
+    const storedReferral = readStoredReferralCode();
+    const storedNext = readStoredNextPath();
 
-    if (finalCode) {
-      setReferralCode(finalCode);
-      persistReferralCode(finalCode);
-      setStatus(
-        `Referral code ${finalCode} detected. Continue with sign-up to apply it to your new account.`
-      );
+    const finalReferral = queryReferralCode || storedReferral || "";
+    const finalNext = queryNextPath || storedNext || "";
+
+    if (finalReferral) {
+      setReferralCode(finalReferral);
+      persistReferralCode(finalReferral);
     }
 
-    referralInitDoneRef.current = true;
-  }, [queryReferralCode]);
+    if (finalNext) {
+      persistNextPath(finalNext);
+    }
+
+    if (finalReferral && finalNext) {
+      setStatus(
+        `Referral code ${finalReferral} detected. After sign-up, you will continue to ${finalNext}.`
+      );
+    } else if (finalReferral) {
+      setStatus(
+        `Referral code ${finalReferral} detected. Continue with sign-up to apply it to your new account.`
+      );
+    } else if (finalNext) {
+      setStatus(`Continue with sign-up. After verification, you will continue to ${finalNext}.`);
+    }
+
+    initDoneRef.current = true;
+  }, [queryReferralCode, queryNextPath]);
 
   useEffect(() => {
     if (!authReady) return;
@@ -266,18 +333,18 @@ function SignupPageContent() {
           return;
         }
 
-        if (!referralCode) {
+        if (!referralCode && !queryNextPath && !readStoredNextPath()) {
           setStatus("Create your account with email OTP.");
         }
       } catch {
-        if (!referralCode) {
+        if (!referralCode && !queryNextPath && !readStoredNextPath()) {
           setStatus("Create your account with email OTP.");
         }
       }
     };
 
     void run();
-  }, [authReady, refreshSession, router, sp, referralCode]);
+  }, [authReady, refreshSession, router, sp, referralCode, queryNextPath]);
 
   useEffect(() => {
     persistReferralCode(referralCode);
@@ -309,11 +376,18 @@ function SignupPageContent() {
       setRaw(data);
 
       if (data?.ok) {
-        setStatus(
-          normalizedReferral
-            ? `OTP sent successfully. Referral code ${normalizedReferral} will be attached during account verification.`
-            : "OTP sent successfully. Check your inbox or test mailbox."
-        );
+        const finalPath = resolvePostLoginPath(sp);
+        if (normalizedReferral && finalPath) {
+          setStatus(
+            `OTP sent successfully. Referral code ${normalizedReferral} will be attached during account verification, then you will continue to ${finalPath}.`
+          );
+        } else if (normalizedReferral) {
+          setStatus(
+            `OTP sent successfully. Referral code ${normalizedReferral} will be attached during account verification.`
+          );
+        } else {
+          setStatus("OTP sent successfully. Check your inbox or test mailbox.");
+        }
       } else {
         setStatus(`Send OTP failed (${data?.error || "unknown_error"})`);
         setFailureExpose({
@@ -439,12 +513,15 @@ function SignupPageContent() {
         clearStoredReferralCode();
       }
 
+      const finalPath = resolvePostLoginPath(sp);
+      clearStoredNextPath();
+
       setStatus("Account flow completed. Redirecting...");
 
       if (!redirectingRef.current) {
         redirectingRef.current = true;
         window.setTimeout(() => {
-          router.replace(resolvePostLoginPath(sp));
+          router.replace(finalPath);
         }, 250);
       }
     } catch (err: unknown) {
@@ -492,6 +569,9 @@ function SignupPageContent() {
     clearStoredReferralCode();
     setStatus("Referral code cleared.");
   };
+
+  const nextPathForLinks = resolvePostLoginPath(sp);
+  const loginHref = appendNext("/login", nextPathForLinks === "/welcome" ? "" : nextPathForLinks);
 
   return (
     <div
@@ -598,7 +678,7 @@ function SignupPageContent() {
             alignItems: "center",
           }}
         >
-          <Link href="/login" style={linkBtnStyle(true)}>
+          <Link href={loginHref} style={linkBtnStyle(true)}>
             Already have an account? Sign in
           </Link>
           <Link href="/welcome" style={linkBtnStyle(false)}>
@@ -759,7 +839,7 @@ function SignupPageContent() {
                   Go to the separate sign-in page if you already have an account and only need workspace access.
                 </div>
                 <div style={{ marginTop: 12 }}>
-                  <Link href="/login" style={linkBtnStyle(true)}>
+                  <Link href={loginHref} style={linkBtnStyle(true)}>
                     Open Sign In
                   </Link>
                 </div>

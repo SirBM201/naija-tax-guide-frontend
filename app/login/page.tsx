@@ -56,6 +56,7 @@ type FailureExpose = {
 };
 
 const REFERRAL_STORAGE_KEY = "ntg_referral_code";
+const NEXT_PATH_STORAGE_KEY = "ntg_next_path";
 
 function Panel({ children }: { children: React.ReactNode }) {
   return (
@@ -98,9 +99,52 @@ function safeDecodeNext(nextValue: string | null): string | null {
   return raw;
 }
 
+function readStoredNextPath(): string {
+  if (typeof window === "undefined") return "";
+  try {
+    return (
+      safeDecodeNext(
+        window.sessionStorage.getItem(NEXT_PATH_STORAGE_KEY) ||
+          window.localStorage.getItem(NEXT_PATH_STORAGE_KEY)
+      ) || ""
+    );
+  } catch {
+    return "";
+  }
+}
+
+function persistNextPath(nextPath: string) {
+  if (typeof window === "undefined") return;
+  try {
+    if (nextPath) {
+      window.sessionStorage.setItem(NEXT_PATH_STORAGE_KEY, nextPath);
+      window.localStorage.setItem(NEXT_PATH_STORAGE_KEY, nextPath);
+    } else {
+      window.sessionStorage.removeItem(NEXT_PATH_STORAGE_KEY);
+      window.localStorage.removeItem(NEXT_PATH_STORAGE_KEY);
+    }
+  } catch {
+    // ignore
+  }
+}
+
+function clearStoredNextPath() {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.removeItem(NEXT_PATH_STORAGE_KEY);
+    window.localStorage.removeItem(NEXT_PATH_STORAGE_KEY);
+  } catch {
+    // ignore
+  }
+}
+
 function resolvePostLoginPath(sp: ReturnType<typeof useSearchParams>) {
-  const nextPath = safeDecodeNext(sp?.get("next"));
-  if (nextPath) return nextPath;
+  const queryNext = safeDecodeNext(sp?.get("next"));
+  if (queryNext) return queryNext;
+
+  const storedNext = readStoredNextPath();
+  if (storedNext) return storedNext;
+
   return getWelcomeSeen() ? "/dashboard" : "/welcome";
 }
 
@@ -204,6 +248,14 @@ function linkBtnStyle(primary = false): React.CSSProperties {
   };
 }
 
+function appendParams(base: string, referralCode: string, nextPath: string): string {
+  const params = new URLSearchParams();
+  if (referralCode) params.set("ref", referralCode);
+  if (nextPath) params.set("next", nextPath);
+  const qs = params.toString();
+  return qs ? `${base}?${qs}` : base;
+}
+
 function LoginPageContent() {
   const router = useRouter();
   const sp = useSearchParams();
@@ -219,24 +271,41 @@ function LoginPageContent() {
   const [failureExpose, setFailureExpose] = useState<FailureExpose | null>(null);
 
   const redirectingRef = useRef(false);
-  const referralInitDoneRef = useRef(false);
+  const initDoneRef = useRef(false);
 
   const queryReferralCode = normalizeReferralCode(sp?.get("ref"));
+  const queryNextPath = safeDecodeNext(sp?.get("next")) || "";
   const storedReferralCode = readStoredReferralCode();
+  const storedNextPath = readStoredNextPath();
+
   const effectiveReferralCode = queryReferralCode || storedReferralCode || "";
+  const effectiveNextPath = queryNextPath || storedNextPath || "";
 
   useEffect(() => {
-    if (referralInitDoneRef.current) return;
+    if (initDoneRef.current) return;
 
     if (effectiveReferralCode) {
       persistReferralCode(effectiveReferralCode);
+    }
+
+    if (effectiveNextPath) {
+      persistNextPath(effectiveNextPath);
+    }
+
+    if (effectiveReferralCode && effectiveNextPath) {
+      setStatus(
+        `Referral code ${effectiveReferralCode} detected. If you are a new user, create your account first. After access is completed, you will continue to ${effectiveNextPath}.`
+      );
+    } else if (effectiveReferralCode) {
       setStatus(
         `Referral code ${effectiveReferralCode} detected. If you are a new user, create your account first so the referral can be applied.`
       );
+    } else if (effectiveNextPath) {
+      setStatus(`Secure sign-in with email OTP. After access is completed, you will continue to ${effectiveNextPath}.`);
     }
 
-    referralInitDoneRef.current = true;
-  }, [effectiveReferralCode]);
+    initDoneRef.current = true;
+  }, [effectiveReferralCode, effectiveNextPath]);
 
   useEffect(() => {
     if (!authReady) return;
@@ -252,7 +321,7 @@ function LoginPageContent() {
           return;
         }
 
-        if (!effectiveReferralCode) {
+        if (!effectiveReferralCode && !effectiveNextPath) {
           setStatus("Secure sign-in with email OTP.");
         }
       } catch (err: unknown) {
@@ -273,14 +342,14 @@ function LoginPageContent() {
           at: new Date().toISOString(),
         });
 
-        if (!effectiveReferralCode) {
+        if (!effectiveReferralCode && !effectiveNextPath) {
           setStatus("Secure sign-in with email OTP.");
         }
       }
     };
 
     void run();
-  }, [authReady, refreshSession, router, sp, effectiveReferralCode]);
+  }, [authReady, refreshSession, router, sp, effectiveReferralCode, effectiveNextPath]);
 
   const sendOtp = async () => {
     const e = email.trim().toLowerCase();
@@ -424,12 +493,15 @@ function LoginPageContent() {
         // ignore
       }
 
+      const finalPath = resolvePostLoginPath(sp);
+      clearStoredNextPath();
+
       setStatus("OTP verified. Redirecting...");
 
       if (!redirectingRef.current) {
         redirectingRef.current = true;
         window.setTimeout(() => {
-          router.replace(resolvePostLoginPath(sp));
+          router.replace(finalPath);
         }, 250);
       }
     } catch (err: unknown) {
@@ -474,9 +546,7 @@ function LoginPageContent() {
 
   const goDashboard = () => router.replace("/dashboard");
   const goWelcome = () => router.replace("/welcome?force=1");
-  const signupHref = effectiveReferralCode
-    ? `/signup?ref=${encodeURIComponent(effectiveReferralCode)}`
-    : "/signup";
+  const signupHref = appendParams("/signup", effectiveReferralCode, effectiveNextPath);
 
   return (
     <div
@@ -598,12 +668,12 @@ function LoginPageContent() {
             borderRadius: 16,
             border: hasSession
               ? "1px solid var(--success-border)"
-              : effectiveReferralCode
+              : effectiveReferralCode || effectiveNextPath
               ? "1px solid var(--accent-border)"
               : "1px solid var(--border)",
             background: hasSession
               ? "var(--success-bg)"
-              : effectiveReferralCode
+              : effectiveReferralCode || effectiveNextPath
               ? "var(--accent-soft)"
               : "var(--surface-soft)",
             color: "var(--text-soft)",
@@ -730,9 +800,9 @@ function LoginPageContent() {
               </div>
 
               <div style={sectionCardStyle()}>
-                <div style={sectionTitleStyle()}>Access Method</div>
+                <div style={sectionTitleStyle()}>Redirect support</div>
                 <div style={sectionTextStyle()}>
-                  Secure email OTP sign-in for authenticated workspace access.
+                  If a target page was requested before sign-in, it will be preserved and used after access is completed.
                 </div>
               </div>
 
