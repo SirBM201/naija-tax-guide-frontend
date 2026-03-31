@@ -44,6 +44,7 @@ type QueueResponse = {
   rows?: PayoutRow[];
   error?: string;
   root_cause?: string;
+  message?: string;
 };
 
 type SinglePayoutResponse = {
@@ -51,6 +52,7 @@ type SinglePayoutResponse = {
   payout?: PayoutRow;
   error?: string;
   root_cause?: string;
+  message?: string;
 };
 
 const ADMIN_KEY_STORAGE_KEY = "nt_admin_api_key";
@@ -60,14 +62,8 @@ function resolveApiBase(): string {
   const envBase =
     (process.env.NEXT_PUBLIC_API_BASE || process.env.NEXT_PUBLIC_API_URL || "").trim();
 
-  if (envBase) {
-    return envBase.replace(/\/+$/, "");
-  }
-
-  if (typeof window !== "undefined") {
-    return `${window.location.origin.replace(/\/+$/, "")}/api`;
-  }
-
+  if (envBase) return envBase.replace(/\/+$/, "");
+  if (typeof window !== "undefined") return `${window.location.origin.replace(/\/+$/, "")}/api`;
   return "/api";
 }
 
@@ -169,7 +165,10 @@ async function adminFetch<T>(
 
   if (!res.ok) {
     const message =
-      data?.root_cause || data?.error || data?.message || `Request failed (${res.status})`;
+      data?.root_cause ||
+      data?.error ||
+      data?.message ||
+      `Request failed (${res.status})`;
     throw new Error(message);
   }
 
@@ -201,6 +200,9 @@ export default function AdminReferralPayoutsPage() {
   } | null>(null);
 
   const [errorText, setErrorText] = useState("");
+  const [actionError, setActionError] = useState("");
+  const [actionSuccess, setActionSuccess] = useState("");
+  const [lastAction, setLastAction] = useState<"mark-processing" | "mark-paid" | "mark-failed" | "">("");
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -228,23 +230,10 @@ export default function AdminReferralPayoutsPage() {
 
   const actionHint = useMemo(() => {
     if (!selectedPayout) return "Select a payout row to enable actions.";
-
-    if (selectedStatus === "paid") {
-      return "This payout is already marked as paid. Further status changes are disabled.";
-    }
-
-    if (selectedStatus === "processing") {
-      return "This payout is already in processing. You can mark it paid or failed.";
-    }
-
-    if (selectedStatus === "failed") {
-      return "This payout previously failed. You can retry by marking it processing.";
-    }
-
-    if (selectedStatus === "pending") {
-      return "Recommended flow: Mark Processing first, then Mark Paid after transfer confirmation.";
-    }
-
+    if (selectedStatus === "paid") return "This payout is already marked as paid. Further status changes are disabled.";
+    if (selectedStatus === "processing") return "This payout is already in processing. You can mark it paid or failed.";
+    if (selectedStatus === "failed") return "This payout previously failed. You can retry by marking it processing.";
+    if (selectedStatus === "pending") return "Recommended flow: Mark Processing first, then Mark Paid after transfer confirmation.";
     return "Unknown status detected. Use caution before applying an action.";
   }, [selectedPayout, selectedStatus]);
 
@@ -254,7 +243,6 @@ export default function AdminReferralPayoutsPage() {
     const processing = queueRows.filter((row) => normalizeStatus(row.status) === "processing").length;
     const failed = queueRows.filter((row) => normalizeStatus(row.status) === "failed").length;
     const totalAmount = queueRows.reduce((sum, row) => sum + safeNumber(row.amount), 0);
-
     return { totalRows, pending, processing, failed, totalAmount };
   }, [queueRows]);
 
@@ -352,6 +340,10 @@ export default function AdminReferralPayoutsPage() {
     const key = adminKey.trim();
     const payoutId = selectedPayoutId.trim();
 
+    setActionError("");
+    setActionSuccess("");
+    setLastAction(action);
+
     if (!key) {
       setNotice({
         tone: "warn",
@@ -371,38 +363,22 @@ export default function AdminReferralPayoutsPage() {
     }
 
     if (action === "mark-processing" && !canMarkProcessing) {
-      setNotice({
-        tone: "warn",
-        title: "Action not allowed",
-        subtitle: "Only pending or failed payouts should be moved to processing.",
-      });
+      setActionError("Only pending or failed payouts can be moved to processing.");
       return;
     }
 
     if (action === "mark-paid" && !canMarkPaid) {
-      setNotice({
-        tone: "warn",
-        title: "Action not allowed",
-        subtitle: "Only processing payouts should be marked as paid.",
-      });
+      setActionError("Only processing payouts can be marked as paid.");
       return;
     }
 
     if (action === "mark-failed" && !canMarkFailed) {
-      setNotice({
-        tone: "warn",
-        title: "Action not allowed",
-        subtitle: "Paid payouts cannot be marked as failed from this screen.",
-      });
+      setActionError("Paid payouts cannot be marked as failed from this screen.");
       return;
     }
 
     if (action === "mark-failed" && !failureReason.trim()) {
-      setNotice({
-        tone: "warn",
-        title: "Failure reason required",
-        subtitle: "Enter a clear reason before marking a payout as failed.",
-      });
+      setActionError("Enter a clear failure reason before marking a payout as failed.");
       return;
     }
 
@@ -432,15 +408,25 @@ export default function AdminReferralPayoutsPage() {
         { method: "POST", body }
       );
 
+      const prettyAction =
+        action === "mark-processing"
+          ? "marked as processing"
+          : action === "mark-paid"
+          ? "marked as paid"
+          : "marked as failed";
+
+      setActionSuccess(`Payout ${prettyAction} successfully.`);
       setNotice({
         tone: "good",
         title: "Payout updated",
-        subtitle: `The payout row was updated with action: ${action}.`,
+        subtitle: `The payout row was ${prettyAction}.`,
       });
 
       await loadQueue(true);
+      await loadSinglePayout(payoutId);
     } catch (e: unknown) {
-      setErrorText(e instanceof Error ? e.message : "Could not update payout row.");
+      const message = e instanceof Error ? e.message : "Could not update payout row.";
+      setActionError(message);
     } finally {
       setSubmitting(false);
     }
@@ -452,11 +438,7 @@ export default function AdminReferralPayoutsPage() {
       subtitle="Review pending referral payouts, inspect payout rows, and mark them as processing, paid, or failed."
       actions={
         <>
-          <button
-            type="button"
-            style={shellButtonPrimary()}
-            onClick={() => void handleRefresh()}
-          >
+          <button type="button" style={shellButtonPrimary()} onClick={() => void handleRefresh()}>
             {refreshing ? "Refreshing." : "Refresh"}
           </button>
 
@@ -471,16 +453,10 @@ export default function AdminReferralPayoutsPage() {
       }
     >
       <SectionStack>
-        {notice ? (
-          <Banner tone={notice.tone} title={notice.title} subtitle={notice.subtitle} />
-        ) : null}
+        {notice ? <Banner tone={notice.tone} title={notice.title} subtitle={notice.subtitle} /> : null}
 
         {errorText ? (
-          <Banner
-            tone="danger"
-            title="Admin payout queue could not load"
-            subtitle={errorText}
-          />
+          <Banner tone="danger" title="Admin payout queue could not load" subtitle={errorText} />
         ) : null}
 
         <WorkspaceSectionCard
@@ -522,11 +498,7 @@ export default function AdminReferralPayoutsPage() {
               </div>
 
               <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-                <button
-                  type="button"
-                  style={shellButtonPrimary()}
-                  onClick={() => void loadQueue(true)}
-                >
+                <button type="button" style={shellButtonPrimary()} onClick={() => void loadQueue(true)}>
                   Load Queue
                 </button>
 
@@ -546,71 +518,35 @@ export default function AdminReferralPayoutsPage() {
             </div>
 
             <CardsGrid min={180}>
-              <MetricCard
-                label="Queue Rows"
-                value={String(metrics.totalRows)}
-                helper="Rows currently loaded into this admin queue view."
-              />
-              <MetricCard
-                label="Pending"
-                value={String(metrics.pending)}
-                helper="Requests waiting for action."
-              />
-              <MetricCard
-                label="Processing"
-                value={String(metrics.processing)}
-                helper="Rows already pushed into transfer processing."
-              />
-              <MetricCard
-                label="Failed"
-                value={String(metrics.failed)}
-                helper="Rows that need admin attention or retry."
-              />
-              <MetricCard
-                label="Queue Amount"
-                value={`NGN ${metrics.totalAmount.toFixed(2)}`}
-                helper="Combined visible amount in the loaded queue."
-              />
+              <MetricCard label="Queue Rows" value={String(metrics.totalRows)} helper="Rows currently loaded into this admin queue view." />
+              <MetricCard label="Pending" value={String(metrics.pending)} helper="Requests waiting for action." />
+              <MetricCard label="Processing" value={String(metrics.processing)} helper="Rows already pushed into transfer processing." />
+              <MetricCard label="Failed" value={String(metrics.failed)} helper="Rows that need admin attention or retry." />
+              <MetricCard label="Queue Amount" value={`NGN ${metrics.totalAmount.toFixed(2)}`} helper="Combined visible amount in the loaded queue." />
             </CardsGrid>
           </TwoColumnSection>
         </WorkspaceSectionCard>
 
         {loading ? (
-          <WorkspaceSectionCard
-            title="Loading payout queue"
-            subtitle="Please wait while the admin payout queue is being fetched."
-          >
+          <WorkspaceSectionCard title="Loading payout queue" subtitle="Please wait while the admin payout queue is being fetched.">
             <div style={{ color: "var(--text-muted)" }}>Loading...</div>
           </WorkspaceSectionCard>
         ) : (
           <TwoColumnSection>
-            <WorkspaceSectionCard
-              title="Payout queue"
-              subtitle="Select a payout row to inspect and manage."
-            >
+            <WorkspaceSectionCard title="Payout queue" subtitle="Select a payout row to inspect and manage.">
               {queueRows.length === 0 ? (
                 <div style={infoBoxStyle()}>
                   <div style={{ fontWeight: 800 }}>No payout rows found</div>
-                  <div style={{ color: "var(--text-muted)" }}>
-                    Try another status filter or refresh the queue again.
-                  </div>
+                  <div style={{ color: "var(--text-muted)" }}>Try another status filter or refresh the queue again.</div>
                 </div>
               ) : (
                 <div style={{ display: "grid", gap: 12 }}>
                   {queueRows.map((row) => {
                     const active = row.id === selectedPayoutId;
                     return (
-                      <div
-                        key={row.id}
-                        style={listRowStyle(active)}
-                        onClick={() => void loadSinglePayout(row.id)}
-                      >
-                        <div style={{ fontWeight: 800, color: "var(--text)" }}>
-                          {safeText(row.id)}
-                        </div>
-                        <div style={{ color: "var(--text-muted)" }}>
-                          Account: {safeText(row.account_id)}
-                        </div>
+                      <div key={row.id} style={listRowStyle(active)} onClick={() => void loadSinglePayout(row.id)}>
+                        <div style={{ fontWeight: 800, color: "var(--text)" }}>{safeText(row.id)}</div>
+                        <div style={{ color: "var(--text-muted)" }}>Account: {safeText(row.account_id)}</div>
                         <div style={{ color: "var(--text-muted)" }}>
                           Amount: {safeText(row.currency, "NGN")} {safeText(row.amount, "0")}
                         </div>
@@ -624,16 +560,11 @@ export default function AdminReferralPayoutsPage() {
               )}
             </WorkspaceSectionCard>
 
-            <WorkspaceSectionCard
-              title="Payout details"
-              subtitle="Inspect the selected payout row and update its processing state."
-            >
+            <WorkspaceSectionCard title="Payout details" subtitle="Inspect the selected payout row and update its processing state.">
               {!selectedPayout ? (
                 <div style={infoBoxStyle()}>
                   <div style={{ fontWeight: 800 }}>No payout selected</div>
-                  <div style={{ color: "var(--text-muted)" }}>
-                    Click a payout row from the queue to view its details.
-                  </div>
+                  <div style={{ color: "var(--text-muted)" }}>Click a payout row from the queue to view its details.</div>
                 </div>
               ) : (
                 <div style={{ display: "grid", gap: 16 }}>
@@ -643,46 +574,41 @@ export default function AdminReferralPayoutsPage() {
                     subtitle={actionHint}
                   />
 
+                  {actionError ? (
+                    <Banner
+                      tone="danger"
+                      title={lastAction ? `${lastAction} failed` : "Action failed"}
+                      subtitle={actionError}
+                    />
+                  ) : null}
+
+                  {actionSuccess ? (
+                    <Banner tone="good" title="Action completed" subtitle={actionSuccess} />
+                  ) : null}
+
                   <CardsGrid min={180}>
                     <MetricCard
                       label="Amount"
-                      value={`${safeText(selectedPayout.currency, "NGN")} ${safeText(
-                        selectedPayout.amount,
-                        "0"
-                      )}`}
+                      value={`${safeText(selectedPayout.currency, "NGN")} ${safeText(selectedPayout.amount, "0")}`}
                       helper="Requested payout amount."
                     />
-                    <MetricCard
-                      label="Status"
-                      value={safeText(selectedPayout.status)}
-                      helper="Current backend payout state."
-                    />
+                    <MetricCard label="Status" value={safeText(selectedPayout.status)} helper="Current backend payout state." />
                     <MetricCard
                       label="Requested"
                       value={formatDate(selectedPayout.requested_at || selectedPayout.created_at)}
                       helper="When this payout entered the queue."
                     />
-                    <MetricCard
-                      label="Processed"
-                      value={formatDate(selectedPayout.processed_at)}
-                      helper="When processing last started or completed."
-                    />
+                    <MetricCard label="Processed" value={formatDate(selectedPayout.processed_at)} helper="When processing last started or completed." />
                   </CardsGrid>
 
                   <div style={infoBoxStyle()}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-muted)" }}>
-                      Payout ID
-                    </div>
-                    <div style={{ fontWeight: 800, color: "var(--text)" }}>
-                      {safeText(selectedPayout.id)}
-                    </div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-muted)" }}>Payout ID</div>
+                    <div style={{ fontWeight: 800, color: "var(--text)" }}>{safeText(selectedPayout.id)}</div>
                   </div>
 
                   <div style={{ display: "grid", gap: 12 }}>
                     <div style={{ display: "grid", gap: 6 }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-muted)" }}>
-                        Provider Reference
-                      </div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-muted)" }}>Provider Reference</div>
                       <input
                         type="text"
                         value={providerReference}
@@ -693,9 +619,7 @@ export default function AdminReferralPayoutsPage() {
                     </div>
 
                     <div style={{ display: "grid", gap: 6 }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-muted)" }}>
-                        Provider Transfer Code
-                      </div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-muted)" }}>Provider Transfer Code</div>
                       <input
                         type="text"
                         value={providerTransferCode}
@@ -706,9 +630,7 @@ export default function AdminReferralPayoutsPage() {
                     </div>
 
                     <div style={{ display: "grid", gap: 6 }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-muted)" }}>
-                        Failure Reason
-                      </div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-muted)" }}>Failure Reason</div>
                       <input
                         type="text"
                         value={failureReason}
@@ -725,13 +647,9 @@ export default function AdminReferralPayoutsPage() {
                       style={actionButtonStyle("secondary", !canMarkProcessing)}
                       disabled={!canMarkProcessing}
                       onClick={() => void submitStatusUpdate("mark-processing")}
-                      title={
-                        canMarkProcessing
-                          ? "Move payout into processing"
-                          : "Only pending or failed payouts can be marked processing"
-                      }
+                      title={canMarkProcessing ? "Move payout into processing" : "Only pending or failed payouts can be marked processing"}
                     >
-                      {submitting && canMarkProcessing ? "Working." : "Mark Processing"}
+                      {submitting && lastAction === "mark-processing" ? "Working." : "Mark Processing"}
                     </button>
 
                     <button
@@ -739,13 +657,9 @@ export default function AdminReferralPayoutsPage() {
                       style={actionButtonStyle("primary", !canMarkPaid)}
                       disabled={!canMarkPaid}
                       onClick={() => void submitStatusUpdate("mark-paid")}
-                      title={
-                        canMarkPaid
-                          ? "Mark payout as paid after transfer confirmation"
-                          : "Only processing payouts can be marked paid"
-                      }
+                      title={canMarkPaid ? "Mark payout as paid after transfer confirmation" : "Only processing payouts can be marked paid"}
                     >
-                      {submitting && canMarkPaid ? "Working." : "Mark Paid"}
+                      {submitting && lastAction === "mark-paid" ? "Working." : "Mark Paid"}
                     </button>
 
                     <button
@@ -753,32 +667,17 @@ export default function AdminReferralPayoutsPage() {
                       style={actionButtonStyle("secondary", !canMarkFailed)}
                       disabled={!canMarkFailed}
                       onClick={() => void submitStatusUpdate("mark-failed")}
-                      title={
-                        canMarkFailed
-                          ? "Mark payout as failed"
-                          : "Paid payouts cannot be marked failed"
-                      }
+                      title={canMarkFailed ? "Mark payout as failed" : "Paid payouts cannot be marked failed"}
                     >
-                      {submitting && canMarkFailed ? "Working." : "Mark Failed"}
+                      {submitting && lastAction === "mark-failed" ? "Working." : "Mark Failed"}
                     </button>
                   </div>
 
                   <div style={infoBoxStyle()}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-muted)" }}>
-                      Provider
-                    </div>
-                    <div style={{ fontWeight: 800, color: "var(--text)" }}>
-                      {safeText(selectedPayout.provider)}
-                    </div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-muted)" }}>Provider</div>
+                    <div style={{ fontWeight: 800, color: "var(--text)" }}>{safeText(selectedPayout.provider)}</div>
 
-                    <div
-                      style={{
-                        fontSize: 13,
-                        fontWeight: 700,
-                        color: "var(--text-muted)",
-                        marginTop: 8,
-                      }}
-                    >
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-muted)", marginTop: 8 }}>
                       Last Failure Reason
                     </div>
                     <div style={{ fontWeight: 700, color: "var(--text)" }}>
@@ -794,4 +693,3 @@ export default function AdminReferralPayoutsPage() {
     </AppShell>
   );
 }
-
