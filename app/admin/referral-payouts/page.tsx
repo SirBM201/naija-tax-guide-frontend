@@ -794,3 +794,4 @@ export default function AdminReferralPayoutsPage() {
     </AppShell>
   );
 }
+
