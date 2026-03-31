@@ -18,6 +18,7 @@ import {
 import { CardsGrid, SectionStack, TwoColumnSection } from "@/components/page-layout";
 
 type NoticeTone = "good" | "warn" | "danger" | "default";
+type PayoutStatus = "pending" | "processing" | "paid" | "failed" | "unknown";
 
 type PayoutRow = {
   id: string;
@@ -85,6 +86,14 @@ function safeNumber(value: unknown): number {
   return Number.isFinite(num) ? num : 0;
 }
 
+function normalizeStatus(value: unknown): PayoutStatus {
+  const status = safeText(value, "").toLowerCase();
+  if (status === "pending" || status === "processing" || status === "paid" || status === "failed") {
+    return status;
+  }
+  return "unknown";
+}
+
 function infoBoxStyle(): React.CSSProperties {
   return {
     border: "1px solid var(--border)",
@@ -105,6 +114,18 @@ function listRowStyle(active: boolean): React.CSSProperties {
     display: "grid",
     gap: 6,
     cursor: "pointer",
+  };
+}
+
+function actionButtonStyle(
+  variant: "primary" | "secondary",
+  disabled = false
+): React.CSSProperties {
+  const base = variant === "primary" ? shellButtonPrimary() : shellButtonSecondary();
+  return {
+    ...base,
+    opacity: disabled ? 0.55 : 1,
+    cursor: disabled ? "not-allowed" : "pointer",
   };
 }
 
@@ -188,12 +209,50 @@ export default function AdminReferralPayoutsPage() {
   }, []);
 
   const queueRows = queueData?.rows || [];
+  const selectedStatus = normalizeStatus(selectedPayout?.status);
+
+  const canMarkProcessing =
+    !!selectedPayout &&
+    !submitting &&
+    (selectedStatus === "pending" || selectedStatus === "failed" || selectedStatus === "unknown");
+
+  const canMarkPaid =
+    !!selectedPayout &&
+    !submitting &&
+    (selectedStatus === "processing" || selectedStatus === "unknown");
+
+  const canMarkFailed =
+    !!selectedPayout &&
+    !submitting &&
+    (selectedStatus === "pending" || selectedStatus === "processing" || selectedStatus === "unknown");
+
+  const actionHint = useMemo(() => {
+    if (!selectedPayout) return "Select a payout row to enable actions.";
+
+    if (selectedStatus === "paid") {
+      return "This payout is already marked as paid. Further status changes are disabled.";
+    }
+
+    if (selectedStatus === "processing") {
+      return "This payout is already in processing. You can mark it paid or failed.";
+    }
+
+    if (selectedStatus === "failed") {
+      return "This payout previously failed. You can retry by marking it processing.";
+    }
+
+    if (selectedStatus === "pending") {
+      return "Recommended flow: Mark Processing first, then Mark Paid after transfer confirmation.";
+    }
+
+    return "Unknown status detected. Use caution before applying an action.";
+  }, [selectedPayout, selectedStatus]);
 
   const metrics = useMemo(() => {
     const totalRows = queueRows.length;
-    const pending = queueRows.filter((row) => safeText(row.status, "").toLowerCase() === "pending").length;
-    const processing = queueRows.filter((row) => safeText(row.status, "").toLowerCase() === "processing").length;
-    const failed = queueRows.filter((row) => safeText(row.status, "").toLowerCase() === "failed").length;
+    const pending = queueRows.filter((row) => normalizeStatus(row.status) === "pending").length;
+    const processing = queueRows.filter((row) => normalizeStatus(row.status) === "processing").length;
+    const failed = queueRows.filter((row) => normalizeStatus(row.status) === "failed").length;
     const totalAmount = queueRows.reduce((sum, row) => sum + safeNumber(row.amount), 0);
 
     return { totalRows, pending, processing, failed, totalAmount };
@@ -307,6 +366,42 @@ export default function AdminReferralPayoutsPage() {
         tone: "warn",
         title: "Select a payout row",
         subtitle: "Choose a payout from the queue first.",
+      });
+      return;
+    }
+
+    if (action === "mark-processing" && !canMarkProcessing) {
+      setNotice({
+        tone: "warn",
+        title: "Action not allowed",
+        subtitle: "Only pending or failed payouts should be moved to processing.",
+      });
+      return;
+    }
+
+    if (action === "mark-paid" && !canMarkPaid) {
+      setNotice({
+        tone: "warn",
+        title: "Action not allowed",
+        subtitle: "Only processing payouts should be marked as paid.",
+      });
+      return;
+    }
+
+    if (action === "mark-failed" && !canMarkFailed) {
+      setNotice({
+        tone: "warn",
+        title: "Action not allowed",
+        subtitle: "Paid payouts cannot be marked as failed from this screen.",
+      });
+      return;
+    }
+
+    if (action === "mark-failed" && !failureReason.trim()) {
+      setNotice({
+        tone: "warn",
+        title: "Failure reason required",
+        subtitle: "Enter a clear reason before marking a payout as failed.",
       });
       return;
     }
@@ -520,8 +615,7 @@ export default function AdminReferralPayoutsPage() {
                           Amount: {safeText(row.currency, "NGN")} {safeText(row.amount, "0")}
                         </div>
                         <div style={{ color: "var(--text-muted)" }}>
-                          Status: {safeText(row.status)} • Requested:{" "}
-                          {formatDate(row.requested_at || row.created_at)}
+                          Status: {safeText(row.status)} • Requested: {formatDate(row.requested_at || row.created_at)}
                         </div>
                       </div>
                     );
@@ -543,6 +637,12 @@ export default function AdminReferralPayoutsPage() {
                 </div>
               ) : (
                 <div style={{ display: "grid", gap: 16 }}>
+                  <Banner
+                    tone={selectedStatus === "paid" ? "good" : selectedStatus === "failed" ? "warn" : "default"}
+                    title={`Current status: ${safeText(selectedPayout.status)}`}
+                    subtitle={actionHint}
+                  />
+
                   <CardsGrid min={180}>
                     <MetricCard
                       label="Amount"
@@ -622,29 +722,44 @@ export default function AdminReferralPayoutsPage() {
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
                     <button
                       type="button"
-                      style={shellButtonSecondary()}
-                      disabled={submitting}
+                      style={actionButtonStyle("secondary", !canMarkProcessing)}
+                      disabled={!canMarkProcessing}
                       onClick={() => void submitStatusUpdate("mark-processing")}
+                      title={
+                        canMarkProcessing
+                          ? "Move payout into processing"
+                          : "Only pending or failed payouts can be marked processing"
+                      }
                     >
-                      {submitting ? "Working." : "Mark Processing"}
+                      {submitting && canMarkProcessing ? "Working." : "Mark Processing"}
                     </button>
 
                     <button
                       type="button"
-                      style={shellButtonPrimary()}
-                      disabled={submitting}
+                      style={actionButtonStyle("primary", !canMarkPaid)}
+                      disabled={!canMarkPaid}
                       onClick={() => void submitStatusUpdate("mark-paid")}
+                      title={
+                        canMarkPaid
+                          ? "Mark payout as paid after transfer confirmation"
+                          : "Only processing payouts can be marked paid"
+                      }
                     >
-                      {submitting ? "Working." : "Mark Paid"}
+                      {submitting && canMarkPaid ? "Working." : "Mark Paid"}
                     </button>
 
                     <button
                       type="button"
-                      style={shellButtonSecondary()}
-                      disabled={submitting}
+                      style={actionButtonStyle("secondary", !canMarkFailed)}
+                      disabled={!canMarkFailed}
                       onClick={() => void submitStatusUpdate("mark-failed")}
+                      title={
+                        canMarkFailed
+                          ? "Mark payout as failed"
+                          : "Paid payouts cannot be marked failed"
+                      }
                     >
-                      {submitting ? "Working." : "Mark Failed"}
+                      {submitting && canMarkFailed ? "Working." : "Mark Failed"}
                     </button>
                   </div>
 
