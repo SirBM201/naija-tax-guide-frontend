@@ -229,6 +229,19 @@ function statusBadgeStyle(status: PayoutStatus): React.CSSProperties {
   };
 }
 
+function quickFilterChipStyle(active: boolean): React.CSSProperties {
+  return {
+    border: active ? "1px solid rgba(78, 110, 255, 0.45)" : "1px solid var(--border)",
+    background: active ? "rgba(78, 110, 255, 0.14)" : "var(--surface)",
+    color: "var(--text)",
+    borderRadius: 999,
+    padding: "8px 14px",
+    fontSize: 13,
+    fontWeight: 800,
+    cursor: "pointer",
+  };
+}
+
 function StatusBadge({ status }: { status: PayoutStatus }) {
   return <span style={statusBadgeStyle(status)}>{status}</span>;
 }
@@ -389,6 +402,24 @@ export default function AdminReferralPayoutsPage() {
     });
   }, [queueRows, searchPayoutId, searchAccountId]);
 
+  const fullSummary = useMemo(() => {
+    const pendingRows = queueRows.filter((row) => normalizeStatus(row.status) === "pending");
+    const processingRows = queueRows.filter((row) => normalizeStatus(row.status) === "processing");
+    const failedRows = queueRows.filter((row) => normalizeStatus(row.status) === "failed");
+    const paidRows = queueRows.filter((row) => normalizeStatus(row.status) === "paid");
+
+    return {
+      pendingCount: pendingRows.length,
+      processingCount: processingRows.length,
+      failedCount: failedRows.length,
+      paidCount: paidRows.length,
+      pendingAmount: pendingRows.reduce((sum, row) => sum + safeNumber(row.amount), 0),
+      processingAmount: processingRows.reduce((sum, row) => sum + safeNumber(row.amount), 0),
+      failedAmount: failedRows.reduce((sum, row) => sum + safeNumber(row.amount), 0),
+      paidAmount: paidRows.reduce((sum, row) => sum + safeNumber(row.amount), 0),
+    };
+  }, [queueRows]);
+
   const canMarkProcessing =
     !!selectedPayout &&
     !submitting &&
@@ -501,10 +532,12 @@ export default function AdminReferralPayoutsPage() {
     }
   }
 
-  async function loadQueue(showRefreshState = false) {
+  async function loadQueue(showRefreshState = false, filterOverride?: string) {
     if (!requireAuth()) return;
 
     const key = adminKey.trim();
+    const appliedFilter = (filterOverride || statusFilter).trim();
+
     if (!key) {
       setLoading(false);
       setRefreshing(false);
@@ -530,15 +563,20 @@ export default function AdminReferralPayoutsPage() {
 
     try {
       const data = await adminFetch<QueueResponse>(
-        `/admin/referral-payouts?status=${encodeURIComponent(statusFilter)}&limit=50`,
+        `/admin/referral-payouts?status=${encodeURIComponent(appliedFilter)}&limit=50`,
         key
       );
 
       setQueueData(data);
 
-      const firstRowId = selectedPayoutId || data?.rows?.[0]?.id || "";
-      if (firstRowId) {
-        await loadSinglePayout(firstRowId, key);
+      const availableIds = new Set((data?.rows || []).map((row) => row.id));
+      const nextSelectedId =
+        selectedPayoutId && availableIds.has(selectedPayoutId)
+          ? selectedPayoutId
+          : data?.rows?.[0]?.id || "";
+
+      if (nextSelectedId) {
+        await loadSinglePayout(nextSelectedId, key);
       } else {
         setSelectedPayout(null);
         setSelectedPayoutId("");
@@ -567,6 +605,11 @@ export default function AdminReferralPayoutsPage() {
 
   async function handleRefresh() {
     await loadQueue(true);
+  }
+
+  async function applyQuickFilter(nextFilter: string) {
+    setStatusFilter(nextFilter);
+    await loadQueue(true, nextFilter);
   }
 
   function requestStatusUpdate(action: Exclude<ActionType, "">) {
@@ -712,6 +755,81 @@ export default function AdminReferralPayoutsPage() {
           {errorText ? (
             <Banner tone="danger" title="Admin payout queue could not load" subtitle={errorText} />
           ) : null}
+
+          <WorkspaceSectionCard
+            title="Summary strip"
+            subtitle="Quick totals across the currently loaded queue plus one-click status filters."
+          >
+            <SectionStack>
+              <CardsGrid min={160}>
+                <MetricCard
+                  label="Pending Amount"
+                  value={`NGN ${fullSummary.pendingAmount.toFixed(2)}`}
+                  helper={`${fullSummary.pendingCount} pending row(s)`}
+                />
+                <MetricCard
+                  label="Processing Amount"
+                  value={`NGN ${fullSummary.processingAmount.toFixed(2)}`}
+                  helper={`${fullSummary.processingCount} processing row(s)`}
+                />
+                <MetricCard
+                  label="Failed Amount"
+                  value={`NGN ${fullSummary.failedAmount.toFixed(2)}`}
+                  helper={`${fullSummary.failedCount} failed row(s)`}
+                />
+                <MetricCard
+                  label="Paid Amount"
+                  value={`NGN ${fullSummary.paidAmount.toFixed(2)}`}
+                  helper={`${fullSummary.paidCount} paid row(s)`}
+                />
+              </CardsGrid>
+
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                <button
+                  type="button"
+                  style={quickFilterChipStyle(statusFilter === "pending")}
+                  onClick={() => void applyQuickFilter("pending")}
+                >
+                  Pending Only
+                </button>
+                <button
+                  type="button"
+                  style={quickFilterChipStyle(statusFilter === "processing")}
+                  onClick={() => void applyQuickFilter("processing")}
+                >
+                  Processing Only
+                </button>
+                <button
+                  type="button"
+                  style={quickFilterChipStyle(statusFilter === "failed")}
+                  onClick={() => void applyQuickFilter("failed")}
+                >
+                  Failed Only
+                </button>
+                <button
+                  type="button"
+                  style={quickFilterChipStyle(statusFilter === "paid")}
+                  onClick={() => void applyQuickFilter("paid")}
+                >
+                  Paid Only
+                </button>
+                <button
+                  type="button"
+                  style={quickFilterChipStyle(statusFilter === "pending,processing,failed")}
+                  onClick={() => void applyQuickFilter("pending,processing,failed")}
+                >
+                  Pending + Processing + Failed
+                </button>
+                <button
+                  type="button"
+                  style={quickFilterChipStyle(statusFilter === "pending,processing,failed,paid")}
+                  onClick={() => void applyQuickFilter("pending,processing,failed,paid")}
+                >
+                  All Major Statuses
+                </button>
+              </div>
+            </SectionStack>
+          </WorkspaceSectionCard>
 
           <WorkspaceSectionCard
             title="Admin access"
