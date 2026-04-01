@@ -124,95 +124,12 @@ function safeNumber(value: unknown): number {
   return Number.isFinite(num) ? num : 0;
 }
 
-function toDateInputValue(value: string | null | undefined): string {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  return date.toISOString().slice(0, 10);
-}
-
-function matchesDateRange(
-  value: string | null | undefined,
-  startDate: string,
-  endDate: string
-): boolean {
-  if (!startDate && !endDate) return true;
-  if (!value) return false;
-  const itemDate = toDateInputValue(value);
-  if (!itemDate) return false;
-  if (startDate && itemDate < startDate) return false;
-  if (endDate && itemDate > endDate) return false;
-  return true;
-}
-
 function normalizeStatus(value: unknown): PayoutStatus {
   const status = safeText(value, "").toLowerCase();
   if (status === "pending" || status === "processing" || status === "paid" || status === "failed") {
     return status;
   }
   return "unknown";
-}
-
-function infoBoxStyle(): React.CSSProperties {
-  return {
-    border: "1px solid var(--border)",
-    borderRadius: 18,
-    background: "var(--surface)",
-    padding: 16,
-    display: "grid",
-    gap: 6,
-  };
-}
-
-function listRowStyle(active: boolean): React.CSSProperties {
-  return {
-    border: "1px solid var(--border)",
-    borderRadius: 16,
-    background: active ? "rgba(78, 110, 255, 0.14)" : "var(--surface)",
-    padding: 14,
-    display: "grid",
-    gap: 8,
-    cursor: "pointer",
-  };
-}
-
-function actionButtonStyle(
-  variant: "primary" | "secondary",
-  disabled = false
-): React.CSSProperties {
-  const base = variant === "primary" ? shellButtonPrimary() : shellButtonSecondary();
-  return {
-    ...base,
-    opacity: disabled ? 0.55 : 1,
-    cursor: disabled ? "not-allowed" : "pointer",
-  };
-}
-
-function confirmationOverlayStyle(): React.CSSProperties {
-  return {
-    position: "fixed",
-    inset: 0,
-    background: "rgba(0, 0, 0, 0.5)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 1000,
-    padding: 20,
-  };
-}
-
-function confirmationCardStyle(): React.CSSProperties {
-  return {
-    width: "100%",
-    maxWidth: 560,
-    borderRadius: 20,
-    border: "1px solid var(--border)",
-    background: "var(--surface)",
-    padding: 20,
-    display: "grid",
-    gap: 14,
-    boxShadow: "0 20px 60px rgba(0,0,0,0.25)",
-  };
 }
 
 function statusBadgeStyle(status: PayoutStatus): React.CSSProperties {
@@ -276,6 +193,18 @@ function quickFilterChipStyle(active: boolean): React.CSSProperties {
   };
 }
 
+function actionButtonStyle(
+  variant: "primary" | "secondary",
+  disabled = false
+): React.CSSProperties {
+  const base = variant === "primary" ? shellButtonPrimary() : shellButtonSecondary();
+  return {
+    ...base,
+    opacity: disabled ? 0.55 : 1,
+    cursor: disabled ? "not-allowed" : "pointer",
+  };
+}
+
 function exportButtonStyle(): React.CSSProperties {
   return {
     ...shellButtonSecondary(),
@@ -284,8 +213,65 @@ function exportButtonStyle(): React.CSSProperties {
   };
 }
 
-function StatusBadge({ status }: { status: PayoutStatus }) {
-  return <span style={statusBadgeStyle(status)}>{status}</span>;
+function infoBoxStyle(): React.CSSProperties {
+  return {
+    border: "1px solid var(--border)",
+    borderRadius: 18,
+    background: "var(--surface)",
+    padding: 16,
+    display: "grid",
+    gap: 6,
+  };
+}
+
+function listRowStyle(active: boolean): React.CSSProperties {
+  return {
+    border: "1px solid var(--border)",
+    borderRadius: 16,
+    background: active ? "rgba(78, 110, 255, 0.14)" : "var(--surface)",
+    padding: 14,
+    display: "grid",
+    gap: 8,
+    cursor: "pointer",
+  };
+}
+
+function confirmationOverlayStyle(): React.CSSProperties {
+  return {
+    position: "fixed",
+    inset: 0,
+    background: "rgba(0, 0, 0, 0.5)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 1000,
+    padding: 20,
+  };
+}
+
+function confirmationCardStyle(): React.CSSProperties {
+  return {
+    width: "100%",
+    maxWidth: 560,
+    borderRadius: 20,
+    border: "1px solid var(--border)",
+    background: "var(--surface)",
+    padding: 20,
+    display: "grid",
+    gap: 14,
+    boxShadow: "0 20px 60px rgba(0,0,0,0.25)",
+  };
+}
+
+function summaryBarStyle(): React.CSSProperties {
+  return {
+    border: "1px solid var(--border)",
+    borderRadius: 18,
+    background: "rgba(78, 110, 255, 0.08)",
+    padding: 14,
+    display: "grid",
+    gap: 8,
+  };
 }
 
 function auditRowStyle(): React.CSSProperties {
@@ -299,67 +285,17 @@ function auditRowStyle(): React.CSSProperties {
   };
 }
 
-async function adminFetch<T>(
-  path: string,
-  adminKey: string,
-  init?: {
-    method?: string;
-    body?: unknown;
-  }
-): Promise<T> {
-  const apiBase = resolveApiBase();
-  const url = `${apiBase}${path.startsWith("/") ? path : `/${path}`}`;
-
-  const headers: Record<string, string> = {
-    Accept: "application/json",
-    "X-Admin-Key": adminKey,
-  };
-
-  let body: string | undefined;
-
-  if (init?.body !== undefined) {
-    headers["Content-Type"] = "application/json";
-    body = typeof init.body === "string" ? init.body : JSON.stringify(init.body);
-  }
-
-  const res = await fetch(url, {
-    method: (init?.method || "GET").toUpperCase(),
-    headers,
-    body,
-    credentials: "include",
-    cache: "no-store",
-  });
-
-  let data: any = null;
-  try {
-    data = await res.json();
-  } catch {
-    data = null;
-  }
-
-  if (!res.ok) {
-    const message =
-      data?.root_cause ||
-      data?.error ||
-      data?.message ||
-      `Request failed (${res.status})`;
-    throw new Error(message);
-  }
-
-  return data as T;
+function StatusBadge({ status }: { status: PayoutStatus }) {
+  return <span style={statusBadgeStyle(status)}>{status}</span>;
 }
 
-function downloadCsv(filename: string, csvContent: string) {
-  if (typeof window === "undefined") return;
-  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-  const url = window.URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.setAttribute("download", filename);
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  window.URL.revokeObjectURL(url);
+function actionLabel(value: string | null | undefined): string {
+  const raw = safeText(value, "");
+  if (!raw) return "Unknown action";
+  return raw
+    .replace(/_/g, " ")
+    .replace(/-/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 function buildQueueCsv(rows: PayoutRow[]): string {
@@ -444,6 +380,69 @@ function buildAuditCsv(rows: AuditLogRow[]): string {
   return lines.join("\n");
 }
 
+function downloadCsv(filename: string, csvContent: string) {
+  if (typeof window === "undefined") return;
+  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.setAttribute("download", filename);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.URL.revokeObjectURL(url);
+}
+
+async function adminFetch<T>(
+  path: string,
+  adminKey: string,
+  init?: {
+    method?: string;
+    body?: unknown;
+  }
+): Promise<T> {
+  const apiBase = resolveApiBase();
+  const url = `${apiBase}${path.startsWith("/") ? path : `/${path}`}`;
+
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+    "X-Admin-Key": adminKey,
+  };
+
+  let body: string | undefined;
+
+  if (init?.body !== undefined) {
+    headers["Content-Type"] = "application/json";
+    body = typeof init.body === "string" ? init.body : JSON.stringify(init.body);
+  }
+
+  const res = await fetch(url, {
+    method: (init?.method || "GET").toUpperCase(),
+    headers,
+    body,
+    credentials: "include",
+    cache: "no-store",
+  });
+
+  let data: any = null;
+  try {
+    data = await res.json();
+  } catch {
+    data = null;
+  }
+
+  if (!res.ok) {
+    const message =
+      data?.root_cause ||
+      data?.error ||
+      data?.message ||
+      `Request failed (${res.status})`;
+    throw new Error(message);
+  }
+
+  return data as T;
+}
+
 function buildConfirmationContent(action: Exclude<ActionType, "">, payout: PayoutRow | null) {
   const payoutId = safeText(payout?.id, "selected payout");
   const amount = `${safeText(payout?.currency, "NGN")} ${safeText(payout?.amount, "0")}`;
@@ -471,13 +470,13 @@ function buildConfirmationContent(action: Exclude<ActionType, "">, payout: Payou
   };
 }
 
-function actionLabel(value: string | null | undefined): string {
-  const raw = safeText(value, "");
-  if (!raw) return "Unknown action";
-  return raw
-    .replace(/_/g, " ")
-    .replace(/-/g, " ")
-    .replace(/\b\w/g, (char) => char.toUpperCase());
+function formatDateTime(value: string | null | undefined): string {
+  if (!value) return "Not yet loaded";
+  try {
+    return new Date(value).toLocaleString();
+  } catch {
+    return value;
+  }
 }
 
 export default function AdminReferralPayoutsPage() {
@@ -499,10 +498,6 @@ export default function AdminReferralPayoutsPage() {
   const [failureReason, setFailureReason] = useState("");
   const [searchPayoutId, setSearchPayoutId] = useState("");
   const [searchAccountId, setSearchAccountId] = useState("");
-  const [queueDateFrom, setQueueDateFrom] = useState("");
-  const [queueDateTo, setQueueDateTo] = useState("");
-  const [auditDateFrom, setAuditDateFrom] = useState("");
-  const [auditDateTo, setAuditDateTo] = useState("");
 
   const [auditRows, setAuditRows] = useState<AuditLogRow[]>([]);
   const [auditLoading, setAuditLoading] = useState(false);
@@ -520,6 +515,7 @@ export default function AdminReferralPayoutsPage() {
   const [actionSuccess, setActionSuccess] = useState("");
   const [lastAction, setLastAction] = useState<ActionType>("");
   const [confirmAction, setConfirmAction] = useState<ActionType>("");
+  const [lastRefreshedAt, setLastRefreshedAt] = useState<string>("");
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -539,20 +535,9 @@ export default function AdminReferralPayoutsPage() {
       const payoutMatch = !payoutTerm || safeText(row.id, "").toLowerCase().includes(payoutTerm);
       const accountMatch =
         !accountTerm || safeText(row.account_id, "").toLowerCase().includes(accountTerm);
-      const dateMatch = matchesDateRange(
-        row.requested_at || row.created_at,
-        queueDateFrom,
-        queueDateTo
-      );
-      return payoutMatch && accountMatch && dateMatch;
+      return payoutMatch && accountMatch;
     });
-  }, [queueRows, searchPayoutId, searchAccountId, queueDateFrom, queueDateTo]);
-
-  const filteredAuditRows = useMemo(() => {
-    return auditRows.filter((row) =>
-      matchesDateRange(row.created_at, auditDateFrom, auditDateTo)
-    );
-  }, [auditRows, auditDateFrom, auditDateTo]);
+  }, [queueRows, searchPayoutId, searchAccountId]);
 
   const fullSummary = useMemo(() => {
     const pendingRows = queueRows.filter((row) => normalizeStatus(row.status) === "pending");
@@ -571,6 +556,32 @@ export default function AdminReferralPayoutsPage() {
       paidAmount: paidRows.reduce((sum, row) => sum + safeNumber(row.amount), 0),
     };
   }, [queueRows]);
+
+  const metrics = useMemo(() => {
+    const totalRows = filteredQueueRows.length;
+    const pending = filteredQueueRows.filter((row) => normalizeStatus(row.status) === "pending").length;
+    const processing = filteredQueueRows.filter((row) => normalizeStatus(row.status) === "processing").length;
+    const failed = filteredQueueRows.filter((row) => normalizeStatus(row.status) === "failed").length;
+    const totalAmount = filteredQueueRows.reduce((sum, row) => sum + safeNumber(row.amount), 0);
+    return { totalRows, pending, processing, failed, totalAmount };
+  }, [filteredQueueRows]);
+
+  const activeFilterSummary = useMemo(() => {
+    const statusText = statusFilter
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .join(" + ");
+
+    const extras: string[] = [];
+    if (searchPayoutId.trim()) extras.push(`Payout contains: ${searchPayoutId.trim()}`);
+    if (searchAccountId.trim()) extras.push(`Account contains: ${searchAccountId.trim()}`);
+
+    return {
+      statusText: statusText || "None",
+      extras: extras.length ? extras.join(" • ") : "No search narrowing applied.",
+    };
+  }, [statusFilter, searchPayoutId, searchAccountId]);
 
   const canMarkProcessing =
     !!selectedPayout &&
@@ -603,15 +614,6 @@ export default function AdminReferralPayoutsPage() {
     }
     return "Unknown status detected. Use caution before applying an action.";
   }, [selectedPayout, selectedStatus]);
-
-  const metrics = useMemo(() => {
-    const totalRows = filteredQueueRows.length;
-    const pending = filteredQueueRows.filter((row) => normalizeStatus(row.status) === "pending").length;
-    const processing = filteredQueueRows.filter((row) => normalizeStatus(row.status) === "processing").length;
-    const failed = filteredQueueRows.filter((row) => normalizeStatus(row.status) === "failed").length;
-    const totalAmount = filteredQueueRows.reduce((sum, row) => sum + safeNumber(row.amount), 0);
-    return { totalRows, pending, processing, failed, totalAmount };
-  }, [filteredQueueRows]);
 
   async function loadAuditHistory(payoutId: string, keyOverride?: string) {
     const key = (keyOverride || adminKey).trim();
@@ -720,6 +722,7 @@ export default function AdminReferralPayoutsPage() {
       );
 
       setQueueData(data);
+      setLastRefreshedAt(new Date().toISOString());
 
       const availableIds = new Set((data?.rows || []).map((row) => row.id));
       const nextSelectedId =
@@ -892,7 +895,7 @@ export default function AdminReferralPayoutsPage() {
   }
 
   function handleExportAuditCsv() {
-    if (filteredAuditRows.length === 0) {
+    if (auditRows.length === 0) {
       setNotice({
         tone: "warn",
         title: "Nothing to export",
@@ -902,7 +905,7 @@ export default function AdminReferralPayoutsPage() {
     }
 
     const payoutId = safeText(selectedPayoutId, "payout");
-    const csv = buildAuditCsv(filteredAuditRows);
+    const csv = buildAuditCsv(auditRows);
     const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
     downloadCsv(`payout-audit-${payoutId}-${stamp}.csv`, csv);
   }
@@ -1078,32 +1081,6 @@ export default function AdminReferralPayoutsPage() {
                   />
                 </div>
 
-                <CardsGrid min={180}>
-                  <div style={{ display: "grid", gap: 6 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-muted)" }}>
-                      Queue Date From
-                    </div>
-                    <input
-                      type="date"
-                      value={queueDateFrom}
-                      onChange={(e) => setQueueDateFrom(e.target.value)}
-                      style={appInputStyle()}
-                    />
-                  </div>
-
-                  <div style={{ display: "grid", gap: 6 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-muted)" }}>
-                      Queue Date To
-                    </div>
-                    <input
-                      type="date"
-                      value={queueDateTo}
-                      onChange={(e) => setQueueDateTo(e.target.value)}
-                      style={appInputStyle()}
-                    />
-                  </div>
-                </CardsGrid>
-
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
                   <button type="button" style={shellButtonPrimary()} onClick={() => void loadQueue(true)}>
                     Load Queue
@@ -1115,10 +1092,6 @@ export default function AdminReferralPayoutsPage() {
                     onClick={() => {
                       setSearchPayoutId("");
                       setSearchAccountId("");
-                      setQueueDateFrom("");
-                      setQueueDateTo("");
-                      setAuditDateFrom("");
-                      setAuditDateTo("");
                     }}
                   >
                     Clear Search
@@ -1147,6 +1120,19 @@ export default function AdminReferralPayoutsPage() {
                 <MetricCard label="Queue Amount" value={`NGN ${metrics.totalAmount.toFixed(2)}`} helper="Combined visible amount after filter/search." />
               </CardsGrid>
             </TwoColumnSection>
+
+            <div style={{ marginTop: 14 }}>
+              <div style={summaryBarStyle()}>
+                <div style={{ fontWeight: 800, color: "var(--text)" }}>Active filter summary</div>
+                <div style={{ color: "var(--text-muted)" }}>
+                  Status scope: <strong style={{ color: "var(--text)" }}>{activeFilterSummary.statusText}</strong>
+                </div>
+                <div style={{ color: "var(--text-muted)" }}>{activeFilterSummary.extras}</div>
+                <div style={{ color: "var(--text-muted)" }}>
+                  Last refreshed: <strong style={{ color: "var(--text)" }}>{formatDateTime(lastRefreshedAt)}</strong>
+                </div>
+              </div>
+            </div>
           </WorkspaceSectionCard>
 
           {loading ? (
@@ -1155,16 +1141,15 @@ export default function AdminReferralPayoutsPage() {
             </WorkspaceSectionCard>
           ) : (
             <TwoColumnSection>
-              <WorkspaceSectionCard
-                title="Payout queue"
-                subtitle="Select a payout row to inspect and manage."
-              >
-                <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
-                  <button
-                    type="button"
-                    style={exportButtonStyle()}
-                    onClick={handleExportQueueCsv}
-                  >
+              <WorkspaceSectionCard title="Payout queue" subtitle="Select a payout row to inspect and manage.">
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "flex-end",
+                    marginBottom: 12,
+                  }}
+                >
+                  <button type="button" style={exportButtonStyle()} onClick={handleExportQueueCsv}>
                     Export Queue CSV
                   </button>
                 </div>
@@ -1342,12 +1327,14 @@ export default function AdminReferralPayoutsPage() {
                       title="Audit history"
                       subtitle="Most recent admin actions recorded for this payout."
                     >
-                      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
-                        <button
-                          type="button"
-                          style={exportButtonStyle()}
-                          onClick={handleExportAuditCsv}
-                        >
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "flex-end",
+                          marginBottom: 12,
+                        }}
+                      >
+                        <button type="button" style={exportButtonStyle()} onClick={handleExportAuditCsv}>
                           Export Audit CSV
                         </button>
                       </div>
@@ -1367,15 +1354,7 @@ export default function AdminReferralPayoutsPage() {
                         </div>
                       ) : (
                         <div style={{ display: "grid", gap: 12 }}>
-                          {filteredAuditRows.length === 0 ? (
-                            <div style={infoBoxStyle()}>
-                              <div style={{ fontWeight: 800 }}>No audit rows in current date range</div>
-                              <div style={{ color: "var(--text-muted)" }}>
-                                Adjust the audit date filters or export after clearing the date range.
-                              </div>
-                            </div>
-                          ) : null}
-                          {filteredAuditRows.map((row, index) => (
+                          {auditRows.map((row, index) => (
                             <div key={row.id || `${row.created_at || "audit"}-${index}`} style={auditRowStyle()}>
                               <div
                                 style={{
