@@ -124,6 +124,27 @@ function safeNumber(value: unknown): number {
   return Number.isFinite(num) ? num : 0;
 }
 
+function toDateInputValue(value: string | null | undefined): string {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toISOString().slice(0, 10);
+}
+
+function matchesDateRange(
+  value: string | null | undefined,
+  startDate: string,
+  endDate: string
+): boolean {
+  if (!startDate && !endDate) return true;
+  if (!value) return false;
+  const itemDate = toDateInputValue(value);
+  if (!itemDate) return false;
+  if (startDate && itemDate < startDate) return false;
+  if (endDate && itemDate > endDate) return false;
+  return true;
+}
+
 function normalizeStatus(value: unknown): PayoutStatus {
   const status = safeText(value, "").toLowerCase();
   if (status === "pending" || status === "processing" || status === "paid" || status === "failed") {
@@ -478,6 +499,10 @@ export default function AdminReferralPayoutsPage() {
   const [failureReason, setFailureReason] = useState("");
   const [searchPayoutId, setSearchPayoutId] = useState("");
   const [searchAccountId, setSearchAccountId] = useState("");
+  const [queueDateFrom, setQueueDateFrom] = useState("");
+  const [queueDateTo, setQueueDateTo] = useState("");
+  const [auditDateFrom, setAuditDateFrom] = useState("");
+  const [auditDateTo, setAuditDateTo] = useState("");
 
   const [auditRows, setAuditRows] = useState<AuditLogRow[]>([]);
   const [auditLoading, setAuditLoading] = useState(false);
@@ -514,9 +539,20 @@ export default function AdminReferralPayoutsPage() {
       const payoutMatch = !payoutTerm || safeText(row.id, "").toLowerCase().includes(payoutTerm);
       const accountMatch =
         !accountTerm || safeText(row.account_id, "").toLowerCase().includes(accountTerm);
-      return payoutMatch && accountMatch;
+      const dateMatch = matchesDateRange(
+        row.requested_at || row.created_at,
+        queueDateFrom,
+        queueDateTo
+      );
+      return payoutMatch && accountMatch && dateMatch;
     });
-  }, [queueRows, searchPayoutId, searchAccountId]);
+  }, [queueRows, searchPayoutId, searchAccountId, queueDateFrom, queueDateTo]);
+
+  const filteredAuditRows = useMemo(() => {
+    return auditRows.filter((row) =>
+      matchesDateRange(row.created_at, auditDateFrom, auditDateTo)
+    );
+  }, [auditRows, auditDateFrom, auditDateTo]);
 
   const fullSummary = useMemo(() => {
     const pendingRows = queueRows.filter((row) => normalizeStatus(row.status) === "pending");
@@ -856,7 +892,7 @@ export default function AdminReferralPayoutsPage() {
   }
 
   function handleExportAuditCsv() {
-    if (auditRows.length === 0) {
+    if (filteredAuditRows.length === 0) {
       setNotice({
         tone: "warn",
         title: "Nothing to export",
@@ -866,7 +902,7 @@ export default function AdminReferralPayoutsPage() {
     }
 
     const payoutId = safeText(selectedPayoutId, "payout");
-    const csv = buildAuditCsv(auditRows);
+    const csv = buildAuditCsv(filteredAuditRows);
     const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
     downloadCsv(`payout-audit-${payoutId}-${stamp}.csv`, csv);
   }
@@ -1042,6 +1078,32 @@ export default function AdminReferralPayoutsPage() {
                   />
                 </div>
 
+                <CardsGrid min={180}>
+                  <div style={{ display: "grid", gap: 6 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-muted)" }}>
+                      Queue Date From
+                    </div>
+                    <input
+                      type="date"
+                      value={queueDateFrom}
+                      onChange={(e) => setQueueDateFrom(e.target.value)}
+                      style={appInputStyle()}
+                    />
+                  </div>
+
+                  <div style={{ display: "grid", gap: 6 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-muted)" }}>
+                      Queue Date To
+                    </div>
+                    <input
+                      type="date"
+                      value={queueDateTo}
+                      onChange={(e) => setQueueDateTo(e.target.value)}
+                      style={appInputStyle()}
+                    />
+                  </div>
+                </CardsGrid>
+
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
                   <button type="button" style={shellButtonPrimary()} onClick={() => void loadQueue(true)}>
                     Load Queue
@@ -1053,6 +1115,10 @@ export default function AdminReferralPayoutsPage() {
                     onClick={() => {
                       setSearchPayoutId("");
                       setSearchAccountId("");
+                      setQueueDateFrom("");
+                      setQueueDateTo("");
+                      setAuditDateFrom("");
+                      setAuditDateTo("");
                     }}
                   >
                     Clear Search
@@ -1301,7 +1367,15 @@ export default function AdminReferralPayoutsPage() {
                         </div>
                       ) : (
                         <div style={{ display: "grid", gap: 12 }}>
-                          {auditRows.map((row, index) => (
+                          {filteredAuditRows.length === 0 ? (
+                            <div style={infoBoxStyle()}>
+                              <div style={{ fontWeight: 800 }}>No audit rows in current date range</div>
+                              <div style={{ color: "var(--text-muted)" }}>
+                                Adjust the audit date filters or export after clearing the date range.
+                              </div>
+                            </div>
+                          ) : null}
+                          {filteredAuditRows.map((row, index) => (
                             <div key={row.id || `${row.created_at || "audit"}-${index}`} style={auditRowStyle()}>
                               <div
                                 style={{
