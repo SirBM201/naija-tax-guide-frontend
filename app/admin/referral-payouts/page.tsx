@@ -301,6 +301,8 @@ export default function AdminReferralPayoutsPage() {
   const [providerReference, setProviderReference] = useState("");
   const [providerTransferCode, setProviderTransferCode] = useState("");
   const [failureReason, setFailureReason] = useState("");
+  const [searchPayoutId, setSearchPayoutId] = useState("");
+  const [searchAccountId, setSearchAccountId] = useState("");
 
   const [notice, setNotice] = useState<{
     tone: NoticeTone;
@@ -323,6 +325,17 @@ export default function AdminReferralPayoutsPage() {
 
   const queueRows = queueData?.rows || [];
   const selectedStatus = normalizeStatus(selectedPayout?.status);
+
+  const filteredQueueRows = useMemo(() => {
+    const payoutTerm = searchPayoutId.trim().toLowerCase();
+    const accountTerm = searchAccountId.trim().toLowerCase();
+
+    return queueRows.filter((row) => {
+      const payoutMatch = !payoutTerm || safeText(row.id, "").toLowerCase().includes(payoutTerm);
+      const accountMatch = !accountTerm || safeText(row.account_id, "").toLowerCase().includes(accountTerm);
+      return payoutMatch && accountMatch;
+    });
+  }, [queueRows, searchPayoutId, searchAccountId]);
 
   const canMarkProcessing =
     !!selectedPayout &&
@@ -349,13 +362,13 @@ export default function AdminReferralPayoutsPage() {
   }, [selectedPayout, selectedStatus]);
 
   const metrics = useMemo(() => {
-    const totalRows = queueRows.length;
-    const pending = queueRows.filter((row) => normalizeStatus(row.status) === "pending").length;
-    const processing = queueRows.filter((row) => normalizeStatus(row.status) === "processing").length;
-    const failed = queueRows.filter((row) => normalizeStatus(row.status) === "failed").length;
-    const totalAmount = queueRows.reduce((sum, row) => sum + safeNumber(row.amount), 0);
+    const totalRows = filteredQueueRows.length;
+    const pending = filteredQueueRows.filter((row) => normalizeStatus(row.status) === "pending").length;
+    const processing = filteredQueueRows.filter((row) => normalizeStatus(row.status) === "processing").length;
+    const failed = filteredQueueRows.filter((row) => normalizeStatus(row.status) === "failed").length;
+    const totalAmount = filteredQueueRows.reduce((sum, row) => sum + safeNumber(row.amount), 0);
     return { totalRows, pending, processing, failed, totalAmount };
-  }, [queueRows]);
+  }, [filteredQueueRows]);
 
   async function loadSinglePayout(payoutId: string, keyOverride?: string) {
     const key = (keyOverride || adminKey).trim();
@@ -627,9 +640,46 @@ export default function AdminReferralPayoutsPage() {
                   </select>
                 </div>
 
+                <div style={{ display: "grid", gap: 6 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-muted)" }}>
+                    Search by Payout ID
+                  </div>
+                  <input
+                    type="text"
+                    value={searchPayoutId}
+                    onChange={(e) => setSearchPayoutId(e.target.value)}
+                    placeholder="Paste full or partial payout ID"
+                    style={appInputStyle()}
+                  />
+                </div>
+
+                <div style={{ display: "grid", gap: 6 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-muted)" }}>
+                    Search by Account ID
+                  </div>
+                  <input
+                    type="text"
+                    value={searchAccountId}
+                    onChange={(e) => setSearchAccountId(e.target.value)}
+                    placeholder="Paste full or partial account ID"
+                    style={appInputStyle()}
+                  />
+                </div>
+
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
                   <button type="button" style={shellButtonPrimary()} onClick={() => void loadQueue(true)}>
                     Load Queue
+                  </button>
+
+                  <button
+                    type="button"
+                    style={shellButtonSecondary()}
+                    onClick={() => {
+                      setSearchPayoutId("");
+                      setSearchAccountId("");
+                    }}
+                  >
+                    Clear Search
                   </button>
 
                   <button
@@ -648,11 +698,11 @@ export default function AdminReferralPayoutsPage() {
               </div>
 
               <CardsGrid min={180}>
-                <MetricCard label="Queue Rows" value={String(metrics.totalRows)} helper="Rows currently loaded into this admin queue view." />
-                <MetricCard label="Pending" value={String(metrics.pending)} helper="Requests waiting for action." />
-                <MetricCard label="Processing" value={String(metrics.processing)} helper="Rows already pushed into transfer processing." />
-                <MetricCard label="Failed" value={String(metrics.failed)} helper="Rows that need admin attention or retry." />
-                <MetricCard label="Queue Amount" value={`NGN ${metrics.totalAmount.toFixed(2)}`} helper="Combined visible amount in the loaded queue." />
+                <MetricCard label="Queue Rows" value={String(metrics.totalRows)} helper="Rows currently visible after filter/search." />
+                <MetricCard label="Pending" value={String(metrics.pending)} helper="Visible requests waiting for action." />
+                <MetricCard label="Processing" value={String(metrics.processing)} helper="Visible rows already in transfer processing." />
+                <MetricCard label="Failed" value={String(metrics.failed)} helper="Visible rows that need admin attention or retry." />
+                <MetricCard label="Queue Amount" value={`NGN ${metrics.totalAmount.toFixed(2)}`} helper="Combined visible amount after filter/search." />
               </CardsGrid>
             </TwoColumnSection>
           </WorkspaceSectionCard>
@@ -664,14 +714,16 @@ export default function AdminReferralPayoutsPage() {
           ) : (
             <TwoColumnSection>
               <WorkspaceSectionCard title="Payout queue" subtitle="Select a payout row to inspect and manage.">
-                {queueRows.length === 0 ? (
+                {filteredQueueRows.length === 0 ? (
                   <div style={infoBoxStyle()}>
                     <div style={{ fontWeight: 800 }}>No payout rows found</div>
-                    <div style={{ color: "var(--text-muted)" }}>Try another status filter or refresh the queue again.</div>
+                    <div style={{ color: "var(--text-muted)" }}>
+                      Try another filter, clear search, or refresh the queue again.
+                    </div>
                   </div>
                 ) : (
                   <div style={{ display: "grid", gap: 12 }}>
-                    {queueRows.map((row) => {
+                    {filteredQueueRows.map((row) => {
                       const active = row.id === selectedPayoutId;
                       const rowStatus = normalizeStatus(row.status);
                       return (
