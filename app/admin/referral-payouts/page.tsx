@@ -1092,7 +1092,8 @@ export default function AdminReferralPayoutsPage() {
               <WorkspaceSectionCard
                 title="Payout queue"
                 subtitle="Select a payout row to inspect and manage."
-                actions={
+              >
+                <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
                   <button
                     type="button"
                     style={exportButtonStyle()}
@@ -1100,8 +1101,8 @@ export default function AdminReferralPayoutsPage() {
                   >
                     Export Queue CSV
                   </button>
-                }
-              >
+                </div>
+
                 {filteredQueueRows.length === 0 ? (
                   <div style={infoBoxStyle()}>
                     <div style={{ fontWeight: 800 }}>No payout rows found</div>
@@ -1274,7 +1275,8 @@ export default function AdminReferralPayoutsPage() {
                     <WorkspaceSectionCard
                       title="Audit history"
                       subtitle="Most recent admin actions recorded for this payout."
-                      actions={
+                    >
+                      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
                         <button
                           type="button"
                           style={exportButtonStyle()}
@@ -1282,8 +1284,8 @@ export default function AdminReferralPayoutsPage() {
                         >
                           Export Audit CSV
                         </button>
-                      }
-                    >
+                      </div>
+
                       {auditLoading ? (
                         <div style={{ color: "var(--text-muted)" }}>Loading audit history...</div>
                       ) : auditError ? (
