@@ -111,7 +111,7 @@ function listRowStyle(active: boolean): React.CSSProperties {
     background: active ? "rgba(78, 110, 255, 0.14)" : "var(--surface)",
     padding: 14,
     display: "grid",
-    gap: 6,
+    gap: 8,
     cursor: "pointer",
   };
 }
@@ -153,6 +153,58 @@ function confirmationCardStyle(): React.CSSProperties {
     gap: 14,
     boxShadow: "0 20px 60px rgba(0,0,0,0.25)",
   };
+}
+
+function statusBadgeStyle(status: PayoutStatus): React.CSSProperties {
+  const palette: Record<PayoutStatus, { bg: string; border: string; text: string }> = {
+    pending: {
+      bg: "rgba(245, 158, 11, 0.14)",
+      border: "rgba(245, 158, 11, 0.35)",
+      text: "#f59e0b",
+    },
+    processing: {
+      bg: "rgba(59, 130, 246, 0.14)",
+      border: "rgba(59, 130, 246, 0.35)",
+      text: "#60a5fa",
+    },
+    paid: {
+      bg: "rgba(34, 197, 94, 0.14)",
+      border: "rgba(34, 197, 94, 0.35)",
+      text: "#4ade80",
+    },
+    failed: {
+      bg: "rgba(239, 68, 68, 0.14)",
+      border: "rgba(239, 68, 68, 0.35)",
+      text: "#f87171",
+    },
+    unknown: {
+      bg: "rgba(148, 163, 184, 0.14)",
+      border: "rgba(148, 163, 184, 0.35)",
+      text: "#cbd5e1",
+    },
+  };
+
+  const c = palette[status];
+  return {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    minWidth: 92,
+    padding: "6px 12px",
+    borderRadius: 999,
+    border: `1px solid ${c.border}`,
+    background: c.bg,
+    color: c.text,
+    fontSize: 12,
+    fontWeight: 800,
+    textTransform: "uppercase",
+    letterSpacing: "0.04em",
+  };
+}
+
+function StatusBadge({ status }: { status: PayoutStatus }) {
+  return <span style={statusBadgeStyle(status)}>{status}</span>;
 }
 
 async function adminFetch<T>(
@@ -621,15 +673,19 @@ export default function AdminReferralPayoutsPage() {
                   <div style={{ display: "grid", gap: 12 }}>
                     {queueRows.map((row) => {
                       const active = row.id === selectedPayoutId;
+                      const rowStatus = normalizeStatus(row.status);
                       return (
                         <div key={row.id} style={listRowStyle(active)} onClick={() => void loadSinglePayout(row.id)}>
-                          <div style={{ fontWeight: 800, color: "var(--text)" }}>{safeText(row.id)}</div>
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                            <div style={{ fontWeight: 800, color: "var(--text)" }}>{safeText(row.id)}</div>
+                            <StatusBadge status={rowStatus} />
+                          </div>
                           <div style={{ color: "var(--text-muted)" }}>Account: {safeText(row.account_id)}</div>
                           <div style={{ color: "var(--text-muted)" }}>
                             Amount: {safeText(row.currency, "NGN")} {safeText(row.amount, "0")}
                           </div>
                           <div style={{ color: "var(--text-muted)" }}>
-                            Status: {safeText(row.status)} • Requested: {formatDate(row.requested_at || row.created_at)}
+                            Requested: {formatDate(row.requested_at || row.created_at)}
                           </div>
                         </div>
                       );
@@ -663,6 +719,10 @@ export default function AdminReferralPayoutsPage() {
                     {actionSuccess ? (
                       <Banner tone="good" title="Action completed" subtitle={actionSuccess} />
                     ) : null}
+
+                    <div style={{ display: "flex", justifyContent: "flex-start" }}>
+                      <StatusBadge status={selectedStatus} />
+                    </div>
 
                     <CardsGrid min={180}>
                       <MetricCard
