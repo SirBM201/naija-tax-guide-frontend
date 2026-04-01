@@ -15,7 +15,11 @@ import {
   appSelectStyle,
   formatDate,
 } from "@/components/ui";
-import { CardsGrid, SectionStack, TwoColumnSection } from "@/components/page-layout";
+import {
+  CardsGrid,
+  SectionStack,
+  TwoColumnSection,
+} from "@/components/page-layout";
 
 type NoticeTone = "good" | "warn" | "danger" | "default";
 type PayoutStatus = "pending" | "processing" | "paid" | "failed" | "unknown";
@@ -51,6 +55,28 @@ type QueueResponse = {
 type SinglePayoutResponse = {
   ok?: boolean;
   payout?: PayoutRow;
+  error?: string;
+  root_cause?: string;
+  message?: string;
+};
+
+type AuditLogRow = {
+  id?: string;
+  payout_id?: string | null;
+  account_id?: string | null;
+  action?: string | null;
+  old_status?: string | null;
+  new_status?: string | null;
+  provider_reference?: string | null;
+  provider_transfer_code?: string | null;
+  failure_reason?: string | null;
+  metadata?: Record<string, unknown> | null;
+  created_at?: string | null;
+};
+
+type AuditLogResponse = {
+  ok?: boolean;
+  rows?: AuditLogRow[];
   error?: string;
   root_cause?: string;
   message?: string;
@@ -207,6 +233,17 @@ function StatusBadge({ status }: { status: PayoutStatus }) {
   return <span style={statusBadgeStyle(status)}>{status}</span>;
 }
 
+function auditRowStyle(): React.CSSProperties {
+  return {
+    border: "1px solid var(--border)",
+    borderRadius: 14,
+    background: "var(--surface)",
+    padding: 14,
+    display: "grid",
+    gap: 8,
+  };
+}
+
 async function adminFetch<T>(
   path: string,
   adminKey: string,
@@ -284,6 +321,15 @@ function buildConfirmationContent(action: Exclude<ActionType, "">, payout: Payou
   };
 }
 
+function actionLabel(value: string | null | undefined): string {
+  const raw = safeText(value, "");
+  if (!raw) return "Unknown action";
+  return raw
+    .replace(/_/g, " ")
+    .replace(/-/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
 export default function AdminReferralPayoutsPage() {
   const router = useRouter();
   const { authReady, requireAuth } = useAuth();
@@ -303,6 +349,11 @@ export default function AdminReferralPayoutsPage() {
   const [failureReason, setFailureReason] = useState("");
   const [searchPayoutId, setSearchPayoutId] = useState("");
   const [searchAccountId, setSearchAccountId] = useState("");
+
+  const [auditRows, setAuditRows] = useState<AuditLogRow[]>([]);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditError, setAuditError] = useState("");
+  const [auditInfo, setAuditInfo] = useState("");
 
   const [notice, setNotice] = useState<{
     tone: NoticeTone;
@@ -332,7 +383,8 @@ export default function AdminReferralPayoutsPage() {
 
     return queueRows.filter((row) => {
       const payoutMatch = !payoutTerm || safeText(row.id, "").toLowerCase().includes(payoutTerm);
-      const accountMatch = !accountTerm || safeText(row.account_id, "").toLowerCase().includes(accountTerm);
+      const accountMatch =
+        !accountTerm || safeText(row.account_id, "").toLowerCase().includes(accountTerm);
       return payoutMatch && accountMatch;
     });
   }, [queueRows, searchPayoutId, searchAccountId]);
@@ -354,10 +406,18 @@ export default function AdminReferralPayoutsPage() {
 
   const actionHint = useMemo(() => {
     if (!selectedPayout) return "Select a payout row to enable actions.";
-    if (selectedStatus === "paid") return "This payout is already marked as paid. Further status changes are disabled.";
-    if (selectedStatus === "processing") return "This payout is already in processing. You can mark it paid or failed.";
-    if (selectedStatus === "failed") return "This payout previously failed. You can retry by marking it processing.";
-    if (selectedStatus === "pending") return "Recommended flow: Mark Processing first, then Mark Paid after transfer confirmation.";
+    if (selectedStatus === "paid") {
+      return "This payout is already marked as paid. Further status changes are disabled.";
+    }
+    if (selectedStatus === "processing") {
+      return "This payout is already in processing. You can mark it paid or failed.";
+    }
+    if (selectedStatus === "failed") {
+      return "This payout previously failed. You can retry by marking it processing.";
+    }
+    if (selectedStatus === "pending") {
+      return "Recommended flow: Mark Processing first, then Mark Paid after transfer confirmation.";
+    }
     return "Unknown status detected. Use caution before applying an action.";
   }, [selectedPayout, selectedStatus]);
 
@@ -370,11 +430,48 @@ export default function AdminReferralPayoutsPage() {
     return { totalRows, pending, processing, failed, totalAmount };
   }, [filteredQueueRows]);
 
+  async function loadAuditHistory(payoutId: string, keyOverride?: string) {
+    const key = (keyOverride || adminKey).trim();
+    if (!payoutId || !key) {
+      setAuditRows([]);
+      setAuditLoading(false);
+      setAuditError("");
+      setAuditInfo("");
+      return;
+    }
+
+    setAuditLoading(true);
+    setAuditError("");
+    setAuditInfo("");
+
+    try {
+      const data = await adminFetch<AuditLogResponse>(
+        `/admin/referral-payouts/${encodeURIComponent(payoutId)}/audit`,
+        key
+      );
+      const rows = Array.isArray(data?.rows) ? data.rows : [];
+      setAuditRows(rows);
+      if (rows.length === 0) {
+        setAuditInfo("No audit history recorded yet for this payout.");
+      }
+    } catch (e: unknown) {
+      setAuditRows([]);
+      const message =
+        e instanceof Error ? e.message : "Could not load audit history for this payout.";
+      setAuditError(message);
+    } finally {
+      setAuditLoading(false);
+    }
+  }
+
   async function loadSinglePayout(payoutId: string, keyOverride?: string) {
     const key = (keyOverride || adminKey).trim();
     if (!payoutId || !key) {
       setSelectedPayout(null);
       setSelectedPayoutId("");
+      setAuditRows([]);
+      setAuditError("");
+      setAuditInfo("");
       return;
     }
 
@@ -392,9 +489,14 @@ export default function AdminReferralPayoutsPage() {
         setProviderTransferCode(safeText(data.payout.provider_transfer_code, ""));
         setFailureReason(safeText(data.payout.failure_reason, ""));
       }
+
+      await loadAuditHistory(payoutId, key);
     } catch (e: unknown) {
       setSelectedPayout(null);
       setSelectedPayoutId("");
+      setAuditRows([]);
+      setAuditError("");
+      setAuditInfo("");
       setErrorText(e instanceof Error ? e.message : "Could not load payout details.");
     }
   }
@@ -408,6 +510,10 @@ export default function AdminReferralPayoutsPage() {
       setRefreshing(false);
       setQueueData({ ok: true, count: 0, rows: [] });
       setSelectedPayout(null);
+      setSelectedPayoutId("");
+      setAuditRows([]);
+      setAuditError("");
+      setAuditInfo("");
       setErrorText("");
       return;
     }
@@ -436,11 +542,17 @@ export default function AdminReferralPayoutsPage() {
       } else {
         setSelectedPayout(null);
         setSelectedPayoutId("");
+        setAuditRows([]);
+        setAuditError("");
+        setAuditInfo("");
       }
     } catch (e: unknown) {
       setQueueData(null);
       setSelectedPayout(null);
       setSelectedPayoutId("");
+      setAuditRows([]);
+      setAuditError("");
+      setAuditInfo("");
       setErrorText(e instanceof Error ? e.message : "Could not load payout queue.");
     } finally {
       setLoading(false);
@@ -451,7 +563,6 @@ export default function AdminReferralPayoutsPage() {
   useEffect(() => {
     if (!authReady) return;
     void loadQueue(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authReady]);
 
   async function handleRefresh() {
@@ -561,7 +672,7 @@ export default function AdminReferralPayoutsPage() {
       });
 
       await loadQueue(true);
-      await loadSinglePayout(payoutId);
+      await loadSinglePayout(payoutId, key);
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : "Could not update payout row.";
       setActionError(message);
@@ -728,7 +839,15 @@ export default function AdminReferralPayoutsPage() {
                       const rowStatus = normalizeStatus(row.status);
                       return (
                         <div key={row.id} style={listRowStyle(active)} onClick={() => void loadSinglePayout(row.id)}>
-                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              gap: 10,
+                              flexWrap: "wrap",
+                            }}
+                          >
                             <div style={{ fontWeight: 800, color: "var(--text)" }}>{safeText(row.id)}</div>
                             <StatusBadge status={rowStatus} />
                           </div>
@@ -746,7 +865,7 @@ export default function AdminReferralPayoutsPage() {
                 )}
               </WorkspaceSectionCard>
 
-              <WorkspaceSectionCard title="Payout details" subtitle="Inspect the selected payout row and update its processing state.">
+              <WorkspaceSectionCard title="Payout details" subtitle="Inspect the selected payout row, update its processing state, and review its audit trail.">
                 {!selectedPayout ? (
                   <div style={infoBoxStyle()}>
                     <div style={{ fontWeight: 800 }}>No payout selected</div>
@@ -874,6 +993,71 @@ export default function AdminReferralPayoutsPage() {
                         {safeText(selectedPayout.failure_reason, "None")}
                       </div>
                     </div>
+
+                    <WorkspaceSectionCard
+                      title="Audit history"
+                      subtitle="Most recent admin actions recorded for this payout."
+                    >
+                      {auditLoading ? (
+                        <div style={{ color: "var(--text-muted)" }}>Loading audit history...</div>
+                      ) : auditError ? (
+                        <Banner
+                          tone="warn"
+                          title="Audit history unavailable"
+                          subtitle={auditError}
+                        />
+                      ) : auditInfo ? (
+                        <div style={infoBoxStyle()}>
+                          <div style={{ fontWeight: 800 }}>No audit entries yet</div>
+                          <div style={{ color: "var(--text-muted)" }}>{auditInfo}</div>
+                        </div>
+                      ) : (
+                        <div style={{ display: "grid", gap: 12 }}>
+                          {auditRows.map((row, index) => (
+                            <div key={row.id || `${row.created_at || "audit"}-${index}`} style={auditRowStyle()}>
+                              <div
+                                style={{
+                                  display: "flex",
+                                  justifyContent: "space-between",
+                                  gap: 10,
+                                  flexWrap: "wrap",
+                                  alignItems: "center",
+                                }}
+                              >
+                                <div style={{ fontWeight: 800, color: "var(--text)" }}>
+                                  {actionLabel(row.action)}
+                                </div>
+                                <div style={{ color: "var(--text-muted)", fontSize: 13 }}>
+                                  {formatDate(row.created_at)}
+                                </div>
+                              </div>
+
+                              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                                <StatusBadge status={normalizeStatus(row.old_status)} />
+                                <span style={{ color: "var(--text-muted)", fontWeight: 700 }}>→</span>
+                                <StatusBadge status={normalizeStatus(row.new_status)} />
+                              </div>
+
+                              <div style={{ color: "var(--text-muted)" }}>
+                                Account: {safeText(row.account_id)}
+                              </div>
+
+                              <div style={{ color: "var(--text-muted)" }}>
+                                Provider Ref: {safeText(row.provider_reference, "None")}
+                              </div>
+
+                              <div style={{ color: "var(--text-muted)" }}>
+                                Transfer Code: {safeText(row.provider_transfer_code, "None")}
+                              </div>
+
+                              <div style={{ color: "var(--text-muted)" }}>
+                                Failure Reason: {safeText(row.failure_reason, "None")}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </WorkspaceSectionCard>
                   </div>
                 )}
               </WorkspaceSectionCard>
@@ -902,7 +1086,10 @@ export default function AdminReferralPayoutsPage() {
                   color: "var(--text-muted)",
                 }}
               >
-                Failure reason to submit: <strong style={{ color: "var(--text)" }}>{safeText(failureReason, "None")}</strong>
+                Failure reason to submit:{" "}
+                <strong style={{ color: "var(--text)" }}>
+                  {safeText(failureReason, "None")}
+                </strong>
               </div>
             ) : null}
 
