@@ -106,6 +106,19 @@ function safeText(value: unknown, fallback = "—"): string {
   return text || fallback;
 }
 
+function safeCsvValue(value: unknown): string {
+  const text =
+    value == null
+      ? ""
+      : typeof value === "string"
+        ? value
+        : typeof value === "object"
+          ? JSON.stringify(value)
+          : String(value);
+
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
 function safeNumber(value: unknown): number {
   const num = Number(value ?? 0);
   return Number.isFinite(num) ? num : 0;
@@ -242,6 +255,14 @@ function quickFilterChipStyle(active: boolean): React.CSSProperties {
   };
 }
 
+function exportButtonStyle(): React.CSSProperties {
+  return {
+    ...shellButtonSecondary(),
+    fontSize: 13,
+    padding: "10px 14px",
+  };
+}
+
 function StatusBadge({ status }: { status: PayoutStatus }) {
   return <span style={statusBadgeStyle(status)}>{status}</span>;
 }
@@ -305,6 +326,101 @@ async function adminFetch<T>(
   }
 
   return data as T;
+}
+
+function downloadCsv(filename: string, csvContent: string) {
+  if (typeof window === "undefined") return;
+  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.setAttribute("download", filename);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.URL.revokeObjectURL(url);
+}
+
+function buildQueueCsv(rows: PayoutRow[]): string {
+  const headers = [
+    "id",
+    "account_id",
+    "amount",
+    "currency",
+    "status",
+    "provider",
+    "provider_reference",
+    "provider_transfer_code",
+    "requested_at",
+    "processed_at",
+    "paid_at",
+    "failed_at",
+    "failure_reason",
+    "created_at",
+    "updated_at",
+  ];
+
+  const lines = [
+    headers.join(","),
+    ...rows.map((row) =>
+      [
+        safeCsvValue(row.id),
+        safeCsvValue(row.account_id),
+        safeCsvValue(row.amount),
+        safeCsvValue(row.currency),
+        safeCsvValue(row.status),
+        safeCsvValue(row.provider),
+        safeCsvValue(row.provider_reference),
+        safeCsvValue(row.provider_transfer_code),
+        safeCsvValue(row.requested_at),
+        safeCsvValue(row.processed_at),
+        safeCsvValue(row.paid_at),
+        safeCsvValue(row.failed_at),
+        safeCsvValue(row.failure_reason),
+        safeCsvValue(row.created_at),
+        safeCsvValue(row.updated_at),
+      ].join(",")
+    ),
+  ];
+
+  return lines.join("\n");
+}
+
+function buildAuditCsv(rows: AuditLogRow[]): string {
+  const headers = [
+    "id",
+    "payout_id",
+    "account_id",
+    "action",
+    "old_status",
+    "new_status",
+    "provider_reference",
+    "provider_transfer_code",
+    "failure_reason",
+    "metadata",
+    "created_at",
+  ];
+
+  const lines = [
+    headers.join(","),
+    ...rows.map((row) =>
+      [
+        safeCsvValue(row.id),
+        safeCsvValue(row.payout_id),
+        safeCsvValue(row.account_id),
+        safeCsvValue(row.action),
+        safeCsvValue(row.old_status),
+        safeCsvValue(row.new_status),
+        safeCsvValue(row.provider_reference),
+        safeCsvValue(row.provider_transfer_code),
+        safeCsvValue(row.failure_reason),
+        safeCsvValue(row.metadata),
+        safeCsvValue(row.created_at),
+      ].join(",")
+    ),
+  ];
+
+  return lines.join("\n");
 }
 
 function buildConfirmationContent(action: Exclude<ActionType, "">, payout: PayoutRow | null) {
@@ -563,7 +679,7 @@ export default function AdminReferralPayoutsPage() {
 
     try {
       const data = await adminFetch<QueueResponse>(
-        `/admin/referral-payouts?status=${encodeURIComponent(appliedFilter)}&limit=50`,
+        `/admin/referral-payouts?status=${encodeURIComponent(appliedFilter)}&limit=200`,
         key
       );
 
@@ -722,6 +838,37 @@ export default function AdminReferralPayoutsPage() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  function handleExportQueueCsv() {
+    if (filteredQueueRows.length === 0) {
+      setNotice({
+        tone: "warn",
+        title: "Nothing to export",
+        subtitle: "There are no visible payout queue rows to export right now.",
+      });
+      return;
+    }
+
+    const csv = buildQueueCsv(filteredQueueRows);
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+    downloadCsv(`payout-queue-${stamp}.csv`, csv);
+  }
+
+  function handleExportAuditCsv() {
+    if (auditRows.length === 0) {
+      setNotice({
+        tone: "warn",
+        title: "Nothing to export",
+        subtitle: "There are no audit history rows loaded for the selected payout.",
+      });
+      return;
+    }
+
+    const payoutId = safeText(selectedPayoutId, "payout");
+    const csv = buildAuditCsv(auditRows);
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+    downloadCsv(`payout-audit-${payoutId}-${stamp}.csv`, csv);
   }
 
   const confirmationContent = confirmAction
@@ -942,7 +1089,19 @@ export default function AdminReferralPayoutsPage() {
             </WorkspaceSectionCard>
           ) : (
             <TwoColumnSection>
-              <WorkspaceSectionCard title="Payout queue" subtitle="Select a payout row to inspect and manage.">
+              <WorkspaceSectionCard
+                title="Payout queue"
+                subtitle="Select a payout row to inspect and manage."
+                actions={
+                  <button
+                    type="button"
+                    style={exportButtonStyle()}
+                    onClick={handleExportQueueCsv}
+                  >
+                    Export Queue CSV
+                  </button>
+                }
+              >
                 {filteredQueueRows.length === 0 ? (
                   <div style={infoBoxStyle()}>
                     <div style={{ fontWeight: 800 }}>No payout rows found</div>
@@ -1115,6 +1274,15 @@ export default function AdminReferralPayoutsPage() {
                     <WorkspaceSectionCard
                       title="Audit history"
                       subtitle="Most recent admin actions recorded for this payout."
+                      actions={
+                        <button
+                          type="button"
+                          style={exportButtonStyle()}
+                          onClick={handleExportAuditCsv}
+                        >
+                          Export Audit CSV
+                        </button>
+                      }
                     >
                       {auditLoading ? (
                         <div style={{ color: "var(--text-muted)" }}>Loading audit history...</div>
