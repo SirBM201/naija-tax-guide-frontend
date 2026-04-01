@@ -505,10 +505,9 @@ export default function AdminReferralPayoutsPage() {
     }
   }
 
-  const confirmationContent =
-    confirmAction && confirmAction !== ""
-      ? buildConfirmationContent(confirmAction, selectedPayout)
-      : null;
+  const confirmationContent = confirmAction
+    ? buildConfirmationContent(confirmAction, selectedPayout)
+    : null;
 
   return (
     <>
