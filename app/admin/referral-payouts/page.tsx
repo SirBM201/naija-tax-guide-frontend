@@ -808,7 +808,7 @@ export default function AdminReferralPayoutsPage() {
                 type="button"
                 style={shellButtonPrimary()}
                 onClick={() => {
-                  if (confirmAction && confirmAction !== "") {
+                  if (confirmAction) {
                     void submitStatusUpdate(confirmAction);
                   }
                 }}
