@@ -52,6 +52,7 @@ type QueueResponse = {
 type SinglePayoutResponse = {
   ok?: boolean;
   payout?: PayoutRow;
+  updated_reward_ids?: string[];
   error?: string;
   root_cause?: string;
   message?: string;
@@ -94,17 +95,23 @@ type BulkResponse = {
 const ADMIN_KEY_STORAGE_KEY = "nt_admin_api_key";
 const DEFAULT_STATUS_FILTER: StatusFilterValue = "pending,processing,failed";
 
-function resolveApiBase(): string {
-  const envBase = (
-    process.env.NEXT_PUBLIC_API_BASE ||
-    process.env.NEXT_PUBLIC_API_BASE_URL ||
-    ""
-  ).trim();
+function normalizeApiBase(raw: string): string {
+  const value = (raw || "").trim().replace(/\/+$/, "");
+  if (!value) return "";
+  if (value.endsWith("/api")) return value;
+  return `${value}/api`;
+}
 
-  if (envBase) return envBase.replace(/\/+$/, "");
+function resolveApiBase(): string {
+  const envBase = normalizeApiBase(
+    process.env.NEXT_PUBLIC_API_BASE || process.env.NEXT_PUBLIC_API_BASE_URL || ""
+  );
+  if (envBase) return envBase;
+
   if (typeof window !== "undefined") {
     return `${window.location.origin.replace(/\/+$/, "")}/api`;
   }
+
   return "/api";
 }
 
@@ -294,7 +301,8 @@ async function adminFetch<T>(
   }
 ): Promise<T> {
   const apiBase = resolveApiBase();
-  const url = `${apiBase}${path.startsWith("/") ? path : `/${path}`}`;
+  const cleanPath = path.startsWith("/") ? path : `/${path}`;
+  const url = `${apiBase}${cleanPath}`;
 
   const headers: Record<string, string> = {
     Accept: "application/json",
@@ -1233,8 +1241,8 @@ export default function AdminReferralPayoutsPage() {
             ? "marked as paid"
             : "marked as failed";
 
-      const rewardCount = Array.isArray((data as any)?.updated_reward_ids)
-        ? (data as any).updated_reward_ids.length
+      const rewardCount = Array.isArray(data?.updated_reward_ids)
+        ? data.updated_reward_ids.length
         : 0;
 
       setActionSuccess(
