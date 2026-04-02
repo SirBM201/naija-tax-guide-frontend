@@ -37,6 +37,7 @@ type PayoutRow = {
   failure_reason?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
+  metadata?: Record<string, unknown> | null;
 };
 
 type QueueResponse = {
@@ -87,14 +88,18 @@ type BulkResponse = {
   successes?: { payout_id: string; status?: string; reward_count?: number }[];
   failures?: { payout_id: string; error: string }[];
   error?: string;
+  root_cause?: string;
 };
 
 const ADMIN_KEY_STORAGE_KEY = "nt_admin_api_key";
 const DEFAULT_STATUS_FILTER: StatusFilterValue = "pending,processing,failed";
 
 function resolveApiBase(): string {
-  const envBase =
-    (process.env.NEXT_PUBLIC_API_BASE || process.env.NEXT_PUBLIC_API_URL || "").trim();
+  const envBase = (
+    process.env.NEXT_PUBLIC_API_BASE ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    ""
+  ).trim();
 
   if (envBase) return envBase.replace(/\/+$/, "");
   if (typeof window !== "undefined") {
@@ -110,6 +115,7 @@ function safeText(value: unknown, fallback = "—"): string {
       : value == null
         ? ""
         : String(value).trim();
+
   return text || fallback;
 }
 
@@ -120,7 +126,12 @@ function safeNumber(value: unknown): number {
 
 function normalizeStatus(value: unknown): PayoutStatus {
   const status = safeText(value, "").toLowerCase();
-  if (status === "pending" || status === "processing" || status === "paid" || status === "failed") {
+  if (
+    status === "pending" ||
+    status === "processing" ||
+    status === "paid" ||
+    status === "failed"
+  ) {
     return status;
   }
   return "unknown";
@@ -252,6 +263,7 @@ function buildAuditCsv(rows: AuditLogRow[]): string {
 
 function downloadCsv(filename: string, csvContent: string) {
   if (typeof window === "undefined") return;
+
   const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
   const url = window.URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -382,7 +394,7 @@ function statusBadgeStyle(status: PayoutStatus): React.CSSProperties {
     processing: {
       bg: "rgba(59, 130, 246, 0.12)",
       border: "rgba(59, 130, 246, 0.35)",
-      text: "#5b8def",
+      text: "#2563eb",
     },
     paid: {
       bg: "rgba(34, 197, 94, 0.12)",
@@ -420,17 +432,6 @@ function statusBadgeStyle(status: PayoutStatus): React.CSSProperties {
   };
 }
 
-function queueCardStyle(active = false): React.CSSProperties {
-  return {
-    border: `1px solid ${active ? "rgba(78,110,255,0.35)" : "var(--border)"}`,
-    background: active ? "rgba(78,110,255,0.10)" : "var(--surface)",
-    borderRadius: 18,
-    padding: 16,
-    display: "grid",
-    gap: 10,
-  };
-}
-
 function infoCardStyle(): React.CSSProperties {
   return {
     border: "1px solid var(--border)",
@@ -454,7 +455,7 @@ function twoColumnStyle(): React.CSSProperties {
   return {
     display: "grid",
     gap: 16,
-    gridTemplateColumns: "1fr 1fr",
+    gridTemplateColumns: "minmax(320px, 460px) minmax(0, 1fr)",
   };
 }
 
@@ -584,6 +585,18 @@ function stickyBarStyle(): React.CSSProperties {
   };
 }
 
+function queueRowStyle(active: boolean): React.CSSProperties {
+  return {
+    border: `1px solid ${active ? "rgba(78,110,255,0.35)" : "var(--border)"}`,
+    background: active ? "rgba(78,110,255,0.10)" : "var(--surface)",
+    borderRadius: 18,
+    padding: 16,
+    display: "grid",
+    gap: 10,
+    cursor: "pointer",
+  };
+}
+
 function BannerCard({
   tone,
   title,
@@ -681,7 +694,9 @@ export default function AdminReferralPayoutsPage() {
     }
   }, []);
 
-  const queueRows = useMemo(() => (Array.isArray(queueData?.rows) ? queueData.rows : []), [queueData]);
+  const queueRows = useMemo(() => {
+    return Array.isArray(queueData?.rows) ? queueData.rows : [];
+  }, [queueData]);
 
   const filteredQueueRows = useMemo(() => {
     const payoutTerm = searchPayoutId.trim().toLowerCase();
@@ -692,13 +707,19 @@ export default function AdminReferralPayoutsPage() {
 
     return queueRows.filter((row) => {
       const payoutMatch = !payoutTerm || safeText(row.id, "").toLowerCase().includes(payoutTerm);
-      const accountMatch = !accountTerm || safeText(row.account_id, "").toLowerCase().includes(accountTerm);
+      const accountMatch =
+        !accountTerm || safeText(row.account_id, "").toLowerCase().includes(accountTerm);
       const providerRefMatch =
         !providerRefTerm ||
         safeText(row.provider_reference, "").toLowerCase().includes(providerRefTerm);
 
       const candidateDateValue =
-        row.requested_at || row.created_at || row.updated_at || row.processed_at || row.paid_at || row.failed_at;
+        row.requested_at ||
+        row.created_at ||
+        row.updated_at ||
+        row.processed_at ||
+        row.paid_at ||
+        row.failed_at;
       const candidateDate = candidateDateValue ? new Date(candidateDateValue) : null;
       const afterFrom = !fromDate || !candidateDate || candidateDate >= fromDate;
       const beforeTo = !toDate || !candidateDate || candidateDate <= toDate;
@@ -734,9 +755,14 @@ export default function AdminReferralPayoutsPage() {
     return selectedIds.map((id) => map.get(id)).filter(Boolean) as PayoutRow[];
   }, [selectedIds, queueRows]);
 
-  const selectedStatuses = useMemo(() => selectedRows.map((row) => normalizeStatus(row.status)), [selectedRows]);
+  const selectedStatuses = useMemo(
+    () => selectedRows.map((row) => normalizeStatus(row.status)),
+    [selectedRows]
+  );
+
   const selectedAccounts = useMemo(
-    () => Array.from(new Set(selectedRows.map((row) => safeText(row.account_id, "")))).filter(Boolean),
+    () =>
+      Array.from(new Set(selectedRows.map((row) => safeText(row.account_id, "")))).filter(Boolean),
     [selectedRows]
   );
 
@@ -761,7 +787,9 @@ export default function AdminReferralPayoutsPage() {
   const visibleMetrics = useMemo(() => {
     const totalRows = filteredQueueRows.length;
     const pending = filteredQueueRows.filter((row) => normalizeStatus(row.status) === "pending").length;
-    const processing = filteredQueueRows.filter((row) => normalizeStatus(row.status) === "processing").length;
+    const processing = filteredQueueRows.filter(
+      (row) => normalizeStatus(row.status) === "processing"
+    ).length;
     const failed = filteredQueueRows.filter((row) => normalizeStatus(row.status) === "failed").length;
     const paid = filteredQueueRows.filter((row) => normalizeStatus(row.status) === "paid").length;
     const totalAmount = filteredQueueRows.reduce((sum, row) => sum + safeNumber(row.amount), 0);
@@ -830,7 +858,9 @@ export default function AdminReferralPayoutsPage() {
   const canBulkMarkProcessing =
     selectedRows.length > 0 &&
     !bulkSubmitting &&
-    selectedStatuses.every((status) => status === "pending" || status === "failed" || status === "unknown");
+    selectedStatuses.every(
+      (status) => status === "pending" || status === "failed" || status === "unknown"
+    );
 
   const canBulkMarkPaid =
     selectedRows.length > 0 &&
@@ -843,10 +873,14 @@ export default function AdminReferralPayoutsPage() {
     selectedStatuses.every((status) => status !== "paid") &&
     !!failureReason.trim();
 
-  const bulkAmount = useMemo(() => selectedRows.reduce((sum, row) => sum + safeNumber(row.amount), 0), [selectedRows]);
+  const bulkAmount = useMemo(
+    () => selectedRows.reduce((sum, row) => sum + safeNumber(row.amount), 0),
+    [selectedRows]
+  );
 
   async function loadAuditHistory(payoutId: string, keyOverride?: string) {
     const key = (keyOverride || adminKey).trim();
+
     if (!payoutId || !key) {
       setAuditRows([]);
       setAuditLoading(false);
@@ -871,8 +905,7 @@ export default function AdminReferralPayoutsPage() {
       }
     } catch (e: unknown) {
       setAuditRows([]);
-      const message = e instanceof Error ? e.message : "Could not load audit history.";
-      setAuditError(message);
+      setAuditError(e instanceof Error ? e.message : "Could not load audit history.");
     } finally {
       setAuditLoading(false);
     }
@@ -880,6 +913,7 @@ export default function AdminReferralPayoutsPage() {
 
   async function loadSinglePayout(payoutId: string, keyOverride?: string) {
     const key = (keyOverride || adminKey).trim();
+
     if (!payoutId || !key) {
       setSelectedPayout(null);
       setSelectedPayoutId("");
@@ -898,11 +932,9 @@ export default function AdminReferralPayoutsPage() {
       const payout = data?.payout || null;
       setSelectedPayout(payout);
       setSelectedPayoutId(payoutId);
-
       setProviderReference(safeText(payout?.provider_reference, ""));
       setProviderTransferCode(safeText(payout?.provider_transfer_code, ""));
       setFailureReason(safeText(payout?.failure_reason, ""));
-
       await loadAuditHistory(payoutId, key);
     } catch (e: unknown) {
       setSelectedPayout(null);
@@ -914,8 +946,11 @@ export default function AdminReferralPayoutsPage() {
     }
   }
 
-  async function loadQueue(showRefreshState = false, overrideStatus?: StatusFilterValue) {
-    if (!requireAuth()) return;
+  async function loadQueue(
+    showRefreshState = false,
+    overrideStatus?: StatusFilterValue
+  ): Promise<PayoutRow[]> {
+    if (!requireAuth()) return [];
 
     const key = adminKey.trim();
     const appliedStatus = overrideStatus || statusFilter;
@@ -931,7 +966,7 @@ export default function AdminReferralPayoutsPage() {
       setAuditError("");
       setAuditInfo("");
       setErrorText("");
-      return;
+      return [];
     }
 
     if (typeof window !== "undefined") {
@@ -950,6 +985,7 @@ export default function AdminReferralPayoutsPage() {
         key
       );
       const rows = Array.isArray(data?.rows) ? data.rows : [];
+
       setQueueData({ ...data, rows });
       setLastRefreshedAt(new Date().toISOString());
 
@@ -969,6 +1005,8 @@ export default function AdminReferralPayoutsPage() {
         setAuditError("");
         setAuditInfo("");
       }
+
+      return rows;
     } catch (e: unknown) {
       setQueueData(null);
       setSelectedPayout(null);
@@ -978,6 +1016,7 @@ export default function AdminReferralPayoutsPage() {
       setAuditError("");
       setAuditInfo("");
       setErrorText(e instanceof Error ? e.message : "Could not load payout queue.");
+      return [];
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -987,10 +1026,12 @@ export default function AdminReferralPayoutsPage() {
   useEffect(() => {
     if (!authReady) return;
     void loadQueue(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authReady]);
 
   useEffect(() => {
     if (!selectedPayoutId) return;
+
     const stillVisible = filteredQueueRows.some((row) => row.id === selectedPayoutId);
     if (!stillVisible) {
       const fallback = filteredQueueRows[0];
@@ -1004,6 +1045,7 @@ export default function AdminReferralPayoutsPage() {
         setAuditInfo("");
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filteredQueueRows, selectedPayoutId]);
 
   function clearSearchFields() {
@@ -1029,11 +1071,13 @@ export default function AdminReferralPayoutsPage() {
 
   function toggleSelectAllVisible() {
     const visibleIds = filteredQueueRows.map((row) => row.id);
-    const allSelected = visibleIds.every((id) => selectedPayoutIdsSet.has(id));
+    const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedPayoutIdsSet.has(id));
+
     if (allSelected) {
       setSelectedIds((current) => current.filter((id) => !visibleIds.includes(id)));
       return;
     }
+
     setSelectedIds((current) => Array.from(new Set([...current, ...visibleIds])));
   }
 
@@ -1096,13 +1140,11 @@ export default function AdminReferralPayoutsPage() {
 
   async function handleCopyPayoutBundle() {
     if (!selectedPayout) return;
-    const payload = JSON.stringify(selectedPayout, null, 2);
-    await handleCopy("Payout details", payload);
+    await handleCopy("Payout details", JSON.stringify(selectedPayout, null, 2));
   }
 
   async function handleCopyAuditJson(row: AuditLogRow) {
-    const payload = JSON.stringify(row, null, 2);
-    await handleCopy("Audit row JSON", payload);
+    await handleCopy("Audit row JSON", JSON.stringify(row, null, 2));
   }
 
   function requestSingleAction(action: SingleActionType) {
@@ -1178,7 +1220,7 @@ export default function AdminReferralPayoutsPage() {
     }
 
     try {
-      await adminFetch(
+      const data = await adminFetch<SinglePayoutResponse>(
         `/admin/referral-payouts/${encodeURIComponent(payoutId)}/${action}`,
         key,
         { method: "POST", body }
@@ -1191,11 +1233,22 @@ export default function AdminReferralPayoutsPage() {
             ? "marked as paid"
             : "marked as failed";
 
-      setActionSuccess(`Payout ${pretty} successfully.`);
+      const rewardCount = Array.isArray((data as any)?.updated_reward_ids)
+        ? (data as any).updated_reward_ids.length
+        : 0;
+
+      setActionSuccess(
+        rewardCount > 0
+          ? `Payout ${pretty} successfully. Reward rows updated: ${rewardCount}.`
+          : `Payout ${pretty} successfully.`
+      );
       setNotice({
         tone: "good",
         title: "Payout updated",
-        subtitle: `The selected payout was ${pretty}.`,
+        subtitle:
+          rewardCount > 0
+            ? `The selected payout was ${pretty}. Reward rows updated: ${rewardCount}.`
+            : `The selected payout was ${pretty}.`,
       });
 
       await loadQueue(true);
@@ -1212,6 +1265,7 @@ export default function AdminReferralPayoutsPage() {
     setActionError("");
 
     if (!action) return;
+
     if (selectedRows.length === 0) {
       setActionError("Select one or more payout rows first.");
       return;
@@ -1237,6 +1291,7 @@ export default function AdminReferralPayoutsPage() {
     if (!requireAuth()) return;
 
     const key = adminKey.trim();
+
     if (!key) {
       setNotice({
         tone: "warn",
@@ -1270,22 +1325,45 @@ export default function AdminReferralPayoutsPage() {
 
       const successCount = Number(data?.success_count || 0);
       const failureCount = Number(data?.failure_count || 0);
+
+      const failurePreview = Array.isArray(data?.failures)
+        ? data.failures
+            .slice(0, 3)
+            .map((item) => `${item.payout_id}: ${item.error}`)
+            .join(" | ")
+        : "";
+
       setBulkResultText(
-        `Bulk ${actionLabel(action)} completed. Success: ${successCount}. Failed: ${failureCount}.`
+        failurePreview
+          ? `Bulk ${actionLabel(action)} completed. Success: ${successCount}. Failed: ${failureCount}. ${failurePreview}`
+          : `Bulk ${actionLabel(action)} completed. Success: ${successCount}. Failed: ${failureCount}.`
       );
 
       setNotice({
         tone: failureCount > 0 ? "warn" : "good",
         title: "Bulk action completed",
-        subtitle: `Success: ${successCount}. Failed: ${failureCount}.`,
+        subtitle:
+          failurePreview || failureCount === 0
+            ? `Success: ${successCount}. Failed: ${failureCount}.`
+            : "The action completed with mixed results.",
       });
 
+      const refreshedRows = await loadQueue(true);
       setSelectedIds([]);
-      await loadQueue(true);
 
-      const firstVisible = filteredQueueRows[0];
-      if (firstVisible) {
-        await loadSinglePayout(firstVisible.id, key);
+      const nextId =
+        refreshedRows.find((row) => row.id === selectedPayoutId)?.id ||
+        refreshedRows[0]?.id ||
+        "";
+
+      if (nextId) {
+        await loadSinglePayout(nextId, key);
+      } else {
+        setSelectedPayout(null);
+        setSelectedPayoutId("");
+        setAuditRows([]);
+        setAuditError("");
+        setAuditInfo("");
       }
     } catch (e: unknown) {
       setActionError(e instanceof Error ? e.message : "Bulk action failed.");
@@ -1359,8 +1437,9 @@ export default function AdminReferralPayoutsPage() {
               style={shellButtonPrimary()}
               onClick={() => void loadQueue(true)}
             >
-              {refreshing ? "Refreshing." : "Refresh"}
+              {refreshing ? "Refreshing..." : "Refresh"}
             </button>
+
             <button
               type="button"
               style={shellButtonSecondary()}
@@ -1372,12 +1451,14 @@ export default function AdminReferralPayoutsPage() {
         }
       >
         <div style={stackStyle()}>
-          {notice ? (
-            <BannerCard tone={notice.tone} title={notice.title} subtitle={notice.subtitle} />
-          ) : null}
+          {notice ? <BannerCard tone={notice.tone} title={notice.title} subtitle={notice.subtitle} /> : null}
 
           {errorText ? (
-            <BannerCard tone="danger" title="Admin payout queue could not load" subtitle={errorText} />
+            <BannerCard
+              tone="danger"
+              title="Admin payout queue could not load"
+              subtitle={errorText}
+            />
           ) : null}
 
           <WorkspaceSectionCard
@@ -1386,26 +1467,88 @@ export default function AdminReferralPayoutsPage() {
           >
             <div style={stackStyle()}>
               <div style={metricGridStyle()}>
-                <MetricBox label="Pending Amount" value={formatMoney(summary.pendingAmount)} helper={`${summary.pendingCount} pending row(s)`} />
-                <MetricBox label="Processing Amount" value={formatMoney(summary.processingAmount)} helper={`${summary.processingCount} processing row(s)`} />
-                <MetricBox label="Failed Amount" value={formatMoney(summary.failedAmount)} helper={`${summary.failedCount} failed row(s)`} />
-                <MetricBox label="Paid Amount" value={formatMoney(summary.paidAmount)} helper={`${summary.paidCount} paid row(s)`} />
+                <MetricBox
+                  label="Pending Amount"
+                  value={formatMoney(summary.pendingAmount)}
+                  helper={`${summary.pendingCount} pending row(s)`}
+                />
+                <MetricBox
+                  label="Processing Amount"
+                  value={formatMoney(summary.processingAmount)}
+                  helper={`${summary.processingCount} processing row(s)`}
+                />
+                <MetricBox
+                  label="Failed Amount"
+                  value={formatMoney(summary.failedAmount)}
+                  helper={`${summary.failedCount} failed row(s)`}
+                />
+                <MetricBox
+                  label="Paid Amount"
+                  value={formatMoney(summary.paidAmount)}
+                  helper={`${summary.paidCount} paid row(s)`}
+                />
               </div>
 
               <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-                <button type="button" style={quickFilterChipStyle(statusFilter === "pending")} onClick={() => void applyQuickFilter("pending")}>Pending Only</button>
-                <button type="button" style={quickFilterChipStyle(statusFilter === "processing")} onClick={() => void applyQuickFilter("processing")}>Processing Only</button>
-                <button type="button" style={quickFilterChipStyle(statusFilter === "failed")} onClick={() => void applyQuickFilter("failed")}>Failed Only</button>
-                <button type="button" style={quickFilterChipStyle(statusFilter === "paid")} onClick={() => void applyQuickFilter("paid")}>Paid Only</button>
-                <button type="button" style={quickFilterChipStyle(statusFilter === "pending,processing,failed")} onClick={() => void applyQuickFilter("pending,processing,failed")}>Pending + Processing + Failed</button>
-                <button type="button" style={quickFilterChipStyle(statusFilter === "pending,processing,failed,paid")} onClick={() => void applyQuickFilter("pending,processing,failed,paid")}>All Major Statuses</button>
+                <button
+                  type="button"
+                  style={quickFilterChipStyle(statusFilter === "pending")}
+                  onClick={() => void applyQuickFilter("pending")}
+                >
+                  Pending Only
+                </button>
+                <button
+                  type="button"
+                  style={quickFilterChipStyle(statusFilter === "processing")}
+                  onClick={() => void applyQuickFilter("processing")}
+                >
+                  Processing Only
+                </button>
+                <button
+                  type="button"
+                  style={quickFilterChipStyle(statusFilter === "failed")}
+                  onClick={() => void applyQuickFilter("failed")}
+                >
+                  Failed Only
+                </button>
+                <button
+                  type="button"
+                  style={quickFilterChipStyle(statusFilter === "paid")}
+                  onClick={() => void applyQuickFilter("paid")}
+                >
+                  Paid Only
+                </button>
+                <button
+                  type="button"
+                  style={quickFilterChipStyle(statusFilter === "pending,processing,failed")}
+                  onClick={() => void applyQuickFilter("pending,processing,failed")}
+                >
+                  Pending + Processing + Failed
+                </button>
+                <button
+                  type="button"
+                  style={quickFilterChipStyle(
+                    statusFilter === "pending,processing,failed,paid"
+                  )}
+                  onClick={() => void applyQuickFilter("pending,processing,failed,paid")}
+                >
+                  All Major Statuses
+                </button>
               </div>
             </div>
           </WorkspaceSectionCard>
 
           {selectedRows.length > 0 ? (
             <div style={stickyBarStyle()}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  flexWrap: "wrap",
+                  alignItems: "center",
+                }}
+              >
                 <div>
                   <div style={{ fontWeight: 900, fontSize: 18 }}>
                     {selectedRows.length} payout row(s) selected
@@ -1422,7 +1565,7 @@ export default function AdminReferralPayoutsPage() {
                     disabled={!canBulkMarkProcessing}
                     onClick={() => requestBulkAction("mark-processing")}
                   >
-                    {bulkSubmitting ? "Working." : "Bulk Mark Processing"}
+                    {bulkSubmitting ? "Working..." : "Bulk Mark Processing"}
                   </button>
 
                   <button
@@ -1431,7 +1574,7 @@ export default function AdminReferralPayoutsPage() {
                     disabled={!canBulkMarkPaid}
                     onClick={() => requestBulkAction("mark-paid")}
                   >
-                    {bulkSubmitting ? "Working." : "Bulk Mark Paid"}
+                    {bulkSubmitting ? "Working..." : "Bulk Mark Paid"}
                   </button>
 
                   <button
@@ -1440,7 +1583,7 @@ export default function AdminReferralPayoutsPage() {
                     disabled={!canBulkMarkFailed}
                     onClick={() => requestBulkAction("mark-failed")}
                   >
-                    {bulkSubmitting ? "Working." : "Bulk Mark Failed"}
+                    {bulkSubmitting ? "Working..." : "Bulk Mark Failed"}
                   </button>
 
                   <button type="button" style={exportButtonStyle()} onClick={handleExportSelectedCsv}>
@@ -1454,7 +1597,7 @@ export default function AdminReferralPayoutsPage() {
               </div>
 
               {bulkResultText ? (
-                <div style={{ color: "var(--text-muted)" }}>{bulkResultText}</div>
+                <div style={{ color: "var(--text-muted)", lineHeight: 1.5 }}>{bulkResultText}</div>
               ) : null}
             </div>
           ) : null}
@@ -1467,64 +1610,147 @@ export default function AdminReferralPayoutsPage() {
               <div style={{ display: "grid", gap: 12 }}>
                 <div style={{ display: "grid", gap: 6 }}>
                   <div style={labelStyle()}>Admin API Key</div>
-                  <input type="password" value={adminKey} onChange={(e) => setAdminKey(e.target.value)} placeholder="Enter admin key" style={inputStyle()} autoComplete="off" />
+                  <input
+                    type="password"
+                    value={adminKey}
+                    onChange={(e) => setAdminKey(e.target.value)}
+                    placeholder="Enter admin key"
+                    style={inputStyle()}
+                    autoComplete="off"
+                  />
                 </div>
 
                 <div style={{ display: "grid", gap: 6 }}>
                   <div style={labelStyle()}>Queue Filter</div>
-                  <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as StatusFilterValue)} style={inputStyle()}>
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value as StatusFilterValue)}
+                    style={inputStyle()}
+                  >
                     <option value="pending">Pending only</option>
                     <option value="processing">Processing only</option>
                     <option value="failed">Failed only</option>
                     <option value="paid">Paid only</option>
-                    <option value="pending,processing,failed">Pending + Processing + Failed</option>
+                    <option value="pending,processing,failed">
+                      Pending + Processing + Failed
+                    </option>
                     <option value="pending,processing,failed,paid">All major statuses</option>
                   </select>
                 </div>
 
                 <div style={{ display: "grid", gap: 6 }}>
                   <div style={labelStyle()}>Search by Payout ID</div>
-                  <input type="text" value={searchPayoutId} onChange={(e) => setSearchPayoutId(e.target.value)} placeholder="Paste full or partial payout ID" style={inputStyle()} />
+                  <input
+                    type="text"
+                    value={searchPayoutId}
+                    onChange={(e) => setSearchPayoutId(e.target.value)}
+                    placeholder="Paste full or partial payout ID"
+                    style={inputStyle()}
+                  />
                 </div>
 
                 <div style={{ display: "grid", gap: 6 }}>
                   <div style={labelStyle()}>Search by Account ID</div>
-                  <input type="text" value={searchAccountId} onChange={(e) => setSearchAccountId(e.target.value)} placeholder="Paste full or partial account ID" style={inputStyle()} />
+                  <input
+                    type="text"
+                    value={searchAccountId}
+                    onChange={(e) => setSearchAccountId(e.target.value)}
+                    placeholder="Paste full or partial account ID"
+                    style={inputStyle()}
+                  />
                 </div>
 
                 <div style={{ display: "grid", gap: 6 }}>
                   <div style={labelStyle()}>Search by Provider Reference</div>
-                  <input type="text" value={searchProviderReference} onChange={(e) => setSearchProviderReference(e.target.value)} placeholder="Paste full or partial provider reference" style={inputStyle()} />
+                  <input
+                    type="text"
+                    value={searchProviderReference}
+                    onChange={(e) => setSearchProviderReference(e.target.value)}
+                    placeholder="Paste full or partial provider reference"
+                    style={inputStyle()}
+                  />
                 </div>
 
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                   <div style={{ display: "grid", gap: 6 }}>
                     <div style={labelStyle()}>Queue Date From</div>
-                    <input type="date" value={queueDateFrom} onChange={(e) => setQueueDateFrom(e.target.value)} style={inputStyle()} />
+                    <input
+                      type="date"
+                      value={queueDateFrom}
+                      onChange={(e) => setQueueDateFrom(e.target.value)}
+                      style={inputStyle()}
+                    />
                   </div>
                   <div style={{ display: "grid", gap: 6 }}>
                     <div style={labelStyle()}>Queue Date To</div>
-                    <input type="date" value={queueDateTo} onChange={(e) => setQueueDateTo(e.target.value)} style={inputStyle()} />
+                    <input
+                      type="date"
+                      value={queueDateTo}
+                      onChange={(e) => setQueueDateTo(e.target.value)}
+                      style={inputStyle()}
+                    />
                   </div>
                 </div>
 
                 <div style={{ display: "grid", gap: 6 }}>
-                  <div style={labelStyle()}>Bulk Failure Reason</div>
-                  <textarea value={failureReason} onChange={(e) => setFailureReason(e.target.value)} placeholder="Required for bulk mark failed" style={textareaStyle()} />
+                  <div style={labelStyle()}>Bulk / Failure Reason</div>
+                  <textarea
+                    value={failureReason}
+                    onChange={(e) => setFailureReason(e.target.value)}
+                    placeholder="Required for mark failed actions"
+                    style={textareaStyle()}
+                  />
+                </div>
+
+                <div style={{ display: "grid", gap: 6 }}>
+                  <div style={labelStyle()}>Provider Reference</div>
+                  <input
+                    type="text"
+                    value={providerReference}
+                    onChange={(e) => setProviderReference(e.target.value)}
+                    placeholder="Transfer reference or bank reference"
+                    style={inputStyle()}
+                  />
+                </div>
+
+                <div style={{ display: "grid", gap: 6 }}>
+                  <div style={labelStyle()}>Provider Transfer Code</div>
+                  <input
+                    type="text"
+                    value={providerTransferCode}
+                    onChange={(e) => setProviderTransferCode(e.target.value)}
+                    placeholder="Provider transfer code"
+                    style={inputStyle()}
+                  />
                 </div>
 
                 <div style={{ display: "grid", gap: 6 }}>
                   <div style={labelStyle()}>Operator Notes</div>
-                  <textarea value={operatorNotes} onChange={(e) => setOperatorNotes(e.target.value)} placeholder="Temporary admin notes for this session and request payloads" style={textareaStyle()} />
+                  <textarea
+                    value={operatorNotes}
+                    onChange={(e) => setOperatorNotes(e.target.value)}
+                    placeholder="Optional internal note for this action request"
+                    style={textareaStyle()}
+                  />
                 </div>
 
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-                  <button type="button" style={shellButtonPrimary()} onClick={() => void loadQueue(true)}>
-                    Load Queue
+                  <button
+                    type="button"
+                    style={shellButtonPrimary()}
+                    onClick={() => void loadQueue(true)}
+                  >
+                    {refreshing ? "Refreshing..." : "Load / Refresh Queue"}
                   </button>
-                  <button type="button" style={shellButtonSecondary()} onClick={clearSearchFields}>
+
+                  <button
+                    type="button"
+                    style={shellButtonSecondary()}
+                    onClick={clearSearchFields}
+                  >
                     Clear Search
                   </button>
+
                   <button
                     type="button"
                     style={shellButtonSecondary()}
@@ -1537,341 +1763,437 @@ export default function AdminReferralPayoutsPage() {
                   >
                     Clear Admin Key
                   </button>
-                  <button type="button" style={exportButtonStyle()} onClick={handleExportQueueCsv}>
+
+                  <button
+                    type="button"
+                    style={exportButtonStyle()}
+                    onClick={handleExportQueueCsv}
+                  >
                     Export Queue CSV
                   </button>
                 </div>
-              </div>
-
-              <div style={stackStyle()}>
-                <div style={metricGridStyle()}>
-                  <MetricBox label="Queue Rows" value={String(visibleMetrics.totalRows)} helper="Visible rows after filter/search." />
-                  <MetricBox label="Pending" value={String(visibleMetrics.pending)} helper="Visible requests waiting for action." />
-                  <MetricBox label="Processing" value={String(visibleMetrics.processing)} helper="Visible rows already in transfer processing." />
-                  <MetricBox label="Failed" value={String(visibleMetrics.failed)} helper="Visible rows needing admin attention." />
-                  <MetricBox label="Paid" value={String(visibleMetrics.paid)} helper="Visible rows already completed." />
-                  <MetricBox label="Queue Amount" value={formatMoney(visibleMetrics.totalAmount)} helper="Combined visible amount." />
-                </div>
 
                 <div style={summaryBarStyle()}>
-                  <div style={{ fontWeight: 800 }}>Active filter summary</div>
+                  <div style={{ fontWeight: 800 }}>Filter summary</div>
                   <div style={{ color: "var(--text-muted)" }}>{filterSummary}</div>
                   <div style={{ color: "var(--text-muted)" }}>
-                    Last refreshed: <strong style={{ color: "var(--text)" }}>{formatDateTime(lastRefreshedAt)}</strong>
+                    Visible rows: {visibleMetrics.totalRows} • Pending: {visibleMetrics.pending} •
+                    Processing: {visibleMetrics.processing} • Failed: {visibleMetrics.failed} • Paid:{" "}
+                    {visibleMetrics.paid}
+                  </div>
+                  <div style={{ color: "var(--text-muted)" }}>
+                    Visible amount: {formatMoney(visibleMetrics.totalAmount)}
+                  </div>
+                  <div style={{ color: "var(--text-muted)" }}>
+                    Last refreshed: {lastRefreshedAt ? formatDateTime(lastRefreshedAt) : "Not yet refreshed"}
                   </div>
                 </div>
 
-                <div style={summaryBarStyle()}>
-                  <div style={{ fontWeight: 800 }}>Bulk action guardrails</div>
-                  <div style={{ color: "var(--text-muted)" }}>
-                    Bulk Mark Paid only works if every selected row is processing.
-                  </div>
-                  <div style={{ color: "var(--text-muted)" }}>
-                    Bulk Mark Processing cannot include paid rows.
-                  </div>
-                  <div style={{ color: "var(--text-muted)" }}>
-                    Bulk Mark Failed requires one failure reason for all selected rows.
-                  </div>
-                </div>
+                {actionError ? (
+                  <BannerCard tone="danger" title="Action failed" subtitle={actionError} />
+                ) : null}
+
+                {actionSuccess ? (
+                  <BannerCard tone="good" title="Action completed" subtitle={actionSuccess} />
+                ) : null}
               </div>
-            </div>
-          </WorkspaceSectionCard>
 
-          {loading ? (
-            <WorkspaceSectionCard title="Loading payout queue" subtitle="Please wait while payout queue data is being fetched.">
-              <div style={{ color: "var(--text-muted)" }}>Loading...</div>
-            </WorkspaceSectionCard>
-          ) : (
-            <div style={twoColumnStyle()}>
               <WorkspaceSectionCard
                 title="Payout queue"
-                subtitle="Select rows for bulk work, then click a payout card to inspect it in detail."
+                subtitle="Pick a payout row, inspect details on the right, and manage state carefully."
               >
-                {filteredQueueRows.length === 0 ? (
+                {loading ? (
+                  <div style={{ color: "var(--text-muted)" }}>Loading payout queue...</div>
+                ) : filteredQueueRows.length === 0 ? (
                   <div style={infoCardStyle()}>
                     <div style={{ fontWeight: 800 }}>No payout rows found</div>
                     <div style={{ color: "var(--text-muted)" }}>
-                      Try another filter, clear search, or refresh the queue again.
+                      Enter an admin key and load the queue, or widen your current filters.
                     </div>
                   </div>
                 ) : (
                   <div style={stackStyle()}>
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                      <button type="button" style={shellButtonSecondary()} onClick={toggleSelectAllVisible}>
-                        {filteredQueueRows.every((row) => selectedPayoutIdsSet.has(row.id))
-                          ? "Unselect All Visible"
-                          : "Select All Visible"}
-                      </button>
-
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: 12,
+                        flexWrap: "wrap",
+                        alignItems: "center",
+                      }}
+                    >
                       <div style={{ color: "var(--text-muted)" }}>
-                        Selected: <strong style={{ color: "var(--text)" }}>{selectedRows.length}</strong>
+                        Showing {filteredQueueRows.length} row(s)
+                      </div>
+
+                      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                        <button
+                          type="button"
+                          style={shellButtonSecondary()}
+                          onClick={toggleSelectAllVisible}
+                        >
+                          {filteredQueueRows.length > 0 &&
+                          filteredQueueRows.every((row) => selectedPayoutIdsSet.has(row.id))
+                            ? "Unselect Visible"
+                            : "Select Visible"}
+                        </button>
+
+                        <button
+                          type="button"
+                          style={exportButtonStyle()}
+                          onClick={handleExportQueueCsv}
+                        >
+                          Export Visible CSV
+                        </button>
                       </div>
                     </div>
 
                     <div style={{ display: "grid", gap: 12 }}>
                       {filteredQueueRows.map((row) => {
-                        const active = row.id === selectedPayoutId;
                         const rowStatus = normalizeStatus(row.status);
-                        const isChecked = selectedPayoutIdsSet.has(row.id);
+                        const active = row.id === selectedPayoutId;
+                        const checked = selectedPayoutIdsSet.has(row.id);
 
                         return (
-                          <div key={row.id} style={queueCardStyle(active)}>
+                          <div
+                            key={row.id}
+                            style={queueRowStyle(active)}
+                            onClick={() => void loadSinglePayout(row.id)}
+                          >
                             <div
                               style={{
                                 display: "flex",
                                 justifyContent: "space-between",
-                                gap: 10,
-                                alignItems: "flex-start",
+                                gap: 12,
                                 flexWrap: "wrap",
+                                alignItems: "center",
                               }}
                             >
-                              <label
-                                style={{
-                                  display: "flex",
-                                  gap: 10,
-                                  alignItems: "flex-start",
-                                  flex: 1,
-                                  cursor: "pointer",
-                                }}
-                              >
+                              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                                 <input
                                   type="checkbox"
-                                  checked={isChecked}
+                                  checked={checked}
                                   onChange={() => toggleSelected(row.id)}
-                                  style={{ marginTop: 4 }}
+                                  onClick={(e) => e.stopPropagation()}
                                 />
-                                <div
-                                  style={{ display: "grid", gap: 10, flex: 1, cursor: "pointer" }}
-                                  onClick={() => void loadSinglePayout(row.id)}
-                                >
-                                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-                                    <div style={{ fontWeight: 900, fontSize: 18 }}>{safeText(row.id)}</div>
-                                    <StatusBadge status={rowStatus} />
-                                  </div>
+                                <div style={{ fontWeight: 900 }}>{safeText(row.id)}</div>
+                              </div>
+                              <StatusBadge status={rowStatus} />
+                            </div>
 
-                                  <div style={{ color: "var(--text-muted)" }}>
-                                    Account: {safeText(row.account_id)}
-                                  </div>
-                                  <div style={{ color: "var(--text-muted)" }}>
-                                    Amount: {formatMoney(row.amount, safeText(row.currency, "NGN"))}
-                                  </div>
-                                  <div style={{ color: "var(--text-muted)" }}>
-                                    Provider Ref: {safeText(row.provider_reference, "None")}
-                                  </div>
-                                  <div style={{ color: "var(--text-muted)" }}>
-                                    Requested: {formatDateOnly(row.requested_at || row.created_at)}
-                                  </div>
-                                </div>
-                              </label>
+                            <div
+                              style={{
+                                display: "grid",
+                                gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                                gap: 10,
+                              }}
+                            >
+                              <div>
+                                <div style={labelStyle()}>Account</div>
+                                <div>{safeText(row.account_id)}</div>
+                              </div>
+                              <div>
+                                <div style={labelStyle()}>Amount</div>
+                                <div>{formatMoney(row.amount, safeText(row.currency, "NGN"))}</div>
+                              </div>
+                              <div>
+                                <div style={labelStyle()}>Provider Ref</div>
+                                <div>{safeText(row.provider_reference, "None")}</div>
+                              </div>
+                              <div>
+                                <div style={labelStyle()}>Requested</div>
+                                <div>{formatDateTime(row.requested_at || row.created_at)}</div>
+                              </div>
                             </div>
                           </div>
                         );
                       })}
                     </div>
-                  </div>
-                )}
-              </WorkspaceSectionCard>
 
-              <WorkspaceSectionCard
-                title="Payout details"
-                subtitle="Review the selected row carefully before applying any status changes."
-              >
-                {!selectedPayout ? (
-                  <div style={infoCardStyle()}>
-                    <div style={{ fontWeight: 800 }}>No payout selected</div>
-                    <div style={{ color: "var(--text-muted)" }}>
-                      Choose a payout row from the queue to view full details.
-                    </div>
-                  </div>
-                ) : (
-                  <div style={stackStyle()}>
-                    <BannerCard
-                      tone={selectedStatus === "paid" ? "good" : selectedStatus === "failed" ? "warn" : "default"}
-                      title={`Current status: ${safeText(selectedPayout.status)}`}
-                      subtitle={
-                        selectedStatus === "paid"
-                          ? "This payout is already marked as paid. Further status changes are disabled."
-                          : selectedStatus === "processing"
-                            ? "This payout is already in processing. You can mark it paid or failed."
-                            : selectedStatus === "failed"
-                              ? "This payout previously failed. Retry by marking it processing after correcting any provider details."
-                              : "Recommended flow: mark processing first, then mark paid after transfer confirmation."
-                      }
-                    />
-
-                    {actionError ? (
-                      <BannerCard
-                        tone="danger"
-                        title={lastAction ? `${actionLabel(lastAction)} failed` : "Action failed"}
-                        subtitle={actionError}
-                      />
-                    ) : null}
-
-                    {actionSuccess ? (
-                      <BannerCard tone="good" title="Action completed" subtitle={actionSuccess} />
-                    ) : null}
-
-                    <div style={{ display: "flex", justifyContent: "flex-start" }}>
-                      <StatusBadge status={selectedStatus} />
-                    </div>
-
-                    <div style={metricGridStyle()}>
-                      <MetricBox
-                        label="Amount"
-                        value={formatMoney(selectedPayout.amount, safeText(selectedPayout.currency, "NGN"))}
-                        helper="Requested payout amount."
-                      />
-                      <MetricBox label="Status" value={safeText(selectedPayout.status)} helper="Current backend payout state." />
-                      <MetricBox label="Requested" value={formatDateOnly(selectedPayout.requested_at || selectedPayout.created_at)} helper="When this payout entered the queue." />
-                      <MetricBox label="Processed" value={formatDateOnly(selectedPayout.processed_at)} helper="When processing last started or completed." />
-                    </div>
-
-                    <div style={infoCardStyle()}>
-                      <div style={labelStyle()}>Payout ID</div>
-                      <div style={{ fontWeight: 900, fontSize: 18 }}>{safeText(selectedPayout.id)}</div>
-                      <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" }}>
-                        <button type="button" style={copyButtonStyle()} onClick={() => void handleCopy("Payout ID", safeText(selectedPayout.id, ""))}>
-                          Copy Payout ID
-                        </button>
-                        <button type="button" style={copyButtonStyle()} onClick={() => void handleCopyPayoutBundle()}>
-                          Copy Payout Details
-                        </button>
-                        <button type="button" style={copyButtonStyle()} onClick={() => void handleCopy("Account ID", safeText(selectedPayout.account_id, ""))}>
-                          Copy Account ID
-                        </button>
-                      </div>
-                    </div>
-
-                    <div style={{ display: "grid", gap: 12 }}>
-                      <div style={{ display: "grid", gap: 6 }}>
-                        <div style={labelStyle()}>Provider Reference</div>
-                        <input type="text" value={providerReference} onChange={(e) => setProviderReference(e.target.value)} placeholder="Example: PSTK-TRANSFER-001" style={inputStyle()} />
-                      </div>
-
-                      <div style={{ display: "grid", gap: 6 }}>
-                        <div style={labelStyle()}>Provider Transfer Code</div>
-                        <input type="text" value={providerTransferCode} onChange={(e) => setProviderTransferCode(e.target.value)} placeholder="Example: TRF-001" style={inputStyle()} />
-                      </div>
-
-                      <div style={{ display: "grid", gap: 6 }}>
-                        <div style={labelStyle()}>Failure Reason</div>
-                        <textarea value={failureReason} onChange={(e) => setFailureReason(e.target.value)} placeholder="Use when marking payout as failed" style={textareaStyle()} />
-                      </div>
-                    </div>
-
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-                      <button
-                        type="button"
-                        style={actionButtonStyle("secondary", !canMarkProcessing || submitting)}
-                        disabled={!canMarkProcessing || submitting}
-                        onClick={() => requestSingleAction("mark-processing")}
-                      >
-                        {submitting && lastAction === "mark-processing" ? "Working." : "Mark Processing"}
-                      </button>
-
-                      <button
-                        type="button"
-                        style={actionButtonStyle("primary", !canMarkPaid || submitting)}
-                        disabled={!canMarkPaid || submitting}
-                        onClick={() => requestSingleAction("mark-paid")}
-                      >
-                        {submitting && lastAction === "mark-paid" ? "Working." : "Mark Paid"}
-                      </button>
-
-                      <button
-                        type="button"
-                        style={actionButtonStyle("secondary", !canMarkFailed || submitting)}
-                        disabled={!canMarkFailed || submitting}
-                        onClick={() => requestSingleAction("mark-failed")}
-                      >
-                        {submitting && lastAction === "mark-failed" ? "Working." : "Mark Failed"}
-                      </button>
-                    </div>
-
-                    <div style={infoCardStyle()}>
-                      <div style={labelStyle()}>Provider</div>
-                      <div style={{ fontWeight: 800, fontSize: 18 }}>{safeText(selectedPayout.provider)}</div>
-                      <div style={labelStyle()}>Last Failure Reason</div>
-                      <div style={{ fontWeight: 700 }}>{safeText(selectedPayout.failure_reason, "None")}</div>
-                    </div>
-
-                    <WorkspaceSectionCard title="Audit history" subtitle="Review the admin activity trail for the selected payout.">
+                    {selectedPayout ? (
                       <div style={stackStyle()}>
-                        <div style={{ display: "grid", gap: 12, gridTemplateColumns: "1fr 1fr auto" }}>
-                          <div style={{ display: "grid", gap: 6 }}>
-                            <div style={labelStyle()}>Audit Date From</div>
-                            <input type="date" value={auditDateFrom} onChange={(e) => setAuditDateFrom(e.target.value)} style={inputStyle()} />
-                          </div>
-
-                          <div style={{ display: "grid", gap: 6 }}>
-                            <div style={labelStyle()}>Audit Date To</div>
-                            <input type="date" value={auditDateTo} onChange={(e) => setAuditDateTo(e.target.value)} style={inputStyle()} />
-                          </div>
-
-                          <div style={{ display: "flex", alignItems: "end" }}>
-                            <button type="button" style={exportButtonStyle()} onClick={handleExportAuditCsv}>
-                              Export Audit CSV
-                            </button>
-                          </div>
-                        </div>
-
                         <div style={summaryBarStyle()}>
-                          <div style={{ fontWeight: 800 }}>Audit filter summary</div>
-                          <div style={{ color: "var(--text-muted)" }}>{auditFilterSummary}</div>
+                          <div style={{ fontWeight: 800 }}>Action guide</div>
+                          <div style={{ color: "var(--text-muted)" }}>{actionHint}</div>
                         </div>
 
-                        {auditLoading ? (
-                          <div style={{ color: "var(--text-muted)" }}>Loading audit history...</div>
-                        ) : auditError ? (
-                          <BannerCard tone="warn" title="Audit history unavailable" subtitle={auditError} />
-                        ) : auditInfo ? (
+                        <div
+                          style={{
+                            display: "grid",
+                            gap: 12,
+                            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                          }}
+                        >
                           <div style={infoCardStyle()}>
-                            <div style={{ fontWeight: 800 }}>No audit entries yet</div>
-                            <div style={{ color: "var(--text-muted)" }}>{auditInfo}</div>
+                            <div style={labelStyle()}>Payout ID</div>
+                            <div style={{ fontWeight: 800 }}>{safeText(selectedPayout.id)}</div>
+                            <div style={labelStyle()}>Account ID</div>
+                            <div>{safeText(selectedPayout.account_id)}</div>
                           </div>
-                        ) : visibleAuditRows.length === 0 ? (
+
                           <div style={infoCardStyle()}>
-                            <div style={{ fontWeight: 800 }}>No audit rows match the current date filter</div>
-                            <div style={{ color: "var(--text-muted)" }}>
-                              Clear or widen the audit date range to see more history.
+                            <div style={labelStyle()}>Amount</div>
+                            <div style={{ fontWeight: 800, fontSize: 24 }}>
+                              {formatMoney(
+                                selectedPayout.amount,
+                                safeText(selectedPayout.currency, "NGN")
+                              )}
+                            </div>
+                            <div style={labelStyle()}>Status</div>
+                            <div>
+                              <StatusBadge status={selectedStatus} />
                             </div>
                           </div>
-                        ) : (
-                          <div style={{ display: "grid", gap: 12 }}>
-                            {visibleAuditRows.map((row, index) => (
-                              <div key={row.id || `${row.created_at || "audit"}-${index}`} style={auditCardStyle()}>
-                                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                                  <div style={{ fontWeight: 900, fontSize: 18 }}>{actionLabel(row.action)}</div>
-                                  <div style={{ color: "var(--text-muted)" }}>{formatDateOnly(row.created_at)}</div>
+
+                          <div style={infoCardStyle()}>
+                            <div style={labelStyle()}>Requested At</div>
+                            <div>{formatDateTime(selectedPayout.requested_at || selectedPayout.created_at)}</div>
+                            <div style={labelStyle()}>Updated At</div>
+                            <div>{formatDateTime(selectedPayout.updated_at)}</div>
+                          </div>
+
+                          <div style={infoCardStyle()}>
+                            <div style={labelStyle()}>Processed At</div>
+                            <div>{formatDateTime(selectedPayout.processed_at)}</div>
+                            <div style={labelStyle()}>Paid At</div>
+                            <div>{formatDateTime(selectedPayout.paid_at)}</div>
+                          </div>
+                        </div>
+
+                        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                          <button
+                            type="button"
+                            style={copyButtonStyle()}
+                            onClick={() => void handleCopy("Payout ID", safeText(selectedPayout.id, ""))}
+                          >
+                            Copy Payout ID
+                          </button>
+
+                          <button
+                            type="button"
+                            style={copyButtonStyle()}
+                            onClick={() =>
+                              void handleCopy("Account ID", safeText(selectedPayout.account_id, ""))
+                            }
+                          >
+                            Copy Account ID
+                          </button>
+
+                          <button
+                            type="button"
+                            style={copyButtonStyle()}
+                            onClick={() => void handleCopyPayoutBundle()}
+                          >
+                            Copy Payout JSON
+                          </button>
+                        </div>
+
+                        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                          <button
+                            type="button"
+                            style={actionButtonStyle("secondary", !canMarkProcessing || submitting)}
+                            disabled={!canMarkProcessing || submitting}
+                            onClick={() => requestSingleAction("mark-processing")}
+                          >
+                            {submitting && lastAction === "mark-processing"
+                              ? "Working..."
+                              : "Mark Processing"}
+                          </button>
+
+                          <button
+                            type="button"
+                            style={actionButtonStyle("primary", !canMarkPaid || submitting)}
+                            disabled={!canMarkPaid || submitting}
+                            onClick={() => requestSingleAction("mark-paid")}
+                          >
+                            {submitting && lastAction === "mark-paid" ? "Working..." : "Mark Paid"}
+                          </button>
+
+                          <button
+                            type="button"
+                            style={actionButtonStyle("secondary", !canMarkFailed || submitting)}
+                            disabled={!canMarkFailed || submitting}
+                            onClick={() => requestSingleAction("mark-failed")}
+                          >
+                            {submitting && lastAction === "mark-failed"
+                              ? "Working..."
+                              : "Mark Failed"}
+                          </button>
+                        </div>
+
+                        <div style={infoCardStyle()}>
+                          <div style={labelStyle()}>Provider</div>
+                          <div style={{ fontWeight: 800, fontSize: 18 }}>
+                            {safeText(selectedPayout.provider)}
+                          </div>
+
+                          <div style={labelStyle()}>Current Provider Reference</div>
+                          <div style={{ fontWeight: 700 }}>
+                            {safeText(selectedPayout.provider_reference, "None")}
+                          </div>
+
+                          <div style={labelStyle()}>Current Transfer Code</div>
+                          <div style={{ fontWeight: 700 }}>
+                            {safeText(selectedPayout.provider_transfer_code, "None")}
+                          </div>
+
+                          <div style={labelStyle()}>Last Failure Reason</div>
+                          <div style={{ fontWeight: 700 }}>
+                            {safeText(selectedPayout.failure_reason, "None")}
+                          </div>
+                        </div>
+
+                        <WorkspaceSectionCard
+                          title="Audit history"
+                          subtitle="Review the admin activity trail for the selected payout."
+                        >
+                          <div style={stackStyle()}>
+                            <div
+                              style={{
+                                display: "grid",
+                                gap: 12,
+                                gridTemplateColumns: "1fr 1fr auto",
+                              }}
+                            >
+                              <div style={{ display: "grid", gap: 6 }}>
+                                <div style={labelStyle()}>Audit Date From</div>
+                                <input
+                                  type="date"
+                                  value={auditDateFrom}
+                                  onChange={(e) => setAuditDateFrom(e.target.value)}
+                                  style={inputStyle()}
+                                />
+                              </div>
+
+                              <div style={{ display: "grid", gap: 6 }}>
+                                <div style={labelStyle()}>Audit Date To</div>
+                                <input
+                                  type="date"
+                                  value={auditDateTo}
+                                  onChange={(e) => setAuditDateTo(e.target.value)}
+                                  style={inputStyle()}
+                                />
+                              </div>
+
+                              <div style={{ display: "flex", alignItems: "end" }}>
+                                <button
+                                  type="button"
+                                  style={exportButtonStyle()}
+                                  onClick={handleExportAuditCsv}
+                                >
+                                  Export Audit CSV
+                                </button>
+                              </div>
+                            </div>
+
+                            <div style={summaryBarStyle()}>
+                              <div style={{ fontWeight: 800 }}>Audit filter summary</div>
+                              <div style={{ color: "var(--text-muted)" }}>{auditFilterSummary}</div>
+                            </div>
+
+                            {auditLoading ? (
+                              <div style={{ color: "var(--text-muted)" }}>Loading audit history...</div>
+                            ) : auditError ? (
+                              <BannerCard
+                                tone="warn"
+                                title="Audit history unavailable"
+                                subtitle={auditError}
+                              />
+                            ) : auditInfo ? (
+                              <div style={infoCardStyle()}>
+                                <div style={{ fontWeight: 800 }}>No audit entries yet</div>
+                                <div style={{ color: "var(--text-muted)" }}>{auditInfo}</div>
+                              </div>
+                            ) : visibleAuditRows.length === 0 ? (
+                              <div style={infoCardStyle()}>
+                                <div style={{ fontWeight: 800 }}>
+                                  No audit rows match the current date filter
                                 </div>
-
-                                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                                  <StatusBadge status={normalizeStatus(row.old_status)} />
-                                  <span style={{ color: "var(--text-muted)", fontWeight: 700 }}>→</span>
-                                  <StatusBadge status={normalizeStatus(row.new_status)} />
-                                </div>
-
-                                <div style={{ color: "var(--text-muted)" }}>Account: {safeText(row.account_id)}</div>
-                                <div style={{ color: "var(--text-muted)" }}>Provider Ref: {safeText(row.provider_reference, "None")}</div>
-                                <div style={{ color: "var(--text-muted)" }}>Transfer Code: {safeText(row.provider_transfer_code, "None")}</div>
-                                <div style={{ color: "var(--text-muted)" }}>Failure Reason: {safeText(row.failure_reason, "None")}</div>
-
-                                <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                                  <button type="button" style={copyButtonStyle()} onClick={() => void handleCopyAuditJson(row)}>
-                                    Copy Audit JSON
-                                  </button>
+                                <div style={{ color: "var(--text-muted)" }}>
+                                  Clear or widen the audit date range to see more history.
                                 </div>
                               </div>
-                            ))}
+                            ) : (
+                              <div style={{ display: "grid", gap: 12 }}>
+                                {visibleAuditRows.map((row, index) => (
+                                  <div
+                                    key={row.id || `${row.created_at || "audit"}-${index}`}
+                                    style={auditCardStyle()}
+                                  >
+                                    <div
+                                      style={{
+                                        display: "flex",
+                                        justifyContent: "space-between",
+                                        gap: 10,
+                                        flexWrap: "wrap",
+                                        alignItems: "center",
+                                      }}
+                                    >
+                                      <div style={{ fontWeight: 900, fontSize: 18 }}>
+                                        {actionLabel(row.action)}
+                                      </div>
+                                      <div style={{ color: "var(--text-muted)" }}>
+                                        {formatDateOnly(row.created_at)}
+                                      </div>
+                                    </div>
+
+                                    <div
+                                      style={{
+                                        display: "flex",
+                                        gap: 8,
+                                        alignItems: "center",
+                                        flexWrap: "wrap",
+                                      }}
+                                    >
+                                      <StatusBadge status={normalizeStatus(row.old_status)} />
+                                      <span style={{ color: "var(--text-muted)", fontWeight: 700 }}>
+                                        →
+                                      </span>
+                                      <StatusBadge status={normalizeStatus(row.new_status)} />
+                                    </div>
+
+                                    <div style={{ color: "var(--text-muted)" }}>
+                                      Account: {safeText(row.account_id)}
+                                    </div>
+                                    <div style={{ color: "var(--text-muted)" }}>
+                                      Provider Ref: {safeText(row.provider_reference, "None")}
+                                    </div>
+                                    <div style={{ color: "var(--text-muted)" }}>
+                                      Transfer Code: {safeText(row.provider_transfer_code, "None")}
+                                    </div>
+                                    <div style={{ color: "var(--text-muted)" }}>
+                                      Failure Reason: {safeText(row.failure_reason, "None")}
+                                    </div>
+
+                                    <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                                      <button
+                                        type="button"
+                                        style={copyButtonStyle()}
+                                        onClick={() => void handleCopyAuditJson(row)}
+                                      >
+                                        Copy Audit JSON
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                           </div>
-                        )}
+                        </WorkspaceSectionCard>
                       </div>
-                    </WorkspaceSectionCard>
+                    ) : (
+                      <div style={infoCardStyle()}>
+                        <div style={{ fontWeight: 800 }}>No payout selected</div>
+                        <div style={{ color: "var(--text-muted)" }}>
+                          Click any payout row from the queue to inspect it here.
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </WorkspaceSectionCard>
             </div>
-          )}
+          </WorkspaceSectionCard>
         </div>
       </AppShell>
 
@@ -1891,9 +2213,15 @@ export default function AdminReferralPayoutsPage() {
             ) : null}
 
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" }}>
-              <button type="button" style={shellButtonSecondary()} onClick={() => setConfirmAction("")} disabled={submitting}>
+              <button
+                type="button"
+                style={shellButtonSecondary()}
+                onClick={() => setConfirmAction("")}
+                disabled={submitting}
+              >
                 Cancel
               </button>
+
               <button
                 type="button"
                 style={shellButtonPrimary()}
@@ -1902,7 +2230,7 @@ export default function AdminReferralPayoutsPage() {
                 }}
                 disabled={submitting}
               >
-                {submitting ? "Working." : singleConfirmationContent.buttonLabel}
+                {submitting ? "Working..." : singleConfirmationContent.buttonLabel}
               </button>
             </div>
           </div>
@@ -1925,17 +2253,27 @@ export default function AdminReferralPayoutsPage() {
               <div style={{ color: "var(--text-muted)" }}>
                 Accounts: {selectedAccounts.join(", ") || "None"}
               </div>
+
               {confirmBulkAction === "mark-failed" ? (
                 <div style={{ color: "var(--text-muted)" }}>
-                  Failure reason: <strong style={{ color: "var(--text)" }}>{safeText(failureReason, "None")}</strong>
+                  Failure reason:{" "}
+                  <strong style={{ color: "var(--text)" }}>
+                    {safeText(failureReason, "None")}
+                  </strong>
                 </div>
               ) : null}
             </div>
 
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" }}>
-              <button type="button" style={shellButtonSecondary()} onClick={() => setConfirmBulkAction("")} disabled={bulkSubmitting}>
+              <button
+                type="button"
+                style={shellButtonSecondary()}
+                onClick={() => setConfirmBulkAction("")}
+                disabled={bulkSubmitting}
+              >
                 Cancel
               </button>
+
               <button
                 type="button"
                 style={shellButtonPrimary()}
@@ -1944,7 +2282,7 @@ export default function AdminReferralPayoutsPage() {
                 }}
                 disabled={bulkSubmitting}
               >
-                {bulkSubmitting ? "Working." : bulkConfirmationContent.buttonLabel}
+                {bulkSubmitting ? "Working..." : bulkConfirmationContent.buttonLabel}
               </button>
             </div>
           </div>
