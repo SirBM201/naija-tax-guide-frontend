@@ -56,9 +56,47 @@ type PayoutRow = {
   amount?: string | number;
   currency?: string;
   status?: string;
-  payout_method?: string | null;
+  provider?: string | null;
+  provider_reference?: string | null;
+  provider_transfer_code?: string | null;
+  requested_at?: string | null;
   created_at?: string | null;
+  processed_at?: string | null;
   paid_at?: string | null;
+  failed_at?: string | null;
+  failure_reason?: string | null;
+};
+
+type PayoutAccount = {
+  id?: string;
+  account_id?: string;
+  provider?: string | null;
+  bank_code?: string | null;
+  bank_name?: string | null;
+  account_name?: string | null;
+  account_number_masked?: string | null;
+  recipient_code?: string | null;
+  currency?: string | null;
+  is_verified?: boolean | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+type PayoutEligibility = {
+  ok?: boolean;
+  account_id?: string;
+  payout_account?: PayoutAccount | null;
+  has_payout_account?: boolean;
+  approved_reward_count?: number;
+  approved_reward_amount?: number;
+  open_payout_count?: number;
+  open_payout_amount?: number;
+  available_amount?: number;
+  minimum_amount?: number;
+  eligible?: boolean;
+  minimum_reached?: boolean;
+  requires_verified_account?: boolean;
+  is_verified?: boolean;
 };
 
 type ReferralTotals = {
@@ -93,6 +131,8 @@ type ReferralMeResponse = {
   profile?: ReferralProfile | null;
   summary?: ReferralSummary | null;
   approved_payout_balance?: string;
+  payout_account?: PayoutAccount | null;
+  payout_eligibility?: PayoutEligibility | null;
   error?: string;
   root_cause?: string;
   fix?: string;
@@ -122,6 +162,14 @@ type ReferralPayoutsResponse = {
   root_cause?: string;
 };
 
+type NoticeTone = "good" | "warn" | "danger";
+
+type NoticeState = {
+  tone: NoticeTone;
+  title: string;
+  subtitle: string;
+} | null;
+
 function safeText(value: unknown, fallback = "—"): string {
   if (value === null || value === undefined) return fallback;
   const text = String(value).trim();
@@ -139,6 +187,10 @@ function formatDate(value: unknown): string {
   const parsed = new Date(raw);
   if (Number.isNaN(parsed.getTime())) return raw;
   return parsed.toLocaleString();
+}
+
+function formatMoney(value: unknown, currency = "NGN"): string {
+  return `${currency} ${safeNumber(value, 0).toFixed(2)}`;
 }
 
 function cardStyle(): React.CSSProperties {
@@ -175,6 +227,61 @@ function mutedStyle(): React.CSSProperties {
   return {
     color: "var(--text-muted)",
     lineHeight: 1.65,
+  };
+}
+
+function inputStyle(): React.CSSProperties {
+  return {
+    width: "100%",
+    minHeight: 50,
+    border: "1px solid var(--border)",
+    borderRadius: 14,
+    background: "var(--surface)",
+    color: "var(--text)",
+    padding: "0 14px",
+    outline: "none",
+  };
+}
+
+function textareaStyle(): React.CSSProperties {
+  return {
+    width: "100%",
+    minHeight: 96,
+    border: "1px solid var(--border)",
+    borderRadius: 14,
+    background: "var(--surface)",
+    color: "var(--text)",
+    padding: "14px",
+    outline: "none",
+    resize: "vertical",
+    fontFamily: "inherit",
+  };
+}
+
+function labelStyle(): React.CSSProperties {
+  return {
+    fontSize: 13,
+    fontWeight: 800,
+    color: "var(--text-muted)",
+  };
+}
+
+function toneStyle(tone: NoticeTone): React.CSSProperties {
+  if (tone === "good") {
+    return {
+      border: "1px solid rgba(34,197,94,0.25)",
+      background: "rgba(34,197,94,0.08)",
+    };
+  }
+  if (tone === "warn") {
+    return {
+      border: "1px solid rgba(245,158,11,0.25)",
+      background: "rgba(245,158,11,0.08)",
+    };
+  }
+  return {
+    border: "1px solid rgba(239,68,68,0.25)",
+    background: "rgba(239,68,68,0.08)",
   };
 }
 
@@ -224,6 +331,8 @@ export default function ReferralsPage() {
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [savingAccount, setSavingAccount] = useState(false);
+  const [requestingPayout, setRequestingPayout] = useState(false);
 
   const [meData, setMeData] = useState<ReferralMeResponse | null>(null);
   const [historyData, setHistoryData] = useState<ReferralHistoryResponse | null>(null);
@@ -231,6 +340,21 @@ export default function ReferralsPage() {
   const [payoutsData, setPayoutsData] = useState<ReferralPayoutsResponse | null>(null);
 
   const [errorText, setErrorText] = useState("");
+  const [notice, setNotice] = useState<NoticeState>(null);
+
+  const [provider, setProvider] = useState("paystack");
+  const [bankCode, setBankCode] = useState("");
+  const [bankName, setBankName] = useState("");
+  const [accountName, setAccountName] = useState("");
+  const [accountNumber, setAccountNumber] = useState("");
+  const [accountNumberMasked, setAccountNumberMasked] = useState("");
+  const [recipientCode, setRecipientCode] = useState("");
+  const [currencyInput, setCurrencyInput] = useState("NGN");
+  const [isVerified, setIsVerified] = useState(true);
+
+  const [payoutAmount, setPayoutAmount] = useState("");
+  const [payoutProviderReference, setPayoutProviderReference] = useState("");
+  const [payoutTransferCode, setPayoutTransferCode] = useState("");
 
   async function loadAll(showRefreshState = false) {
     if (!requireAuth()) return;
@@ -271,6 +395,18 @@ export default function ReferralsPage() {
       setHistoryData(history);
       setRewardsData(rewards);
       setPayoutsData(payouts);
+
+      const payoutAccount = me?.payout_account || me?.payout_eligibility?.payout_account;
+      if (payoutAccount) {
+        setProvider(safeText(payoutAccount.provider, "paystack"));
+        setBankCode(safeText(payoutAccount.bank_code, ""));
+        setBankName(safeText(payoutAccount.bank_name, ""));
+        setAccountName(safeText(payoutAccount.account_name, ""));
+        setAccountNumberMasked(safeText(payoutAccount.account_number_masked, ""));
+        setRecipientCode(safeText(payoutAccount.recipient_code, ""));
+        setCurrencyInput(safeText(payoutAccount.currency, "NGN"));
+        setIsVerified(Boolean(payoutAccount.is_verified));
+      }
     } catch (e: unknown) {
       if (isApiError(e)) {
         setErrorText(
@@ -300,6 +436,8 @@ export default function ReferralsPage() {
   const recentReferrals = historyData?.rows || meData?.summary?.recent_referrals || [];
   const recentRewards = rewardsData?.rows || meData?.summary?.recent_rewards || [];
   const recentPayouts = payoutsData?.rows || meData?.summary?.recent_payouts || [];
+  const payoutAccount = meData?.payout_account || meData?.payout_eligibility?.payout_account || null;
+  const eligibility = meData?.payout_eligibility || null;
 
   const referralCode = safeText(profile?.referral_code, "—");
   const referralLink = safeText(profile?.referral_link, "—");
@@ -342,10 +480,135 @@ export default function ReferralsPage() {
     [currency, totals]
   );
 
+  async function handleSavePayoutAccount() {
+    if (!requireAuth()) return;
+
+    setSavingAccount(true);
+    setNotice(null);
+
+    try {
+      const response = await apiJson<{
+        ok?: boolean;
+        payout_account?: PayoutAccount | null;
+        payout_eligibility?: PayoutEligibility | null;
+      }>("/referrals/payout-account", {
+        method: "POST",
+        body: {
+          provider: provider.trim() || "paystack",
+          bank_code: bankCode.trim() || undefined,
+          bank_name: bankName.trim() || undefined,
+          account_name: accountName.trim() || undefined,
+          account_number: accountNumber.trim() || undefined,
+          account_number_masked: accountNumberMasked.trim() || undefined,
+          recipient_code: recipientCode.trim() || undefined,
+          currency: currencyInput.trim() || "NGN",
+          is_verified: isVerified,
+        },
+        useAuthToken: false,
+        timeoutMs: 15000,
+      });
+
+      setNotice({
+        tone: "good",
+        title: "Payout account saved",
+        subtitle: `Provider: ${safeText(response?.payout_account?.provider, "paystack")} • Verified: ${
+          response?.payout_account?.is_verified ? "Yes" : "No"
+        }`,
+      });
+
+      await loadAll(true);
+    } catch (e: unknown) {
+      if (isApiError(e)) {
+        setNotice({
+          tone: "danger",
+          title: "Could not save payout account",
+          subtitle: safeText(e.data?.root_cause || e.data?.error || e.message, "Unknown error"),
+        });
+      } else if (e instanceof Error) {
+        setNotice({
+          tone: "danger",
+          title: "Could not save payout account",
+          subtitle: e.message,
+        });
+      } else {
+        setNotice({
+          tone: "danger",
+          title: "Could not save payout account",
+          subtitle: "Unknown error",
+        });
+      }
+    } finally {
+      setSavingAccount(false);
+    }
+  }
+
+  async function handleRequestPayout() {
+    if (!requireAuth()) return;
+
+    setRequestingPayout(true);
+    setNotice(null);
+
+    try {
+      const body: Record<string, unknown> = {
+        provider: provider.trim() || undefined,
+        provider_reference: payoutProviderReference.trim() || undefined,
+        provider_transfer_code: payoutTransferCode.trim() || undefined,
+      };
+
+      if (payoutAmount.trim()) {
+        body.amount = Number(payoutAmount);
+      }
+
+      const response = await apiJson<{
+        ok?: boolean;
+        payout?: PayoutRow | null;
+      }>("/referrals/payout-request", {
+        method: "POST",
+        body,
+        useAuthToken: false,
+        timeoutMs: 15000,
+      });
+
+      setNotice({
+        tone: "good",
+        title: "Payout request submitted",
+        subtitle: `A new payout row was created with status ${safeText(response?.payout?.status, "pending")}.`,
+      });
+
+      setPayoutAmount("");
+      setPayoutProviderReference("");
+      setPayoutTransferCode("");
+
+      await loadAll(true);
+    } catch (e: unknown) {
+      if (isApiError(e)) {
+        setNotice({
+          tone: "danger",
+          title: "Could not request payout",
+          subtitle: safeText(e.data?.root_cause || e.data?.error || e.message, "Unknown error"),
+        });
+      } else if (e instanceof Error) {
+        setNotice({
+          tone: "danger",
+          title: "Could not request payout",
+          subtitle: e.message,
+        });
+      } else {
+        setNotice({
+          tone: "danger",
+          title: "Could not request payout",
+          subtitle: "Unknown error",
+        });
+      }
+    } finally {
+      setRequestingPayout(false);
+    }
+  }
+
   return (
     <AppShell
       title="Referrals"
-      subtitle="View your referral code, copy your invite link, and monitor referrals, rewards, and payouts from one workspace."
+      subtitle="View your referral code, manage your payout account, check eligibility, and request referral payouts from one workspace."
       actions={
         <>
           <button
@@ -391,11 +654,23 @@ export default function ReferralsPage() {
       }
     >
       <div style={{ display: "grid", gap: 20 }}>
+        {notice ? (
+          <div
+            style={{
+              ...cardStyle(),
+              ...toneStyle(notice.tone),
+            }}
+          >
+            <div style={sectionTitleStyle()}>{notice.title}</div>
+            <div style={mutedStyle()}>{notice.subtitle}</div>
+          </div>
+        ) : null}
+
         {loading ? (
           <div style={cardStyle()}>
             <div style={sectionTitleStyle()}>Loading referral workspace...</div>
             <div style={mutedStyle()}>
-              Please wait while your referral profile, counts, and reward records are being loaded.
+              Please wait while your referral profile, counts, rewards, payout account, and payout eligibility are being loaded.
             </div>
           </div>
         ) : null}
@@ -428,18 +703,14 @@ export default function ReferralsPage() {
 
                 <div style={{ display: "grid", gap: 12 }}>
                   <div style={statCardStyle()}>
-                    <div style={{ fontSize: 13, fontWeight: 800, color: "var(--text-muted)" }}>
-                      Referral Code
-                    </div>
+                    <div style={labelStyle()}>Referral Code</div>
                     <div style={{ fontSize: 28, fontWeight: 900, color: "var(--text)" }}>
                       {referralCode}
                     </div>
                   </div>
 
                   <div style={statCardStyle()}>
-                    <div style={{ fontSize: 13, fontWeight: 800, color: "var(--text-muted)" }}>
-                      Referral Link
-                    </div>
+                    <div style={labelStyle()}>Referral Link</div>
                     <div
                       style={{
                         fontSize: 15,
@@ -454,9 +725,7 @@ export default function ReferralsPage() {
                   </div>
 
                   <div style={statCardStyle()}>
-                    <div style={{ fontSize: 13, fontWeight: 800, color: "var(--text-muted)" }}>
-                      Ready-to-share invite message
-                    </div>
+                    <div style={labelStyle()}>Ready-to-share invite message</div>
                     <div
                       style={{
                         fontSize: 14,
@@ -470,31 +739,238 @@ export default function ReferralsPage() {
                       {inviteMessage}
                     </div>
                   </div>
-
-                  <div style={mutedStyle()}>
-                    This web page now mirrors the same referral profile details already showing correctly inside Telegram.
-                  </div>
                 </div>
               </div>
 
               <div style={cardStyle()}>
                 <div style={sectionTitleStyle()}>Status summary</div>
                 <div style={mutedStyle()}>
-                  Quick view of totals, reward balances, and payout-ready status.
+                  Quick view of totals, reward balances, and payout readiness.
                 </div>
 
                 <div style={{ display: "grid", gap: 12 }}>
                   {statItems.map((item) => (
                     <div key={item.label} style={statCardStyle()}>
-                      <div style={{ fontSize: 13, fontWeight: 800, color: "var(--text-muted)" }}>
-                        {item.label}
-                      </div>
+                      <div style={labelStyle()}>{item.label}</div>
                       <div style={{ fontSize: 24, fontWeight: 900, color: "var(--text)" }}>
                         {item.value}
                       </div>
                       <div style={mutedStyle()}>{item.helper}</div>
                     </div>
                   ))}
+                </div>
+              </div>
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                gap: 20,
+                alignItems: "start",
+              }}
+            >
+              <div style={cardStyle()}>
+                <div style={sectionTitleStyle()}>Payout account</div>
+                <div style={mutedStyle()}>
+                  Save the payout destination details the backend will use when creating your payout requests.
+                </div>
+
+                <div style={statCardStyle()}>
+                  <div style={labelStyle()}>Current saved payout account</div>
+                  <div style={mutedStyle()}>
+                    Provider: {safeText(payoutAccount?.provider, "None")} • Bank: {safeText(payoutAccount?.bank_name, "None")}
+                  </div>
+                  <div style={mutedStyle()}>
+                    Account Name: {safeText(payoutAccount?.account_name, "None")}
+                  </div>
+                  <div style={mutedStyle()}>
+                    Account Number: {safeText(payoutAccount?.account_number_masked, "None")}
+                  </div>
+                  <div style={mutedStyle()}>
+                    Recipient Code: {safeText(payoutAccount?.recipient_code, "None")} • Verified:{" "}
+                    {payoutAccount?.is_verified ? "Yes" : "No"}
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gap: 12 }}>
+                  <div style={{ display: "grid", gap: 6 }}>
+                    <div style={labelStyle()}>Provider</div>
+                    <input
+                      value={provider}
+                      onChange={(e) => setProvider(e.target.value)}
+                      style={inputStyle()}
+                      placeholder="paystack"
+                    />
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                    <div style={{ display: "grid", gap: 6 }}>
+                      <div style={labelStyle()}>Bank Code</div>
+                      <input
+                        value={bankCode}
+                        onChange={(e) => setBankCode(e.target.value)}
+                        style={inputStyle()}
+                        placeholder="058"
+                      />
+                    </div>
+
+                    <div style={{ display: "grid", gap: 6 }}>
+                      <div style={labelStyle()}>Bank Name</div>
+                      <input
+                        value={bankName}
+                        onChange={(e) => setBankName(e.target.value)}
+                        style={inputStyle()}
+                        placeholder="GTBank"
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ display: "grid", gap: 6 }}>
+                    <div style={labelStyle()}>Account Name</div>
+                    <input
+                      value={accountName}
+                      onChange={(e) => setAccountName(e.target.value)}
+                      style={inputStyle()}
+                      placeholder="Full account name"
+                    />
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                    <div style={{ display: "grid", gap: 6 }}>
+                      <div style={labelStyle()}>Account Number</div>
+                      <input
+                        value={accountNumber}
+                        onChange={(e) => setAccountNumber(e.target.value)}
+                        style={inputStyle()}
+                        placeholder="0123456789"
+                      />
+                    </div>
+
+                    <div style={{ display: "grid", gap: 6 }}>
+                      <div style={labelStyle()}>Account Number Masked</div>
+                      <input
+                        value={accountNumberMasked}
+                        onChange={(e) => setAccountNumberMasked(e.target.value)}
+                        style={inputStyle()}
+                        placeholder="****6789"
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                    <div style={{ display: "grid", gap: 6 }}>
+                      <div style={labelStyle()}>Recipient Code</div>
+                      <input
+                        value={recipientCode}
+                        onChange={(e) => setRecipientCode(e.target.value)}
+                        style={inputStyle()}
+                        placeholder="RCP-123"
+                      />
+                    </div>
+
+                    <div style={{ display: "grid", gap: 6 }}>
+                      <div style={labelStyle()}>Currency</div>
+                      <input
+                        value={currencyInput}
+                        onChange={(e) => setCurrencyInput(e.target.value)}
+                        style={inputStyle()}
+                        placeholder="NGN"
+                      />
+                    </div>
+                  </div>
+
+                  <label
+                    style={{
+                      display: "flex",
+                      gap: 10,
+                      alignItems: "center",
+                      color: "var(--text)",
+                      fontWeight: 700,
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isVerified}
+                      onChange={(e) => setIsVerified(e.target.checked)}
+                    />
+                    Mark payout account as verified
+                  </label>
+
+                  <div>
+                    <button
+                      type="button"
+                      style={shellButtonPrimary()}
+                      onClick={() => void handleSavePayoutAccount()}
+                    >
+                      {savingAccount ? "Saving..." : "Save Payout Account"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div style={cardStyle()}>
+                <div style={sectionTitleStyle()}>Payout eligibility and request</div>
+                <div style={mutedStyle()}>
+                  Check whether your approved reward balance is currently eligible for payout, then create a payout request.
+                </div>
+
+                <div style={statCardStyle()}>
+                  <div style={labelStyle()}>Eligibility snapshot</div>
+                  <div style={mutedStyle()}>
+                    Eligible: {eligibility?.eligible ? "Yes" : "No"} • Verified account: {eligibility?.is_verified ? "Yes" : "No"}
+                  </div>
+                  <div style={mutedStyle()}>
+                    Available amount: {formatMoney(eligibility?.available_amount, currency)}
+                  </div>
+                  <div style={mutedStyle()}>
+                    Minimum amount: {formatMoney(eligibility?.minimum_amount, currency)}
+                  </div>
+                  <div style={mutedStyle()}>
+                    Open payout amount: {formatMoney(eligibility?.open_payout_amount, currency)}
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gap: 12 }}>
+                  <div style={{ display: "grid", gap: 6 }}>
+                    <div style={labelStyle()}>Payout Amount</div>
+                    <input
+                      value={payoutAmount}
+                      onChange={(e) => setPayoutAmount(e.target.value)}
+                      style={inputStyle()}
+                      placeholder="Leave blank to request full available amount"
+                    />
+                  </div>
+
+                  <div style={{ display: "grid", gap: 6 }}>
+                    <div style={labelStyle()}>Provider Reference</div>
+                    <input
+                      value={payoutProviderReference}
+                      onChange={(e) => setPayoutProviderReference(e.target.value)}
+                      style={inputStyle()}
+                      placeholder="Optional provider reference"
+                    />
+                  </div>
+
+                  <div style={{ display: "grid", gap: 6 }}>
+                    <div style={labelStyle()}>Transfer Code</div>
+                    <input
+                      value={payoutTransferCode}
+                      onChange={(e) => setPayoutTransferCode(e.target.value)}
+                      style={inputStyle()}
+                      placeholder="Optional transfer code"
+                    />
+                  </div>
+
+                  <div>
+                    <button
+                      type="button"
+                      style={shellButtonPrimary()}
+                      onClick={() => void handleRequestPayout()}
+                    >
+                      {requestingPayout ? "Submitting..." : "Request Payout"}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -577,10 +1053,13 @@ export default function ReferralsPage() {
                           {currency} {safeText(row.amount, "0")}
                         </div>
                         <div style={mutedStyle()}>
-                          Status: {safeText(row.status)} • Method: {safeText(row.payout_method)}
+                          Status: {safeText(row.status)} • Provider: {safeText(row.provider)}
                         </div>
                         <div style={mutedStyle()}>
-                          Created: {formatDate(row.created_at)}
+                          Reference: {safeText(row.provider_reference, "None")} • Transfer code: {safeText(row.provider_transfer_code, "None")}
+                        </div>
+                        <div style={mutedStyle()}>
+                          Created: {formatDate(row.requested_at || row.created_at)}
                         </div>
                       </div>
                     ))}
