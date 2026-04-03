@@ -238,27 +238,6 @@ function planCardStyle(
   };
 }
 
-
-function planSortValue(plan: DisplayPlan): number {
-  const cycleRank: Record<BillingCycle, number> = { monthly: 1, quarterly: 2, yearly: 3 };
-  const tierRank: Record<Tier, number> = { starter: 1, professional: 2, business: 3 };
-  return tierRank[plan.tier] * 1000000 + plan.price * 10 + cycleRank[plan.cycle];
-}
-
-function changeActionLabel(args: {
-  currentPlanCode: string;
-  targetPlan: DisplayPlan;
-}): string {
-  if (!args.currentPlanCode) return 'Choose Plan';
-  const currentPlan = PLANS.find((plan) => plan.code === args.currentPlanCode);
-  if (!currentPlan) return 'Choose Plan';
-  const currentRank = planSortValue(currentPlan);
-  const targetRank = planSortValue(args.targetPlan);
-  if (targetRank > currentRank) return 'Upgrade Now';
-  if (targetRank < currentRank) return 'Schedule Downgrade';
-  return 'Choose Plan';
-}
-
 export default function PlansPage() {
   const router = useRouter();
   const { hasSession } = useAuth();
@@ -327,6 +306,13 @@ export default function PlansPage() {
     ""
   );
 
+  const pendingStartsAt = safeText(
+    subscriptionSummary.pending_starts_at ||
+      (subscription as any)?.pending_starts_at ||
+      "",
+    ""
+  );
+
   const currentPlanName = safeText(
     subscription?.plan_name || billing?.plan_name || currentPlanCode || "No active plan"
   );
@@ -357,6 +343,19 @@ export default function PlansPage() {
     () => PLANS.filter((plan) => plan.cycle === billingCycle),
     [billingCycle]
   );
+
+  function isDowngradeTarget(plan: DisplayPlan): boolean {
+    const current = PLANS.find((item) => item.code === currentPlanCode);
+    if (!current) return false;
+    const rank = { starter: 1, professional: 2, business: 3 } as const;
+    return rank[plan.tier] < rank[current.tier];
+  }
+
+  function getActionLabel(plan: DisplayPlan, isCurrent: boolean, isPending: boolean): string {
+    if (isCurrent) return "Current Plan";
+    if (isPending) return "Pending Change";
+    return isDowngradeTarget(plan) ? "Schedule Downgrade" : "Upgrade Now";
+  }
 
   async function handleChoosePlan(planCode: string) {
     if (!hasSession) {
@@ -412,6 +411,46 @@ export default function PlansPage() {
         setCheckoutError(error.message);
       } else {
         setCheckoutError("Unable to continue to checkout right now.");
+      }
+    } finally {
+      setProcessingCode("");
+    }
+  }
+
+  async function handleClearPendingChange() {
+    if (!hasSession) {
+      router.push("/login?next=/plans");
+      return;
+    }
+
+    setCheckoutMessage("");
+    setCheckoutError("");
+    setProcessingCode("__clear_pending__");
+
+    try {
+      const data = await apiJson<ChangePlanResp>("/billing/clear-pending-change", {
+        method: "POST",
+        timeoutMs: 20000,
+      });
+
+      if (data?.ok) {
+        setCheckoutMessage(
+          data?.action === "no_pending_change"
+            ? "There is no pending plan change to clear."
+            : "Pending plan change cleared successfully."
+        );
+        await refreshAll();
+        return;
+      }
+
+      setCheckoutError("Unable to clear pending plan change right now.");
+    } catch (error: unknown) {
+      if (isApiError(error)) {
+        setCheckoutError(error.message);
+      } else if (error instanceof Error) {
+        setCheckoutError(error.message);
+      } else {
+        setCheckoutError("Unable to clear pending plan change right now.");
       }
     } finally {
       setProcessingCode("");
@@ -507,7 +546,9 @@ export default function PlansPage() {
               label="Pending Plan"
               value={pendingPlanCode || "No pending change"}
               tone={pendingPlanCode ? "warn" : "default"}
-              helper="Shows any scheduled downgrade or pending change."
+              helper={pendingPlanCode && pendingStartsAt
+                ? `Scheduled to start ${formatDate(pendingStartsAt)}.`
+                : "Shows any scheduled downgrade or pending change."}
             />
             <MetricCard
               label="Visible Credits"
@@ -533,6 +574,20 @@ export default function PlansPage() {
               <span>{expiresAt ? formatDate(expiresAt) : "Not currently visible"}</span>
             </div>
           </div>
+
+          {pendingPlanCode ? (
+            <div style={{ marginTop: 18, display: "flex", gap: 12, flexWrap: "wrap" }}>
+              <button
+                disabled={processingCode === "__clear_pending__"}
+                onClick={handleClearPendingChange}
+                style={shellButtonSecondary()}
+              >
+                {processingCode === "__clear_pending__"
+                  ? "Clearing Pending Change..."
+                  : "Clear Pending Change"}
+              </button>
+            </div>
+          ) : null}
         </WorkspaceSectionCard>
 
         <WorkspaceSectionCard
@@ -544,14 +599,10 @@ export default function PlansPage() {
               const isCurrent = currentPlanCode === plan.code;
               const isPending = pendingPlanCode === plan.code;
               const isProcessing = processingCode === plan.code;
-              const actionLabel = changeActionLabel({
-                currentPlanCode,
-                targetPlan: plan,
-              });
-              const buttonDisabled = isProcessing || isCurrent || isPending;
+              const actionLabel = getActionLabel(plan, isCurrent, isPending);
 
               return (
-                <div key={plan.code} style={planCardStyle(isCurrent || isPending, !!plan.recommended)}>
+                <div key={plan.code} style={planCardStyle(isCurrent, !!plan.recommended)}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
                     <div>
                       <div
@@ -575,56 +626,52 @@ export default function PlansPage() {
                       </div>
                     </div>
 
-                    <div style={{ display: "grid", gap: 8, justifyItems: "end" }}>
-                      {plan.recommended ? (
-                        <span
-                          style={{
-                            alignSelf: "start",
-                            borderRadius: 999,
-                            padding: "6px 10px",
-                            fontSize: 12,
-                            fontWeight: 800,
-                            color: "var(--gold)",
-                            border: "1px solid var(--gold)",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          Recommended
-                        </span>
-                      ) : null}
-                      {isCurrent ? (
-                        <span
-                          style={{
-                            alignSelf: "start",
-                            borderRadius: 999,
-                            padding: "6px 10px",
-                            fontSize: 12,
-                            fontWeight: 800,
-                            color: "var(--accent)",
-                            border: "1px solid var(--accent-border)",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          Current
-                        </span>
-                      ) : null}
-                      {isPending ? (
-                        <span
-                          style={{
-                            alignSelf: "start",
-                            borderRadius: 999,
-                            padding: "6px 10px",
-                            fontSize: 12,
-                            fontWeight: 800,
-                            color: "var(--warning, #b45309)",
-                            border: "1px solid var(--warning, #b45309)",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          Pending Change
-                        </span>
-                      ) : null}
-                    </div>
+                    {isCurrent ? (
+                      <span
+                        style={{
+                          alignSelf: "start",
+                          borderRadius: 999,
+                          padding: "6px 10px",
+                          fontSize: 12,
+                          fontWeight: 800,
+                          color: "var(--accent)",
+                          border: "1px solid var(--accent-border)",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        Current
+                      </span>
+                    ) : isPending ? (
+                      <span
+                        style={{
+                          alignSelf: "start",
+                          borderRadius: 999,
+                          padding: "6px 10px",
+                          fontSize: 12,
+                          fontWeight: 800,
+                          color: "var(--warning-text, #b45309)",
+                          border: "1px solid var(--warning-border, #f59e0b)",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        Pending Change
+                      </span>
+                    ) : plan.recommended ? (
+                      <span
+                        style={{
+                          alignSelf: "start",
+                          borderRadius: 999,
+                          padding: "6px 10px",
+                          fontSize: 12,
+                          fontWeight: 800,
+                          color: "var(--gold)",
+                          border: "1px solid var(--gold)",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        Recommended
+                      </span>
+                    ) : null}
                   </div>
 
                   <div
@@ -659,22 +706,16 @@ export default function PlansPage() {
                   <div style={{ display: "grid", gap: 10, fontSize: 15, lineHeight: 1.7 }}>
                     <div>Included AI credits: {plan.credits}</div>
                     <div>Support level: {plan.support_level}</div>
-                    <div>Billing action: {isCurrent ? "Already active" : isPending ? "Already scheduled" : actionLabel}</div>
+                    <div>Billing action: {actionLabel}</div>
                   </div>
 
                   <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
                     <button
-                      disabled={buttonDisabled}
+                      disabled={isProcessing || isCurrent || isPending}
                       onClick={() => handleChoosePlan(plan.code)}
-                      style={buttonDisabled ? shellButtonSecondary() : shellButtonPrimary()}
+                      style={isCurrent || isPending ? shellButtonSecondary() : shellButtonPrimary()}
                     >
-                      {isCurrent
-                        ? "Current Plan"
-                        : isPending
-                        ? "Pending Change"
-                        : isProcessing
-                        ? "Processing..."
-                        : actionLabel}
+                      {isProcessing ? "Processing..." : actionLabel}
                     </button>
                   </div>
                 </div>
