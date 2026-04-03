@@ -240,14 +240,16 @@ export default function SupportPage() {
   const [selectedTicket, setSelectedTicket] = useState<SupportTicket | null>(null);
   const [threadMessages, setThreadMessages] = useState<SupportMessage[]>([]);
   const [supportIntent, setSupportIntent] = useState("");
+  const [supportReference, setSupportReference] = useState("");
 
   const intentPreset = useMemo(() => {
     const intent = supportIntent.trim().toLowerCase();
+    const selectedReference = (supportReference || latestPaymentReference || "").trim();
 
     const contextLines = [
       `Current plan: ${planName}`,
       `Plan status: ${planStatus}`,
-      `Latest payment reference: ${latestPaymentReference}`,
+      `Latest payment reference: ${supportReference || latestPaymentReference}`,
       `Latest payment date: ${latestPaymentDate}`,
       `Visible credits: ${creditBalance}`,
       `Channel state: ${channelState}`,
@@ -258,7 +260,7 @@ export default function SupportPage() {
       return {
         category: "billing",
         priority: "high",
-        subject: "Duplicate charge review request",
+        subject: selectedReference ? `Duplicate charge review request — ${selectedReference}` : "Duplicate charge review request",
         message:
           "I want to report a possible duplicate charge. Please review whether more than one payment was captured for the same intended purchase.\n\n" +
           contextLines.join("\n"),
@@ -269,7 +271,7 @@ export default function SupportPage() {
       return {
         category: "billing",
         priority: "high",
-        subject: "Wrong plan activated after payment",
+        subject: selectedReference ? `Wrong plan activated after payment — ${selectedReference}` : "Wrong plan activated after payment",
         message:
           "Payment appears successful, but the visible plan does not match what I intended to buy. Please review the activation result against the payment record.\n\n" +
           contextLines.join("\n"),
@@ -280,7 +282,7 @@ export default function SupportPage() {
       return {
         category: "credits",
         priority: "high",
-        subject: "Payment successful but activation or access failed",
+        subject: selectedReference ? `Payment successful but activation or access failed — ${selectedReference}` : "Payment successful but activation or access failed",
         message:
           "Payment appears successful, but activation, credits, or access did not update as expected. Please review the billing result and activation state.\n\n" +
           contextLines.join("\n"),
@@ -291,7 +293,7 @@ export default function SupportPage() {
       return {
         category: "billing",
         priority: "high",
-        subject: "Refund review request",
+        subject: selectedReference ? `Refund review request — ${selectedReference}` : "Refund review request",
         message:
           "I want this payment reviewed under the refund policy. Please check whether the transaction qualifies for refund review based on payment evidence and activation outcome.\n\n" +
           contextLines.join("\n"),
@@ -308,6 +310,7 @@ export default function SupportPage() {
     creditBalance,
     channelState,
     expiresAt,
+    supportReference,
   ]);
 
   function setField<K extends keyof SupportFormState>(key: K, value: SupportFormState[K]) {
@@ -318,26 +321,33 @@ export default function SupportPage() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
-    setSupportIntent(params.get("intent") || "");
+
+    const applyFromLocation = () => {
+      const params = new URLSearchParams(window.location.search);
+      setSupportIntent(
+        params.get("intent") ||
+          params.get("issue") ||
+          ""
+      );
+      setSupportReference(params.get("reference") || "");
+    };
+
+    applyFromLocation();
+    window.addEventListener("popstate", applyFromLocation);
+    return () => window.removeEventListener("popstate", applyFromLocation);
   }, []);
 
   useEffect(() => {
     if (!intentPreset) return;
 
-    setForm((prev) => {
-      const hasMeaningfulContent =
-        prev.subject.trim().length > 0 || prev.message.trim().length > 0 || prev.category !== "general";
-
-      if (hasMeaningfulContent) return prev;
-
-      return {
-        category: intentPreset.category,
-        priority: intentPreset.priority,
-        subject: intentPreset.subject,
-        message: intentPreset.message,
-      };
+    setForm({
+      category: intentPreset.category,
+      priority: intentPreset.priority,
+      subject: intentPreset.subject,
+      message: intentPreset.message,
     });
+    setNotice("");
+    setError("");
   }, [intentPreset]);
 
   async function loadTickets(selectLatest = false) {
@@ -614,7 +624,7 @@ export default function SupportPage() {
           <Banner
             tone="default"
             title={`Support flow ready: ${safeText(intentPreset.subject, "Support request")}`}
-            subtitle="This form was prefilled from your Refund page action. Review the details, add any extra evidence, and submit when ready."
+            subtitle={`This form was prefilled from your Refund page action${supportReference ? ` for reference ${supportReference}` : ""}. Review the details, add any extra evidence, and submit when ready.`}
           />
         ) : null}
 
