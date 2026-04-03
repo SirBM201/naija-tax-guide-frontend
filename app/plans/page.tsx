@@ -238,6 +238,27 @@ function planCardStyle(
   };
 }
 
+
+function planSortValue(plan: DisplayPlan): number {
+  const cycleRank: Record<BillingCycle, number> = { monthly: 1, quarterly: 2, yearly: 3 };
+  const tierRank: Record<Tier, number> = { starter: 1, professional: 2, business: 3 };
+  return tierRank[plan.tier] * 1000000 + plan.price * 10 + cycleRank[plan.cycle];
+}
+
+function changeActionLabel(args: {
+  currentPlanCode: string;
+  targetPlan: DisplayPlan;
+}): string {
+  if (!args.currentPlanCode) return 'Choose Plan';
+  const currentPlan = PLANS.find((plan) => plan.code === args.currentPlanCode);
+  if (!currentPlan) return 'Choose Plan';
+  const currentRank = planSortValue(currentPlan);
+  const targetRank = planSortValue(args.targetPlan);
+  if (targetRank > currentRank) return 'Upgrade Now';
+  if (targetRank < currentRank) return 'Schedule Downgrade';
+  return 'Choose Plan';
+}
+
 export default function PlansPage() {
   const router = useRouter();
   const { hasSession } = useAuth();
@@ -521,10 +542,16 @@ export default function PlansPage() {
           <CardsGrid min={320}>
             {plansForCycle.map((plan) => {
               const isCurrent = currentPlanCode === plan.code;
+              const isPending = pendingPlanCode === plan.code;
               const isProcessing = processingCode === plan.code;
+              const actionLabel = changeActionLabel({
+                currentPlanCode,
+                targetPlan: plan,
+              });
+              const buttonDisabled = isProcessing || isCurrent || isPending;
 
               return (
-                <div key={plan.code} style={planCardStyle(isCurrent, !!plan.recommended)}>
+                <div key={plan.code} style={planCardStyle(isCurrent || isPending, !!plan.recommended)}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
                     <div>
                       <div
@@ -548,22 +575,56 @@ export default function PlansPage() {
                       </div>
                     </div>
 
-                    {plan.recommended ? (
-                      <span
-                        style={{
-                          alignSelf: "start",
-                          borderRadius: 999,
-                          padding: "6px 10px",
-                          fontSize: 12,
-                          fontWeight: 800,
-                          color: "var(--gold)",
-                          border: "1px solid var(--gold)",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        Recommended
-                      </span>
-                    ) : null}
+                    <div style={{ display: "grid", gap: 8, justifyItems: "end" }}>
+                      {plan.recommended ? (
+                        <span
+                          style={{
+                            alignSelf: "start",
+                            borderRadius: 999,
+                            padding: "6px 10px",
+                            fontSize: 12,
+                            fontWeight: 800,
+                            color: "var(--gold)",
+                            border: "1px solid var(--gold)",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          Recommended
+                        </span>
+                      ) : null}
+                      {isCurrent ? (
+                        <span
+                          style={{
+                            alignSelf: "start",
+                            borderRadius: 999,
+                            padding: "6px 10px",
+                            fontSize: 12,
+                            fontWeight: 800,
+                            color: "var(--accent)",
+                            border: "1px solid var(--accent-border)",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          Current
+                        </span>
+                      ) : null}
+                      {isPending ? (
+                        <span
+                          style={{
+                            alignSelf: "start",
+                            borderRadius: 999,
+                            padding: "6px 10px",
+                            fontSize: 12,
+                            fontWeight: 800,
+                            color: "var(--warning, #b45309)",
+                            border: "1px solid var(--warning, #b45309)",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          Pending Change
+                        </span>
+                      ) : null}
+                    </div>
                   </div>
 
                   <div
@@ -598,19 +659,22 @@ export default function PlansPage() {
                   <div style={{ display: "grid", gap: 10, fontSize: 15, lineHeight: 1.7 }}>
                     <div>Included AI credits: {plan.credits}</div>
                     <div>Support level: {plan.support_level}</div>
+                    <div>Billing action: {isCurrent ? "Already active" : isPending ? "Already scheduled" : actionLabel}</div>
                   </div>
 
                   <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
                     <button
-                      disabled={isProcessing}
+                      disabled={buttonDisabled}
                       onClick={() => handleChoosePlan(plan.code)}
-                      style={shellButtonPrimary()}
+                      style={buttonDisabled ? shellButtonSecondary() : shellButtonPrimary()}
                     >
                       {isCurrent
                         ? "Current Plan"
+                        : isPending
+                        ? "Pending Change"
                         : isProcessing
                         ? "Processing..."
-                        : "Choose Plan"}
+                        : actionLabel}
                     </button>
                   </div>
                 </div>
