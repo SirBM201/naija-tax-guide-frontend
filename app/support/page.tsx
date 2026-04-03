@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import AppShell, {
   shellButtonPrimary,
@@ -139,7 +139,6 @@ function apiUrl(path: string): string {
 
 export default function SupportPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const { user, token } = useAuth();
 
   const { profile, usage, subscription, channelLinks, billing, credits } =
@@ -240,8 +239,7 @@ export default function SupportPage() {
   const [selectedTicketId, setSelectedTicketId] = useState<string>("");
   const [selectedTicket, setSelectedTicket] = useState<SupportTicket | null>(null);
   const [threadMessages, setThreadMessages] = useState<SupportMessage[]>([]);
-
-  const supportIntent = searchParams.get("intent") || "";
+  const [supportIntent, setSupportIntent] = useState("");
 
   const intentPreset = useMemo(() => {
     const intent = supportIntent.trim().toLowerCase();
@@ -317,6 +315,12 @@ export default function SupportPage() {
     setNotice("");
     setError("");
   }
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    setSupportIntent(params.get("intent") || "");
+  }, []);
 
   useEffect(() => {
     if (!intentPreset) return;
