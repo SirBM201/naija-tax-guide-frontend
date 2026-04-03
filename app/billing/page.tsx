@@ -151,6 +151,62 @@ function paymentMethodLabel(value: string): string {
   return raw.replace(/[_-]+/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
+function parseTime(value?: string | null): number {
+  if (!value) return 0;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function historyRowStrength(row: BillingHistoryRow): number {
+  const status = String(row.status || "").trim().toLowerCase();
+  const eventType = String(row.event_type || "").trim().toLowerCase();
+  const source = String(row.source || row.channel_type || "").trim().toLowerCase();
+
+  let score = 0;
+  if (["success", "paid", "active"].includes(status)) score += 100;
+  else if (["pending", "processing", "queued"].includes(status)) score += 40;
+  else if (["failed", "abandoned", "reversed", "cancelled", "canceled"].includes(status)) score += 10;
+
+  if (eventType === "charge.success") score += 60;
+  else if (eventType === "verify") score += 25;
+  else if (eventType === "subscription_snapshot") score += 5;
+
+  if (source.includes("paystack")) score += 20;
+  if (row.paid_at) score += 8;
+  if (row.amount_ngn) score += 4;
+
+  score += Math.min(parseTime(row.paid_at || row.created_at), 9999999999999) / 1e15;
+  return score;
+}
+
+function dedupeHistoryRows(rows: BillingHistoryRow[]): BillingHistoryRow[] {
+  const grouped = new Map<string, BillingHistoryRow>();
+
+  for (const row of rows) {
+    const reference = safeText(row.reference || "", "");
+    const key = reference || [
+      safeText(row.plan_code || row.plan_name || "", ""),
+      String(Math.round(Number(row.amount_ngn || 0))),
+      safeText((row.paid_at || row.created_at || "").slice(0, 10), ""),
+      safeText(row.status || "", ""),
+    ].join("|");
+
+    const existing = grouped.get(key);
+    if (!existing) {
+      grouped.set(key, row);
+      continue;
+    }
+
+    if (historyRowStrength(row) > historyRowStrength(existing)) {
+      grouped.set(key, row);
+    }
+  }
+
+  return Array.from(grouped.values()).sort((a, b) => {
+    return parseTime(b.paid_at || b.created_at) - parseTime(a.paid_at || a.created_at);
+  });
+}
+
 export default function BillingPage() {
   const router = useRouter();
   const { user } = useAuth();
@@ -175,7 +231,7 @@ export default function BillingPage() {
       setHistoryError(null);
       const data = await apiJson<BillingHistoryResponse>("/billing/history", {
         method: "GET",
-        query: { limit: 12 },
+        query: { limit: 24 },
         timeoutMs: 20000,
         useAuthToken: false,
       });
@@ -248,7 +304,9 @@ export default function BillingPage() {
     ""
   );
 
-  const latestHistoryRow = historyData?.history?.latest_success || historyData?.history?.rows?.[0] || null;
+  const rawHistoryRows = historyData?.history?.rows || [];
+  const historyRows = useMemo(() => dedupeHistoryRows(rawHistoryRows), [rawHistoryRows]);
+  const latestHistoryRow = historyRows[0] || historyData?.history?.latest_success || null;
 
   const lastPaymentRef = safeText(
     billing?.payment_reference ||
@@ -268,7 +326,6 @@ export default function BillingPage() {
   );
 
   const billingAny = billing as any;
-
   const creditBalance = Number(credits?.balance ?? billingAny?.credit_balance ?? 0);
   const creditUpdatedAt = safeText(
     credits?.updated_at || billingAny?.credit_updated_at || "",
@@ -279,29 +336,16 @@ export default function BillingPage() {
     ""
   );
 
-  const historyRows = historyData?.history?.rows || [];
-  const historyCount = Number(historyData?.history?.count || historyRows.length || 0);
+  const historyCount = historyRows.length;
+  const rawHistoryCount = Number(historyData?.history?.count || rawHistoryRows.length || 0);
   const latestPaymentDate = safeText(
     latestHistoryRow?.paid_at || latestHistoryRow?.created_at || "",
     ""
   );
 
-  const billingState = billingStateLabel({
-    active,
-    pendingPlanCode,
-  });
-
-  const renewalState = renewalLabel({
-    autoRenew,
-    active,
-  });
-
-  const nextAction = nextBillingAction({
-    active,
-    pendingPlanCode,
-    checkoutEmail,
-    autoRenew,
-  });
+  const billingState = billingStateLabel({ active, pendingPlanCode });
+  const renewalState = renewalLabel({ autoRenew, active });
+  const nextAction = nextBillingAction({ active, pendingPlanCode, checkoutEmail, autoRenew });
 
   return (
     <AppShell
@@ -449,7 +493,11 @@ export default function BillingPage() {
               label="Visible Payments"
               value={String(historyCount)}
               tone={historyCount > 0 ? "good" : "default"}
-              helper="Number of payment records currently visible for this account."
+              helper={
+                rawHistoryCount > historyCount
+                  ? `Showing ${historyCount} deduplicated records from ${rawHistoryCount} visible events.`
+                  : "Number of payment records currently visible for this account."
+              }
             />
             <MetricCard
               label="Latest Payment Date"
@@ -556,7 +604,11 @@ export default function BillingPage() {
                     <div style={snapshotItemStyle()}>
                       <div style={infoTextStyle()}>Payment Date</div>
                       <div style={valueTextStyle()}>
-                        {row.paid_at ? formatDate(row.paid_at) : row.created_at ? formatDate(row.created_at) : "Not currently available"}
+                        {row.paid_at
+                          ? formatDate(row.paid_at)
+                          : row.created_at
+                          ? formatDate(row.created_at)
+                          : "Not currently available"}
                       </div>
                     </div>
 
