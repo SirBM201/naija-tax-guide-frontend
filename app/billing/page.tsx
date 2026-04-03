@@ -1,17 +1,46 @@
 "use client";
 
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
+import { apiJson } from "@/lib/api";
 import AppShell, {
   shellButtonPrimary,
   shellButtonSecondary,
 } from "@/components/app-shell";
 import WorkspaceSectionCard from "@/components/workspace-section-card";
-import { Banner, MetricCard, formatDate } from "@/components/ui";
+import { Banner, MetricCard, formatCurrency, formatDate } from "@/components/ui";
 import { CardsGrid, SectionStack } from "@/components/page-layout";
 import { useWorkspaceState } from "@/hooks/useWorkspaceState";
 import { buildWorkspaceAlerts } from "@/lib/workspace-alerts";
+
+type BillingHistoryRow = {
+  reference?: string;
+  event_type?: string;
+  status?: string;
+  amount_ngn?: number;
+  currency?: string;
+  paid_at?: string | null;
+  created_at?: string | null;
+  plan_code?: string | null;
+  plan_name?: string | null;
+  payment_method?: string | null;
+  channel_type?: string | null;
+  gateway_response?: string | null;
+  source?: string | null;
+};
+
+type BillingHistoryResponse = {
+  ok?: boolean;
+  account_id?: string;
+  history?: {
+    ok?: boolean;
+    count?: number;
+    rows?: BillingHistoryRow[];
+    latest_success?: BillingHistoryRow | null;
+    db_warning?: string | null;
+  } | null;
+};
 
 function safeText(value: unknown, fallback = "—"): string {
   const text =
@@ -93,6 +122,35 @@ function nextBillingAction(args: {
   return "Billing looks stable";
 }
 
+function paymentTone(status: string): "default" | "good" | "warn" | "danger" {
+  const raw = (status || "").trim().toLowerCase();
+  if (["success", "paid", "active"].includes(raw)) return "good";
+  if (["pending", "processing", "queued"].includes(raw)) return "warn";
+  if (["failed", "abandoned", "reversed", "cancelled", "canceled"].includes(raw)) return "danger";
+  return "default";
+}
+
+function paymentLabel(status: string): string {
+  const raw = (status || "").trim().toLowerCase();
+  if (!raw) return "Unknown";
+  return raw.replace(/[_-]+/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function paymentEventLabel(eventType: string): string {
+  const raw = (eventType || "").trim().toLowerCase();
+  if (!raw) return "Payment Event";
+  if (raw === "charge.success") return "Charge Success";
+  if (raw === "verify") return "Redirect Verify";
+  if (raw === "subscription_snapshot") return "Subscription Snapshot";
+  return raw.replace(/[_.-]+/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function paymentMethodLabel(value: string): string {
+  const raw = (value || "").trim();
+  if (!raw) return "Not currently available";
+  return raw.replace(/[_-]+/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
 export default function BillingPage() {
   const router = useRouter();
   const { user } = useAuth();
@@ -106,6 +164,32 @@ export default function BillingPage() {
     credits,
     refreshAll,
   } = useWorkspaceState();
+
+  const [historyBusy, setHistoryBusy] = useState(false);
+  const [historyData, setHistoryData] = useState<BillingHistoryResponse | null>(null);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+
+  const loadHistory = async () => {
+    try {
+      setHistoryBusy(true);
+      setHistoryError(null);
+      const data = await apiJson<BillingHistoryResponse>("/billing/history", {
+        method: "GET",
+        query: { limit: 12 },
+        timeoutMs: 20000,
+        useAuthToken: false,
+      });
+      setHistoryData(data);
+    } catch (error) {
+      setHistoryError(error instanceof Error ? error.message : "Could not load billing history.");
+    } finally {
+      setHistoryBusy(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadHistory();
+  }, []);
 
   const allAlerts = useMemo(
     () =>
@@ -164,19 +248,41 @@ export default function BillingPage() {
     ""
   );
 
+  const latestHistoryRow = historyData?.history?.latest_success || historyData?.history?.rows?.[0] || null;
+
   const lastPaymentRef = safeText(
-    billing?.payment_reference || billing?.last_payment_reference || "",
+    billing?.payment_reference ||
+      billing?.last_payment_reference ||
+      latestHistoryRow?.reference ||
+      "",
     ""
   );
 
   const paymentMethod = safeText(
-    billing?.payment_method || billing?.provider || billing?.provider_name || "",
+    billing?.payment_method ||
+      billing?.provider ||
+      billing?.provider_name ||
+      latestHistoryRow?.payment_method ||
+      "",
     ""
   );
 
-  const creditBalance = Number(credits?.balance ?? 0);
-  const creditUpdatedAt = safeText(credits?.updated_at || "", "");
-  const usageToday = safeText(usage?.count ?? usage?.daily_usage ?? "", "");
+  const creditBalance = Number(credits?.balance ?? billing?.credit_balance ?? 0);
+  const creditUpdatedAt = safeText(
+    credits?.updated_at || billing?.credit_updated_at || "",
+    ""
+  );
+  const usageToday = safeText(
+    usage?.count ?? billing?.daily_usage_count ?? usage?.daily_usage ?? "",
+    ""
+  );
+
+  const historyRows = historyData?.history?.rows || [];
+  const historyCount = Number(historyData?.history?.count || historyRows.length || 0);
+  const latestPaymentDate = safeText(
+    latestHistoryRow?.paid_at || latestHistoryRow?.created_at || "",
+    ""
+  );
 
   const billingState = billingStateLabel({
     active,
@@ -201,7 +307,13 @@ export default function BillingPage() {
       subtitle="Review your subscription state, renewal status, payment details, credits visibility, and the next billing action your account may need."
       actions={
         <>
-          <button onClick={() => refreshAll()} style={shellButtonPrimary()}>
+          <button
+            onClick={() => {
+              refreshAll();
+              void loadHistory();
+            }}
+            style={shellButtonPrimary()}
+          >
             Refresh Billing
           </button>
           <button onClick={() => router.push("/plans")} style={shellButtonSecondary()}>
@@ -327,6 +439,159 @@ export default function BillingPage() {
         </div>
 
         <WorkspaceSectionCard
+          title="Payment history"
+          subtitle="Review your visible billing records, references, amounts, and status without leaving the billing workspace."
+        >
+          <CardsGrid min={220}>
+            <MetricCard
+              label="Visible Payments"
+              value={String(historyCount)}
+              tone={historyCount > 0 ? "good" : "default"}
+              helper="Number of payment records currently visible for this account."
+            />
+            <MetricCard
+              label="Latest Payment Date"
+              value={latestPaymentDate ? formatDate(latestPaymentDate) : "Not currently available"}
+              helper="Most recent payment date currently visible in billing history."
+            />
+            <MetricCard
+              label="Latest Reference"
+              value={lastPaymentRef || "Not currently available"}
+              helper="Useful when matching support messages or Paystack confirmations."
+            />
+          </CardsGrid>
+
+          <div style={{ marginTop: 18, display: "grid", gap: 12 }}>
+            {historyBusy ? (
+              <Banner
+                tone="default"
+                title="Loading billing history"
+                subtitle="Recent payment records are being loaded now."
+              />
+            ) : historyError ? (
+              <Banner
+                tone="warn"
+                title="Billing history unavailable"
+                subtitle={historyError}
+              />
+            ) : historyRows.length === 0 ? (
+              <Banner
+                tone="default"
+                title="No billing history visible yet"
+                subtitle="When payment records are available for this account, they will appear here."
+              />
+            ) : (
+              historyRows.map((row, index) => (
+                <div
+                  key={`${row.reference || "payment"}-${index}`}
+                  style={{
+                    border: "1px solid var(--border)",
+                    borderRadius: 18,
+                    background: "var(--surface)",
+                    padding: 16,
+                    display: "grid",
+                    gap: 12,
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 12,
+                      justifyContent: "space-between",
+                      alignItems: "flex-start",
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <div style={{ display: "grid", gap: 6 }}>
+                      <div style={{ fontWeight: 900, fontSize: 17, color: "var(--text)" }}>
+                        {row.plan_name || row.plan_code || "Payment Record"}
+                      </div>
+                      <div style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6 }}>
+                        {paymentEventLabel(row.event_type || "")}
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        borderRadius: 999,
+                        border: "1px solid var(--border)",
+                        padding: "8px 12px",
+                        fontWeight: 800,
+                        fontSize: 13,
+                        background:
+                          paymentTone(String(row.status || "")) === "good"
+                            ? "var(--success-bg)"
+                            : paymentTone(String(row.status || "")) === "warn"
+                            ? "var(--warn-bg)"
+                            : paymentTone(String(row.status || "")) === "danger"
+                            ? "var(--danger-bg)"
+                            : "var(--surface-muted)",
+                      }}
+                    >
+                      {paymentLabel(String(row.status || ""))}
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                      gap: 12,
+                    }}
+                  >
+                    <div style={snapshotItemStyle()}>
+                      <div style={infoTextStyle()}>Amount</div>
+                      <div style={valueTextStyle()}>
+                        {formatCurrency(Number(row.amount_ngn || 0), String(row.currency || "NGN"))}
+                      </div>
+                    </div>
+
+                    <div style={snapshotItemStyle()}>
+                      <div style={infoTextStyle()}>Reference</div>
+                      <div style={valueTextStyle()}>{row.reference || "Not currently available"}</div>
+                    </div>
+
+                    <div style={snapshotItemStyle()}>
+                      <div style={infoTextStyle()}>Payment Date</div>
+                      <div style={valueTextStyle()}>
+                        {row.paid_at ? formatDate(row.paid_at) : row.created_at ? formatDate(row.created_at) : "Not currently available"}
+                      </div>
+                    </div>
+
+                    <div style={snapshotItemStyle()}>
+                      <div style={infoTextStyle()}>Method</div>
+                      <div style={valueTextStyle()}>{paymentMethodLabel(row.payment_method || "")}</div>
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                      gap: 12,
+                    }}
+                  >
+                    <div style={snapshotItemStyle()}>
+                      <div style={infoTextStyle()}>Channel</div>
+                      <div style={valueTextStyle()}>
+                        {paymentMethodLabel(row.channel_type || row.source || "")}
+                      </div>
+                    </div>
+
+                    <div style={snapshotItemStyle()}>
+                      <div style={infoTextStyle()}>Gateway Note</div>
+                      <div style={valueTextStyle()}>
+                        {safeText(row.gateway_response || "No additional gateway note")}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </WorkspaceSectionCard>
+
+        <WorkspaceSectionCard
           title="Credits and usage"
           subtitle="Credits and daily usage can explain why access feels limited even when payment looks valid."
         >
@@ -398,7 +663,7 @@ export default function BillingPage() {
             >
               <li>Confirm the selected plan is the one you intended to activate.</li>
               <li>Check whether payment is successful, failed, or still pending before retrying.</li>
-              <li>Allow a short sync window for plan or credit updates after payment.</li>
+              <li>Match the payment reference with the visible billing history before contacting support.</li>
               <li>Use Support if the visible billing result remains inconsistent after a reasonable wait.</li>
             </ul>
           </div>
