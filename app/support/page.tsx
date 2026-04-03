@@ -401,41 +401,6 @@ export default function SupportPage() {
     return raw.length > 180 ? `${raw.slice(0, 177)}…` : raw;
   }
 
-  function normalizeTicketType(value: string): string {
-    const raw = (value || "").trim().toLowerCase();
-    if (raw === "billing") return "Billing";
-    if (raw === "credits") return "Credits";
-    if (raw === "channels") return "Channels";
-    if (raw === "login") return "Login";
-    if (raw === "technical") return "Technical";
-    return raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : "General";
-  }
-
-  function isBillingRelatedTicket(ticket: SupportTicket): boolean {
-    const haystack = [
-      ticket.category,
-      ticket.subject,
-      ticket.message,
-      ticket.last_message_preview,
-    ]
-      .filter(Boolean)
-      .join(" ")
-      .toLowerCase();
-
-    return /billing|refund|duplicate charge|wrong plan|activation|payment|subscription|credit/.test(
-      haystack
-    );
-  }
-
-  function previewText(ticket: SupportTicket): string {
-    const raw = safeText(
-      ticket.last_message_preview || ticket.message || "No message preview available.",
-      "No message preview available."
-    ).replace(/\s+/g, " ");
-
-    return raw.length > 180 ? `${raw.slice(0, 177)}…` : raw;
-  }
-
   async function loadTickets(selectLatest = false) {
     setLoadingTickets(true);
     try {
