@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useMemo } from "react";
 import { useRouter } from "next/navigation";
 import AppShell, {
   shellButtonPrimary,
@@ -8,24 +8,34 @@ import AppShell, {
 } from "@/components/app-shell";
 import WorkspaceSectionCard from "@/components/workspace-section-card";
 import { Banner } from "@/components/ui";
-import { SectionStack } from "@/components/page-layout";
+import { CardsGrid, SectionStack, TwoColumnSection } from "@/components/page-layout";
+import { useWorkspaceState } from "@/hooks/useWorkspaceState";
 
-function sectionBodyStyle(): React.CSSProperties {
+function labelStyle(): React.CSSProperties {
   return {
-    display: "grid",
-    gap: 18,
-    color: "var(--text)",
-    fontSize: 16,
-    lineHeight: 1.9,
+    margin: 0,
+    fontSize: 15,
+    color: "var(--text-muted)",
+    lineHeight: 1.5,
   };
 }
 
-function paragraphStyle(): React.CSSProperties {
+function valueStyle(): React.CSSProperties {
   return {
     margin: 0,
+    fontSize: 18,
+    fontWeight: 800,
     color: "var(--text)",
-    lineHeight: 1.9,
+    lineHeight: 1.4,
+  };
+}
+
+function bodyTextStyle(): React.CSSProperties {
+  return {
+    margin: 0,
     fontSize: 16,
+    lineHeight: 1.9,
+    color: "var(--text)",
   };
 }
 
@@ -41,32 +51,68 @@ function bulletListStyle(): React.CSSProperties {
   };
 }
 
-function mutedNoteStyle(): React.CSSProperties {
+function actionButtonStyle(primary = false): React.CSSProperties {
   return {
-    border: "1px solid var(--border)",
-    borderRadius: 18,
-    background: "var(--surface)",
-    padding: 18,
-    color: "var(--text-muted)",
-    lineHeight: 1.8,
-    fontSize: 15,
+    ...(primary ? shellButtonPrimary() : shellButtonSecondary()),
+    width: "100%",
+    justifyContent: "center",
   };
+}
+
+function formatDate(value?: string | null) {
+  if (!value) return "Not available";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString(undefined, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function formatPlanName(value?: string | null) {
+  if (!value) return "No visible plan";
+  return value
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 export default function RefundPage() {
   const router = useRouter();
+  const { billing, credits, usage } = useWorkspaceState({
+    includeAccount: false,
+    includeBilling: true,
+    includeDebug: true,
+  });
+
+  const latestReference =
+    billing?.last_payment_reference || billing?.payment_reference || "Not available";
+  const currentPlan = billing?.plan_name || billing?.plan_code || "No visible plan";
+  const creditBalance = Number(credits?.balance ?? 0);
+  const usageToday = Number(usage?.count ?? 0);
+  const expiresAt = billing?.expires_at || null;
+
+  const supportLinks = useMemo(
+    () => ({
+      duplicate: `/support?issue=duplicate_charge&reference=${encodeURIComponent(latestReference)}`,
+      wrongPlan: `/support?issue=wrong_plan&reference=${encodeURIComponent(latestReference)}`,
+      activation: `/support?issue=activation_issue&reference=${encodeURIComponent(latestReference)}`,
+      refund: `/support?issue=refund_request&reference=${encodeURIComponent(latestReference)}`,
+    }),
+    [latestReference]
+  );
 
   return (
     <AppShell
       title="Refund Policy"
-      subtitle="Review the payment, refund review, eligibility, and non-refundable conditions that apply to Naija Tax Guide subscriptions and credit-related purchases."
+      subtitle="Review refund eligibility, duplicate-charge handling, and the fastest next step when a billing result looks wrong."
       actions={
         <>
           <button onClick={() => router.push("/billing")} style={shellButtonPrimary()}>
             Open Billing
           </button>
-          <button onClick={() => router.push("/dashboard")} style={shellButtonSecondary()}>
-            Back to Dashboard
+          <button onClick={() => router.push("/support")} style={shellButtonSecondary()}>
+            Open Support
           </button>
         </>
       }
@@ -74,158 +120,153 @@ export default function RefundPage() {
       <SectionStack>
         <Banner
           tone="warn"
-          title="Important refund position"
-          subtitle="Because Naija Tax Guide is a digital-access service, refunds are not automatic after activation or use has begun. However, valid refund requests may still be reviewed in limited situations."
+          title="Refunds are reviewed, not automatic"
+          subtitle="Because Naija Tax Guide is a digital-access service, refund approval depends on payment evidence, activation state, plan outcome, and whether usable value has already been delivered."
         />
 
         <WorkspaceSectionCard
-          title="1. Scope of this policy"
-          subtitle="This page explains the practical refund rules for paid access, subscriptions, and related billing events."
+          title="Visible billing context"
+          subtitle="This snapshot helps you confirm whether the visible account state matches the issue you want to report."
         >
-          <div style={sectionBodyStyle()}>
-            <p style={paragraphStyle()}>
-              This Refund Policy applies to eligible payments made for Naija Tax
-              Guide subscriptions, approved credit-related purchases, and other
-              clearly identified paid service items where the platform has
-              published a refund review path.
-            </p>
-
-            <p style={paragraphStyle()}>
-              This policy should be read together with the Billing page and the
-              Terms of Use because refund decisions depend on activation status,
-              payment condition, service access, technical outcome, and overall
-              platform rules.
-            </p>
-          </div>
-        </WorkspaceSectionCard>
-
-        <WorkspaceSectionCard
-          title="2. Subscription payments"
-          subtitle="Most subscription payments are billed in advance for the selected service duration."
-        >
-          <div style={sectionBodyStyle()}>
-            <p style={paragraphStyle()}>
-              Subscription payments are generally billed in advance and are used
-              to activate or preserve access for the selected plan period. Once
-              access has been activated and the service has become available to
-              the user, refund eligibility may become more limited depending on
-              the circumstances.
-            </p>
-          </div>
-        </WorkspaceSectionCard>
-
-        <WorkspaceSectionCard
-          title="3. Situations that may qualify for refund review"
-          subtitle="Refund review may be considered in specific and reasonably verifiable cases."
-        >
-          <div style={sectionBodyStyle()}>
-            <ul style={bulletListStyle()}>
-              <li>Duplicate payments or duplicate billing for the same service item.</li>
-              <li>Technical errors that caused failed activation after successful payment.</li>
-              <li>Unauthorized transactions, subject to proper review and investigation.</li>
-              <li>Clear platform-side billing or processing mistakes that materially prevented the intended service outcome.</li>
-            </ul>
-          </div>
-        </WorkspaceSectionCard>
-
-        <WorkspaceSectionCard
-          title="4. Refund request window"
-          subtitle="Refund requests must be submitted promptly within the stated review window."
-        >
-          <div style={sectionBodyStyle()}>
-            <p style={paragraphStyle()}>
-              Eligible refund requests must be submitted within{" "}
-              <strong>3 days of payment</strong>. Requests submitted outside
-              that window may be declined unless the platform determines that an
-              exceptional processing issue, provider delay, or other unusual
-              circumstance justifies further review.
-            </p>
-          </div>
-        </WorkspaceSectionCard>
-
-        <WorkspaceSectionCard
-          title="5. Non-refundable situations"
-          subtitle="Some situations are generally not eligible for refund once access or value has already been consumed."
-        >
-          <div style={sectionBodyStyle()}>
-            <ul style={bulletListStyle()}>
-              <li>Used subscription period or already-consumed access window.</li>
-              <li>Completed advisory or support-related service value already delivered through the platform.</li>
-              <li>User mistake in selecting a plan after activation where the platform delivered the purchased access correctly.</li>
-              <li>Requests based only on change of mind after successful activation and usable access.</li>
-              <li>Cases where service limitations were already clearly disclosed before purchase.</li>
-            </ul>
-          </div>
-        </WorkspaceSectionCard>
-
-        <WorkspaceSectionCard
-          title="6. Review process"
-          subtitle="Refund requests are reviewed case by case and are not automatically approved."
-        >
-          <div style={sectionBodyStyle()}>
-            <p style={paragraphStyle()}>
-              When a refund request is submitted, the platform may review the
-              payment reference, billing status, activation logs, account state,
-              service usage, support history, and any provider-side evidence
-              needed to determine whether the request falls within a valid
-              refund scenario.
-            </p>
-
-            <div style={mutedNoteStyle()}>
-              Submission of a refund request does not guarantee approval. Each
-              case may be reviewed according to the payment facts, activation
-              history, technical evidence, and applicable service rules.
+          <CardsGrid minWidth={220}>
+            <div>
+              <p style={labelStyle()}>Current plan</p>
+              <p style={valueStyle()}>{formatPlanName(currentPlan)}</p>
             </div>
-          </div>
+            <div>
+              <p style={labelStyle()}>Latest reference</p>
+              <p style={valueStyle()}>{latestReference}</p>
+            </div>
+            <div>
+              <p style={labelStyle()}>Visible credits</p>
+              <p style={valueStyle()}>{creditBalance}</p>
+            </div>
+            <div>
+              <p style={labelStyle()}>Usage today</p>
+              <p style={valueStyle()}>{usageToday}</p>
+            </div>
+            <div>
+              <p style={labelStyle()}>Subscription expires</p>
+              <p style={valueStyle()}>{formatDate(expiresAt)}</p>
+            </div>
+          </CardsGrid>
         </WorkspaceSectionCard>
 
         <WorkspaceSectionCard
-          title="7. How to request a refund"
-          subtitle="Users should submit refund-related concerns through the official support or billing route."
+          title="Fastest next step"
+          subtitle="Choose the path that matches the billing problem instead of opening a vague support ticket."
         >
-          <div style={sectionBodyStyle()}>
-            <p style={paragraphStyle()}>
-              Refund-related requests should be submitted through the platform’s
-              published billing or support path with enough information to help
-              identify the transaction, such as payment date, plan selected,
-              visible billing status, and the reason the refund is being
-              requested.
-            </p>
+          <CardsGrid minWidth={250}>
+            <div>
+              <p style={valueStyle()}>Duplicate charge</p>
+              <p style={bodyTextStyle()}>
+                Use this when the same card or account appears to have been billed more than once for the same intended payment.
+              </p>
+              <div style={{ marginTop: 16 }}>
+                <button
+                  onClick={() => router.push(supportLinks.duplicate)}
+                  style={actionButtonStyle(true)}
+                >
+                  Report Duplicate Charge
+                </button>
+              </div>
+            </div>
 
-            <p style={paragraphStyle()}>
-              Where email-based billing contact is used operationally, requests
-              may also be directed to the official billing contact published by
-              Naija Tax Guide.
-            </p>
-          </div>
+            <div>
+              <p style={valueStyle()}>Wrong plan activated</p>
+              <p style={bodyTextStyle()}>
+                Use this when payment was successful but the visible plan does not match the one you intended to buy.
+              </p>
+              <div style={{ marginTop: 16 }}>
+                <button
+                  onClick={() => router.push(supportLinks.wrongPlan)}
+                  style={actionButtonStyle(false)}
+                >
+                  Report Wrong Plan
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <p style={valueStyle()}>Payment successful but access failed</p>
+              <p style={bodyTextStyle()}>
+                Use this when the payment completed but activation, credits, or access did not reflect correctly.
+              </p>
+              <div style={{ marginTop: 16 }}>
+                <button
+                  onClick={() => router.push(supportLinks.activation)}
+                  style={actionButtonStyle(false)}
+                >
+                  Report Activation Issue
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <p style={valueStyle()}>Refund review request</p>
+              <p style={bodyTextStyle()}>
+                Use this when you believe the transaction falls inside the refund-review rules on this page.
+              </p>
+              <div style={{ marginTop: 16 }}>
+                <button
+                  onClick={() => router.push(supportLinks.refund)}
+                  style={actionButtonStyle(false)}
+                >
+                  Start Refund Review
+                </button>
+              </div>
+            </div>
+          </CardsGrid>
+        </WorkspaceSectionCard>
+
+        <TwoColumnSection
+          left={
+            <WorkspaceSectionCard
+              title="Situations that may qualify for refund review"
+              subtitle="These are review scenarios, not guaranteed approvals."
+            >
+              <ul style={bulletListStyle()}>
+                <li>Duplicate payments or duplicate billing for the same intended service item.</li>
+                <li>Technical activation failure after a successful payment.</li>
+                <li>Unauthorized transaction concerns, subject to investigation.</li>
+                <li>Clear platform-side billing or processing error that blocked the intended outcome.</li>
+              </ul>
+            </WorkspaceSectionCard>
+          }
+          right={
+            <WorkspaceSectionCard
+              title="Situations generally not refundable"
+              subtitle="These usually fail refund review once value has already been consumed correctly."
+            >
+              <ul style={bulletListStyle()}>
+                <li>Used subscription time or already-consumed access window.</li>
+                <li>Correct plan activation followed by change of mind.</li>
+                <li>Requests where the purchased service was delivered as described.</li>
+                <li>Refund claims made only because a different plan would have been preferred later.</li>
+              </ul>
+            </WorkspaceSectionCard>
+          }
+        />
+
+        <WorkspaceSectionCard
+          title="Refund review window"
+          subtitle="Requests should be made quickly while payment evidence is still easy to confirm."
+        >
+          <p style={bodyTextStyle()}>
+            Eligible refund-related concerns should normally be raised within <strong>3 days of payment</strong>. Later requests may still be reviewed in unusual cases, but approval becomes harder when billing evidence, activation state, or provider-side timing can no longer be confirmed clearly.
+          </p>
         </WorkspaceSectionCard>
 
         <WorkspaceSectionCard
-          title="8. Processing outcome"
-          subtitle="Approved refunds, where granted, may still depend on processor timing and financial system delays."
+          title="Before you contact support"
+          subtitle="These checks help reduce back-and-forth and speed up review."
         >
-          <div style={sectionBodyStyle()}>
-            <p style={paragraphStyle()}>
-              If a refund is approved, the actual return of funds may depend on
-              the payment processor, card network, bank, or channel used for
-              the original transaction. Processing time may therefore vary even
-              after approval has been confirmed.
-            </p>
-          </div>
-        </WorkspaceSectionCard>
-
-        <WorkspaceSectionCard
-          title="9. Policy updates"
-          subtitle="The refund framework may be updated as plans, billing systems, or payment provider rules evolve."
-        >
-          <div style={sectionBodyStyle()}>
-            <p style={paragraphStyle()}>
-              Users should review this page periodically for material updates.
-              Continued use of paid services after policy updates may indicate
-              acceptance of the revised refund framework to the extent permitted
-              by law and platform policy.
-            </p>
-          </div>
+          <ul style={bulletListStyle()}>
+            <li>Confirm the latest visible payment reference matches the transaction you are reporting.</li>
+            <li>Check whether the visible plan and credit balance already updated before opening a new refund-related ticket.</li>
+            <li>Use the issue-specific support buttons above so billing context is carried into the support flow.</li>
+            <li>For duplicate-charge concerns, mention both references if more than one payment was captured.</li>
+          </ul>
         </WorkspaceSectionCard>
       </SectionStack>
     </AppShell>
