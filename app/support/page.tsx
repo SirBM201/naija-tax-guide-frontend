@@ -1,1060 +1,1031 @@
-"use client";
+from __future__ import annotations
 
-import React, { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import { useAuth } from "@/lib/auth";
-import AppShell, {
-  shellButtonPrimary,
-  shellButtonSecondary,
-} from "@/components/app-shell";
-import WorkspaceSectionCard from "@/components/workspace-section-card";
-import {
-  Banner,
-  MetricCard,
-  appInputStyle,
-  appSelectStyle,
-  appTextareaStyle,
-  formatDate,
-} from "@/components/ui";
-import { CardsGrid, SectionStack } from "@/components/page-layout";
-import { useWorkspaceState } from "@/hooks/useWorkspaceState";
-import { buildWorkspaceAlerts } from "@/lib/workspace-alerts";
+import os
+import uuid
+from typing import Any, Dict, List, Optional, Tuple
 
-type SupportFormState = {
-  category: string;
-  priority: string;
-  subject: string;
-  message: string;
-};
+from flask import Blueprint, jsonify, request
 
-type SupportTicket = {
-  id?: number;
-  ticket_id: string;
-  status: string;
-  category: string;
-  priority: string;
-  subject: string;
-  message?: string;
-  created_at?: string;
-  updated_at?: string;
-  last_reply_at?: string | null;
-  last_reply_by?: string | null;
-  last_message_preview?: string | null;
-};
+from app.core.mailer import send_mail
+from app.core.supabase_client import supabase
+from app.services.web_auth_service import get_account_id_from_request
 
-type SupportMessage = {
-  id: number;
-  support_ticket_id: number;
-  ticket_id: string;
-  account_id: string;
-  sender_type: "user" | "admin";
-  sender_name?: string | null;
-  message: string;
-  is_internal_note?: boolean;
-  created_at?: string;
-};
+bp = Blueprint("support", __name__)
 
-function safeText(value: unknown, fallback = "—"): string {
-  const text =
-    typeof value === "string"
-      ? value.trim()
-      : value == null
-      ? ""
-      : String(value).trim();
-  return text || fallback;
-}
 
-function truthyValue(value: unknown): boolean {
-  if (typeof value === "boolean") return value;
-  if (typeof value === "number") return value > 0;
-  if (typeof value === "string") {
-    const raw = value.trim().toLowerCase();
-    return ["1", "true", "yes", "active", "paid", "enabled", "linked"].includes(raw);
-  }
-  return false;
-}
+def _sb():
+    return supabase() if callable(supabase) else supabase
 
-function infoBoxStyle(): React.CSSProperties {
-  return {
-    border: "1px solid var(--border)",
-    borderRadius: 18,
-    background: "var(--surface)",
-    padding: 16,
-    display: "grid",
-    gap: 6,
-  };
-}
 
-function pageGridStyle(): React.CSSProperties {
-  return {
-    display: "grid",
-    gridTemplateColumns: "minmax(0, 1.05fr) minmax(360px, 0.95fr)",
-    gap: 18,
-    alignItems: "start",
-  };
-}
+def _env(name: str, default: str = "") -> str:
+    return (os.getenv(name, default) or default).strip()
 
-function ticketRowStyle(active: boolean): React.CSSProperties {
-  return {
-    border: "1px solid var(--border)",
-    borderRadius: 16,
-    background: active ? "rgba(78, 110, 255, 0.14)" : "var(--surface)",
-    padding: 14,
-    display: "grid",
-    gap: 6,
-    cursor: "pointer",
-  };
-}
 
-function messageBubbleStyle(senderType: "user" | "admin"): React.CSSProperties {
-  const isUser = senderType === "user";
-  return {
-    maxWidth: "88%",
-    justifySelf: isUser ? "end" : "start",
-    border: "1px solid var(--border)",
-    borderRadius: 16,
-    background: isUser ? "rgba(78, 110, 255, 0.16)" : "var(--surface)",
-    padding: 14,
-    display: "grid",
-    gap: 6,
-  };
-}
+def _clip(v: Any, n: int = 400) -> str:
+    s = str(v or "")
+    return s if len(s) <= n else s[:n] + "...<truncated>"
 
-function statusTone(status: string): "default" | "good" | "warn" | "danger" {
-  const s = (status || "").toLowerCase();
-  if (s === "resolved") return "good";
-  if (s === "awaiting_user") return "warn";
-  if (s === "in_review") return "default";
-  return "warn";
-}
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/+$/, "") ||
-  "https://incredible-nonie-bmsconcept-37359733.koyeb.app";
+def _safe_json() -> Dict[str, Any]:
+    return request.get_json(silent=True) or {}
 
-function apiUrl(path: string): string {
-  const cleanPath = path.startsWith("/") ? path : `/${path}`;
-  return `${API_BASE}${cleanPath}`;
-}
 
-export default function SupportPage() {
-  const router = useRouter();
-  const { user, token } = useAuth();
+def _fail(
+    *,
+    error: str,
+    message: Optional[str] = None,
+    root_cause: Any = None,
+    extra: Optional[Dict[str, Any]] = None,
+    status: int = 400,
+):
+    out: Dict[str, Any] = {"ok": False, "error": error}
+    if message:
+        out["message"] = message
+    if root_cause is not None:
+        out["root_cause"] = root_cause
+    if extra:
+        out.update(extra)
+    return jsonify(out), status
 
-  const { profile, usage, subscription, channelLinks, billing, credits } =
-    useWorkspaceState();
 
-  const alerts = useMemo(
-    () =>
-      buildWorkspaceAlerts({
-        profile,
-        usage,
-        subscription,
-        channelLinks,
-        billing,
-        credits,
-      }),
-    [profile, usage, subscription, channelLinks, billing, credits]
-  );
+def _unauthorized(auth_debug: Any):
+    return (
+        jsonify(
+            {
+                "ok": False,
+                "error": "unauthorized",
+                "debug": auth_debug,
+            }
+        ),
+        401,
+    )
 
-  const primaryAlert =
-    alerts.find(
-      (alert) =>
-        /billing|subscription|credit|channel|support|login/i.test(alert.title) ||
-        /billing|subscription|credit|channel|support|login/i.test(alert.subtitle)
-    ) || null;
 
-  const accountEmail = safeText(
-    profile?.email || user?.email || billing?.checkout_email || "Not visible"
-  );
-  const accountName = safeText(
-    profile?.full_name || profile?.first_name || user?.email || "Workspace user"
-  );
-  const planName = safeText(
-    subscription?.plan_name ||
-      billing?.plan_name ||
-      subscription?.plan_code ||
-      billing?.plan_code ||
-      "No active plan"
-  );
-  const planStatus = safeText(subscription?.status || billing?.status || "Unknown");
-  const activeNow = truthyValue(
-    subscription?.active ||
-      billing?.active ||
-      planStatus.toLowerCase() === "active"
-  );
+def _ticket_id() -> str:
+    return f"NTG-{str(uuid.uuid4()).split('-')[0].upper()}"
 
-  const billingView = (billing ?? {}) as Record<string, unknown>;
-  const latestPaymentReference = safeText(
-    billingView["payment_reference"] || billingView["last_payment_reference"] || "Not visible"
-  );
-  const latestPaymentDate = safeText(
-    billingView["payment_date"] ||
-      billingView["last_payment_date"] ||
-      billingView["paid_at"] ||
-      "Not visible"
-  );
-  const expiresAt = safeText(
-    billingView["expires_at"] ||
-      billingView["expiry_date"] ||
-      subscription?.expires_at ||
-      "Not visible"
-  );
 
-  const creditBalance = Number(credits?.balance ?? 0);
-
-  const whatsappLinked = truthyValue(
-    channelLinks?.whatsapp_linked || channelLinks?.whatsapp?.linked
-  );
-  const telegramLinked = truthyValue(
-    channelLinks?.telegram_linked || channelLinks?.telegram?.linked
-  );
-
-  const channelState =
-    whatsappLinked && telegramLinked
-      ? "WhatsApp + Telegram linked"
-      : whatsappLinked
-      ? "WhatsApp linked"
-      : telegramLinked
-      ? "Telegram linked"
-      : "No linked channel";
-
-  const [form, setForm] = useState<SupportFormState>({
-    category: "general",
-    priority: "normal",
-    subject: "",
-    message: "",
-  });
-
-  const [replyMessage, setReplyMessage] = useState("");
-  const [notice, setNotice] = useState("");
-  const [error, setError] = useState("");
-
-  const [submitting, setSubmitting] = useState(false);
-  const [loadingTickets, setLoadingTickets] = useState(false);
-  const [loadingThread, setLoadingThread] = useState(false);
-  const [replying, setReplying] = useState(false);
-
-  const [tickets, setTickets] = useState<SupportTicket[]>([]);
-  const [selectedTicketId, setSelectedTicketId] = useState<string>("");
-  const [selectedTicket, setSelectedTicket] = useState<SupportTicket | null>(null);
-  const [threadMessages, setThreadMessages] = useState<SupportMessage[]>([]);
-  const [supportIntent, setSupportIntent] = useState("");
-  const [supportReference, setSupportReference] = useState("");
-
-  const intentPreset = useMemo(() => {
-    const intent = supportIntent.trim().toLowerCase();
-    const selectedReference = (supportReference || latestPaymentReference || "").trim();
-
-    const contextLines = [
-      `Current plan: ${planName}`,
-      `Plan status: ${planStatus}`,
-      `Latest payment reference: ${supportReference || latestPaymentReference}`,
-      `Latest payment date: ${latestPaymentDate}`,
-      `Visible credits: ${creditBalance}`,
-      `Channel state: ${channelState}`,
-      `Subscription expiry: ${expiresAt}`,
-    ];
-
-    if (intent === "duplicate_charge") {
-      return {
-        category: "billing",
-        priority: "high",
-        subject: selectedReference ? `Duplicate charge review request — ${selectedReference}` : "Duplicate charge review request",
-        message:
-          "I want to report a possible duplicate charge. Please review whether more than one payment was captured for the same intended purchase.\n\n" +
-          contextLines.join("\n"),
-      };
-    }
-
-    if (intent === "wrong_plan") {
-      return {
-        category: "billing",
-        priority: "high",
-        subject: selectedReference ? `Wrong plan activated after payment — ${selectedReference}` : "Wrong plan activated after payment",
-        message:
-          "Payment appears successful, but the visible plan does not match what I intended to buy. Please review the activation result against the payment record.\n\n" +
-          contextLines.join("\n"),
-      };
-    }
-
-    if (intent === "activation_issue") {
-      return {
-        category: "credits",
-        priority: "high",
-        subject: selectedReference ? `Payment successful but activation or access failed — ${selectedReference}` : "Payment successful but activation or access failed",
-        message:
-          "Payment appears successful, but activation, credits, or access did not update as expected. Please review the billing result and activation state.\n\n" +
-          contextLines.join("\n"),
-      };
-    }
-
-    if (intent === "refund_review") {
-      return {
-        category: "billing",
-        priority: "high",
-        subject: selectedReference ? `Refund review request — ${selectedReference}` : "Refund review request",
-        message:
-          "I want this payment reviewed under the refund policy. Please check whether the transaction qualifies for refund review based on payment evidence and activation outcome.\n\n" +
-          contextLines.join("\n"),
-      };
-    }
-
-    return null;
-  }, [
-    supportIntent,
-    planName,
-    planStatus,
-    latestPaymentReference,
-    latestPaymentDate,
-    creditBalance,
-    channelState,
-    expiresAt,
-    supportReference,
-  ]);
-
-  function setField<K extends keyof SupportFormState>(key: K, value: SupportFormState[K]) {
-    setForm((prev) => ({ ...prev, [key]: value }));
-    setNotice("");
-    setError("");
-  }
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const applyFromLocation = () => {
-      const params = new URLSearchParams(window.location.search);
-      setSupportIntent(
-        params.get("intent") ||
-          params.get("issue") ||
-          ""
-      );
-      setSupportReference(params.get("reference") || "");
-    };
-
-    applyFromLocation();
-    window.addEventListener("popstate", applyFromLocation);
-    return () => window.removeEventListener("popstate", applyFromLocation);
-  }, []);
-
-  function buildLiveContextMessage(rawMessage: string): string {
-    const messageText = (rawMessage || "").trim();
-    if (!supportIntent) return messageText;
-
-    const parts = messageText.split(/\n\s*\n/);
-    const issueIntro = (parts[0] || "").trim();
-
-    const liveContext = [
-      `Current plan: ${planName}`,
-      `Plan status: ${planStatus}`,
-      `Latest payment reference: ${supportReference || latestPaymentReference}`,
-      `Latest payment date: ${latestPaymentDate}`,
-      `Visible credits: ${creditBalance}`,
-      `Channel state: ${channelState}`,
-      `Subscription expiry: ${expiresAt}`,
-    ].join("\n");
-
-    return [issueIntro, liveContext].filter(Boolean).join("\n\n").trim();
-  }
-
-  async function loadTickets(selectLatest = false) {
-    setLoadingTickets(true);
-    try {
-      const response = await fetch(apiUrl("/api/support/tickets?limit=20"), {
-        method: "GET",
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        cache: "no-store",
-      });
-
-      const data = await response.json().catch(() => ({}));
-
-      if (!response.ok || !data?.ok) {
-        throw new Error(
-          data?.message ||
-            data?.error ||
-            `Could not load support tickets. Status: ${response.status}`
-        );
-      }
-
-      const rows = Array.isArray(data?.tickets) ? (data.tickets as SupportTicket[]) : [];
-      setTickets(rows);
-
-      const currentSelectedStillExists =
-        selectedTicketId && rows.some((ticket) => ticket.ticket_id === selectedTicketId);
-
-      if (rows.length === 0) {
-        setSelectedTicketId("");
-        setSelectedTicket(null);
-        setThreadMessages([]);
-        return;
-      }
-
-      if (selectLatest || !currentSelectedStillExists) {
-        const firstTicketId = rows[0]?.ticket_id || "";
-        setSelectedTicketId(firstTicketId);
-        await loadTicketDetail(firstTicketId);
-      }
-    } catch (err: any) {
-      setError(err?.message || "Could not load support tickets.");
-    } finally {
-      setLoadingTickets(false);
-    }
-  }
-
-  async function loadTicketDetail(ticketId: string) {
-    if (!ticketId) {
-      setSelectedTicket(null);
-      setThreadMessages([]);
-      return;
-    }
-
-    setLoadingThread(true);
-    try {
-      const response = await fetch(apiUrl(`/api/support/tickets/${ticketId}`), {
-        method: "GET",
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        cache: "no-store",
-      });
-
-      const data = await response.json().catch(() => ({}));
-
-      if (!response.ok || !data?.ok) {
-        throw new Error(
-          data?.message ||
-            data?.error ||
-            `Could not load support thread. Status: ${response.status}`
-        );
-      }
-
-      setSelectedTicket((data?.ticket || null) as SupportTicket | null);
-      setThreadMessages(
-        Array.isArray(data?.messages) ? (data.messages as SupportMessage[]) : []
-      );
-      setSelectedTicketId(ticketId);
-      setError("");
-    } catch (err: any) {
-      setError(err?.message || "Could not load support thread.");
-    } finally {
-      setLoadingThread(false);
-    }
-  }
-
-  useEffect(() => {
-    loadTickets(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token]);
-
-  async function handleSubmit() {
-    if (!form.subject.trim() || !form.message.trim()) {
-      setError("Please provide both a support subject and a clear description of the issue.");
-      setNotice("");
-      return;
-    }
-
-    if (form.message.trim().length < 10) {
-      setError("Support message must be at least 10 characters long.");
-      setNotice("");
-      return;
-    }
-
-    setSubmitting(true);
-    setNotice("");
-    setError("");
-
-    try {
-      const finalMessage = buildLiveContextMessage(form.message);
-
-      const response = await fetch(apiUrl("/api/support"), {
-        method: "POST",
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({
-          fullName: accountName,
-          contactEmail: accountEmail === "Not visible" ? "" : accountEmail,
-          issueType: form.category,
-          priority: form.priority,
-          channel: "web",
-          subject: form.subject.trim(),
-          message: finalMessage,
-          planName,
-          planStatus,
-          latestPaymentReference: supportReference || latestPaymentReference,
-          latestPaymentDate,
-          expiresAt,
-          creditBalance,
-          channelState,
-        }),
-      });
-
-      const data = await response.json().catch(() => ({}));
-
-      if (!response.ok || !data?.ok) {
-        throw new Error(
-          data?.message ||
-            data?.error ||
-            `Support request could not be submitted. Status: ${response.status}`
-        );
-      }
-
-      const savedTicketId = data?.ticket?.ticket_id || "Not shown";
-
-      setNotice(
-        `Your support request was sent successfully. Ticket ID: ${savedTicketId}. You can now track replies inside the in-app support inbox below.`
-      );
-
-      setForm({
-        category: "general",
-        priority: "normal",
-        subject: "",
-        message: "",
-      });
-
-      await loadTickets(true);
-
-      if (data?.ticket?.ticket_id) {
-        await loadTicketDetail(data.ticket.ticket_id);
-      }
-
-      window.scrollTo({
-        top: 0,
-        behavior: "smooth",
-      });
-    } catch (err: any) {
-      setError(err?.message || "Support request could not be submitted.");
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  async function handleReplySubmit() {
-    if (!selectedTicketId) {
-      setError("Select a support ticket before sending a reply.");
-      return;
-    }
-
-    if (!replyMessage.trim()) {
-      setError("Please write your reply before sending.");
-      return;
-    }
-
-    if (replyMessage.trim().length < 2) {
-      setError("Reply message is too short.");
-      return;
-    }
-
-    setReplying(true);
-    setNotice("");
-    setError("");
-
-    try {
-      const response = await fetch(
-        apiUrl(`/api/support/tickets/${selectedTicketId}/reply`),
-        {
-          method: "POST",
-          credentials: "include",
-          headers: {
-            "Content-Type": "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          body: JSON.stringify({
-            senderName: accountName,
-            message: replyMessage.trim(),
-          }),
+def _get_account_row(account_id: str) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+    account_id = (account_id or "").strip()
+    if not account_id:
+        return None, {
+            "error": "account_id_required",
+            "root_cause": "missing_account_id",
+            "fix": "Authenticate first so canonical accounts.account_id can be resolved.",
         }
-      );
 
-      const data = await response.json().catch(() => ({}));
+    try:
+        q = (
+            _sb()
+            .table("accounts")
+            .select(
+                "id,account_id,email,provider,provider_user_id,display_name,phone,phone_e164,created_at,updated_at"
+            )
+            .eq("account_id", account_id)
+            .limit(1)
+            .execute()
+        )
+        rows = getattr(q, "data", None) or []
+        if rows:
+            return rows[0], None
+    except Exception as e:
+        return None, {
+            "error": "account_lookup_failed",
+            "root_cause": f"lookup by account_id failed: {type(e).__name__}: {_clip(e)}",
+        }
 
-      if (!response.ok || !data?.ok) {
-        throw new Error(
-          data?.message ||
-            data?.error ||
-            `Reply could not be submitted. Status: ${response.status}`
-        );
-      }
+    try:
+        q = (
+            _sb()
+            .table("accounts")
+            .select(
+                "id,account_id,email,provider,provider_user_id,display_name,phone,phone_e164,created_at,updated_at"
+            )
+            .eq("id", account_id)
+            .limit(1)
+            .execute()
+        )
+        rows = getattr(q, "data", None) or []
+        if rows:
+            return rows[0], None
+    except Exception as e:
+        return None, {
+            "error": "account_lookup_failed",
+            "root_cause": f"lookup by id failed: {type(e).__name__}: {_clip(e)}",
+        }
 
-      setNotice(
-        `Your reply was sent successfully for ticket ${selectedTicketId}.`
-      );
-      setReplyMessage("");
-
-      await loadTickets(false);
-      await loadTicketDetail(selectedTicketId);
-    } catch (err: any) {
-      setError(err?.message || "Reply could not be submitted.");
-    } finally {
-      setReplying(false);
+    return None, {
+        "error": "account_not_found",
+        "root_cause": "no accounts row matched provided account_id",
     }
-  }
 
-  function handleClear() {
-    setForm({
-      category: "general",
-      priority: "normal",
-      subject: "",
-      message: "",
-    });
-    setNotice("");
-    setError("");
-  }
 
-  return (
-    <AppShell
-      title="Support"
-      subtitle="Report billing, credits, linking, login, or technical issues from one clear support center."
-      actions={
-        <>
-          <button onClick={() => router.push("/help")} style={shellButtonPrimary()}>
-            Open Help
-          </button>
-          <button onClick={() => router.push("/dashboard")} style={shellButtonSecondary()}>
-            Back to Dashboard
-          </button>
-        </>
-      }
-    >
-      <SectionStack>
-        {primaryAlert ? (
-          <Banner
-            tone={primaryAlert.tone}
-            title={primaryAlert.title}
-            subtitle={primaryAlert.subtitle}
-          />
-        ) : null}
+def _best_contact_email(account: Optional[Dict[str, Any]], submitted_email: str) -> str:
+    submitted_email = (submitted_email or "").strip().lower()
+    if "@" in submitted_email:
+        return submitted_email
 
-        {intentPreset ? (
-          <Banner
-            tone="default"
-            title={`Support flow ready: ${safeText(intentPreset.subject, "Support request")}`}
-            subtitle={`This form was prefilled from your Refund page action${supportReference ? ` for reference ${supportReference}` : ""}. Review the details, add any extra evidence, and submit when ready.`}
-          />
-        ) : null}
+    account = account or {}
+    email = (account.get("email") or "").strip().lower()
+    if "@" in email:
+        return email
 
-        {notice ? (
-          <Banner
-            tone="good"
-            title="Support request sent successfully"
-            subtitle={notice}
-          />
-        ) : null}
+    provider = (account.get("provider") or "").strip().lower()
+    provider_user_id = (account.get("provider_user_id") or "").strip().lower()
+    if provider == "web" and "@" in provider_user_id:
+        return provider_user_id
 
-        {error ? (
-          <Banner tone="danger" title="Support request issue" subtitle={error} />
-        ) : null}
+    return ""
 
-        <WorkspaceSectionCard
-          title="How you’ll receive updates"
-          subtitle="Support replies are now available directly inside the app."
-        >
-          <div style={infoBoxStyle()}>
-            <div style={{ color: "var(--text)", lineHeight: 1.8 }}>
-              Your support updates will appear in the <strong>In-app support inbox</strong> on
-              this page. Important updates may also be sent to your account email when available.
-              Keep your ticket ID for easy reference.
-            </div>
+
+def _support_to_email() -> str:
+    return (
+        _env("SUPPORT_TO_EMAIL")
+        or _env("SUPPORT_EMAIL")
+        or _env("MAIL_FROM_EMAIL")
+        or _env("SMTP_FROM")
+        or _env("MAIL_USER")
+        or _env("SMTP_USER")
+    )
+
+
+def _support_from_name() -> str:
+    return _env("SUPPORT_FROM_NAME", "Naija Tax Guide Support")
+
+
+def _compose_message_with_live_context(
+    *,
+    message: str,
+    issue_type: str,
+    plan_name: str = "",
+    plan_status: str = "",
+    latest_payment_reference: str = "",
+    latest_payment_date: str = "",
+    expires_at: str = "",
+    credit_balance: Any = 0,
+    channel_state: str = "",
+) -> str:
+    base_message = (message or "").strip()
+    if not base_message:
+        return ""
+
+    first_block = base_message.split("\n\n")[0].strip() or base_message
+
+    should_append_context = any(
+        [
+            (plan_name or "").strip(),
+            (plan_status or "").strip(),
+            (latest_payment_reference or "").strip(),
+            (latest_payment_date or "").strip(),
+            (expires_at or "").strip(),
+            channel_state,
+            credit_balance not in (None, ""),
+            (issue_type or "").strip().lower() in {"billing", "credits"},
+        ]
+    )
+
+    if not should_append_context:
+        return base_message
+
+    context_lines = [
+        f"Current plan: {(plan_name or '').strip() or 'Not visible'}",
+        f"Plan status: {(plan_status or '').strip() or 'Not visible'}",
+        f"Latest payment reference: {(latest_payment_reference or '').strip() or 'Not visible'}",
+        f"Latest payment date: {(latest_payment_date or '').strip() or 'Not visible'}",
+        f"Visible credits: {credit_balance if credit_balance not in (None, '') else 'Not visible'}",
+        f"Channel state: {(channel_state or '').strip() or 'Not visible'}",
+        f"Subscription expiry: {(expires_at or '').strip() or 'Not visible'}",
+    ]
+
+    return "\n\n".join([first_block, "\n".join(context_lines)]).strip()
+
+
+def _build_support_subject(issue_type: str, priority: str, subject: str, account_id: str) -> str:
+    issue_type = (issue_type or "general").strip()
+    priority = (priority or "normal").strip().upper()
+    subject = (subject or "").strip() or "Support request"
+    return f"[Naija Tax Guide][{priority}][{issue_type}] {subject} | acct:{account_id}"
+
+
+def _build_support_text(
+    *,
+    ticket_id: str,
+    account_id: str,
+    account: Optional[Dict[str, Any]],
+    full_name: str,
+    contact_email: str,
+    issue_type: str,
+    priority: str,
+    channel: str,
+    subject: str,
+    message: str,
+    plan_name: str = "",
+    plan_status: str = "",
+    latest_payment_reference: str = "",
+    latest_payment_date: str = "",
+    expires_at: str = "",
+    credit_balance: Any = 0,
+    channel_state: str = "",
+) -> str:
+    account = account or {}
+    lines = [
+        "Naija Tax Guide Support Request",
+        "",
+        f"Ticket ID: {ticket_id}",
+        f"Ticket Account ID: {account_id}",
+        f"Display Name: {(account.get('display_name') or full_name or '').strip() or '—'}",
+        f"Account Email: {(account.get('email') or '').strip() or '—'}",
+        f"Submitted Contact Email: {contact_email or '—'}",
+        f"Provider: {(account.get('provider') or '').strip() or '—'}",
+        f"Provider User ID: {(account.get('provider_user_id') or '').strip() or '—'}",
+        f"Issue Type: {issue_type or '—'}",
+        f"Priority: {priority or '—'}",
+        f"Channel: {channel or '—'}",
+        f"Visible Plan: {plan_name or '—'}",
+        f"Visible Plan Status: {plan_status or '—'}",
+        f"Latest Payment Reference: {latest_payment_reference or '—'}",
+        f"Latest Payment Date: {latest_payment_date or '—'}",
+        f"Visible Subscription Expiry: {expires_at or '—'}",
+        f"Visible Credits: {credit_balance}",
+        f"Visible Channel State: {channel_state or '—'}",
+        f"Subject: {subject or '—'}",
+        "",
+        "Message:",
+        message or "—",
+    ]
+    return "\n".join(lines).strip()
+
+
+def _build_support_html(
+    *,
+    ticket_id: str,
+    account_id: str,
+    account: Optional[Dict[str, Any]],
+    full_name: str,
+    contact_email: str,
+    issue_type: str,
+    priority: str,
+    channel: str,
+    subject: str,
+    message: str,
+    plan_name: str = "",
+    plan_status: str = "",
+    latest_payment_reference: str = "",
+    latest_payment_date: str = "",
+    expires_at: str = "",
+    credit_balance: Any = 0,
+    channel_state: str = "",
+) -> str:
+    account = account or {}
+    safe_message = (
+        (message or "")
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace("\n", "<br>")
+    )
+
+    def cell(v: Any) -> str:
+        s = str(v or "—")
+        return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+    return f"""
+    <div style="font-family:Arial,sans-serif;max-width:760px;margin:auto;color:#111;">
+      <h2 style="margin-bottom:8px;">{cell(_support_from_name())}</h2>
+      <p style="margin-top:0;color:#555;">New support request submitted from the Naija Tax Guide workspace.</p>
+
+      <table style="border-collapse:collapse;width:100%;margin-top:16px;">
+        <tr><td style="padding:8px;border:1px solid #ddd;font-weight:bold;">Ticket ID</td><td style="padding:8px;border:1px solid #ddd;">{cell(ticket_id)}</td></tr>
+        <tr><td style="padding:8px;border:1px solid #ddd;font-weight:bold;">Account ID</td><td style="padding:8px;border:1px solid #ddd;">{cell(account_id)}</td></tr>
+        <tr><td style="padding:8px;border:1px solid #ddd;font-weight:bold;">Display Name</td><td style="padding:8px;border:1px solid #ddd;">{cell((account.get('display_name') or full_name or '').strip() or '—')}</td></tr>
+        <tr><td style="padding:8px;border:1px solid #ddd;font-weight:bold;">Account Email</td><td style="padding:8px;border:1px solid #ddd;">{cell(account.get('email'))}</td></tr>
+        <tr><td style="padding:8px;border:1px solid #ddd;font-weight:bold;">Submitted Contact Email</td><td style="padding:8px;border:1px solid #ddd;">{cell(contact_email)}</td></tr>
+        <tr><td style="padding:8px;border:1px solid #ddd;font-weight:bold;">Provider</td><td style="padding:8px;border:1px solid #ddd;">{cell(account.get('provider'))}</td></tr>
+        <tr><td style="padding:8px;border:1px solid #ddd;font-weight:bold;">Provider User ID</td><td style="padding:8px;border:1px solid #ddd;">{cell(account.get('provider_user_id'))}</td></tr>
+        <tr><td style="padding:8px;border:1px solid #ddd;font-weight:bold;">Issue Type</td><td style="padding:8px;border:1px solid #ddd;">{cell(issue_type)}</td></tr>
+        <tr><td style="padding:8px;border:1px solid #ddd;font-weight:bold;">Priority</td><td style="padding:8px;border:1px solid #ddd;">{cell(priority)}</td></tr>
+        <tr><td style="padding:8px;border:1px solid #ddd;font-weight:bold;">Channel</td><td style="padding:8px;border:1px solid #ddd;">{cell(channel)}</td></tr>
+        <tr><td style="padding:8px;border:1px solid #ddd;font-weight:bold;">Visible Plan</td><td style="padding:8px;border:1px solid #ddd;">{cell(plan_name)}</td></tr>
+        <tr><td style="padding:8px;border:1px solid #ddd;font-weight:bold;">Visible Plan Status</td><td style="padding:8px;border:1px solid #ddd;">{cell(plan_status)}</td></tr>
+        <tr><td style="padding:8px;border:1px solid #ddd;font-weight:bold;">Latest Payment Reference</td><td style="padding:8px;border:1px solid #ddd;">{cell(latest_payment_reference)}</td></tr>
+        <tr><td style="padding:8px;border:1px solid #ddd;font-weight:bold;">Latest Payment Date</td><td style="padding:8px;border:1px solid #ddd;">{cell(latest_payment_date)}</td></tr>
+        <tr><td style="padding:8px;border:1px solid #ddd;font-weight:bold;">Visible Subscription Expiry</td><td style="padding:8px;border:1px solid #ddd;">{cell(expires_at)}</td></tr>
+        <tr><td style="padding:8px;border:1px solid #ddd;font-weight:bold;">Visible Credits</td><td style="padding:8px;border:1px solid #ddd;">{cell(credit_balance)}</td></tr>
+        <tr><td style="padding:8px;border:1px solid #ddd;font-weight:bold;">Visible Channel State</td><td style="padding:8px;border:1px solid #ddd;">{cell(channel_state)}</td></tr>
+        <tr><td style="padding:8px;border:1px solid #ddd;font-weight:bold;">Subject</td><td style="padding:8px;border:1px solid #ddd;">{cell(subject)}</td></tr>
+      </table>
+
+      <div style="margin-top:20px;padding:16px;border:1px solid #ddd;border-radius:8px;background:#fafafa;">
+        <div style="font-weight:bold;margin-bottom:8px;">Message</div>
+        <div style="line-height:1.7;">{safe_message or '—'}</div>
+      </div>
+    </div>
+    """.strip()
+
+
+def _insert_ticket(record: Dict[str, Any]) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+    try:
+        res = _sb().table("support_tickets").insert(record).execute()
+        rows = getattr(res, "data", None) or []
+        if rows:
+            return rows[0], None
+        return None, {
+            "error": "ticket_insert_failed",
+            "root_cause": "insert returned no rows",
+        }
+    except Exception as e:
+        return None, {
+            "error": "ticket_insert_failed",
+            "root_cause": f"{type(e).__name__}: {_clip(e)}",
+        }
+
+
+def _insert_ticket_message(record: Dict[str, Any]) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+    try:
+        res = _sb().table("support_ticket_messages").insert(record).execute()
+        rows = getattr(res, "data", None) or []
+        if rows:
+            return rows[0], None
+        return None, {
+            "error": "message_insert_failed",
+            "root_cause": "insert returned no rows",
+        }
+    except Exception as e:
+        return None, {
+            "error": "message_insert_failed",
+            "root_cause": f"{type(e).__name__}: {_clip(e)}",
+        }
+
+
+def _latest_ticket_for_account(account_id: str) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+    try:
+        res = (
+            _sb()
+            .table("support_tickets")
+            .select(
+                "id,ticket_id,account_id,account_email,account_name,category,priority,subject,message,plan_name,credit_balance,channel_state,status,last_reply_at,last_reply_by,last_message_preview,created_at,updated_at"
+            )
+            .eq("account_id", account_id)
+            .order("updated_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        rows = getattr(res, "data", None) or []
+        if rows:
+            return rows[0], None
+        return None, None
+    except Exception as e:
+        return None, {
+            "error": "latest_ticket_lookup_failed",
+            "root_cause": f"{type(e).__name__}: {_clip(e)}",
+        }
+
+
+def _list_tickets_for_account(account_id: str, limit: int = 20) -> Tuple[List[Dict[str, Any]], Optional[Dict[str, Any]]]:
+    try:
+        safe_limit = max(1, min(int(limit or 20), 100))
+        res = (
+            _sb()
+            .table("support_tickets")
+            .select(
+                "id,ticket_id,account_id,account_email,account_name,category,priority,subject,message,plan_name,credit_balance,channel_state,status,last_reply_at,last_reply_by,last_message_preview,created_at,updated_at"
+            )
+            .eq("account_id", account_id)
+            .order("updated_at", desc=True)
+            .limit(safe_limit)
+            .execute()
+        )
+        return getattr(res, "data", None) or [], None
+    except Exception as e:
+        return [], {
+            "error": "ticket_list_failed",
+            "root_cause": f"{type(e).__name__}: {_clip(e)}",
+        }
+
+
+def _find_ticket_for_account(account_id: str, ticket_id: str) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+    try:
+        res = (
+            _sb()
+            .table("support_tickets")
+            .select(
+                "id,ticket_id,account_id,account_email,account_name,category,priority,subject,message,plan_name,credit_balance,channel_state,status,last_reply_at,last_reply_by,last_message_preview,created_at,updated_at"
+            )
+            .eq("account_id", account_id)
+            .eq("ticket_id", ticket_id)
+            .limit(1)
+            .execute()
+        )
+        rows = getattr(res, "data", None) or []
+        if rows:
+            return rows[0], None
+        return None, None
+    except Exception as e:
+        return None, {
+            "error": "ticket_lookup_failed",
+            "root_cause": f"{type(e).__name__}: {_clip(e)}",
+        }
+
+
+def _list_messages_for_ticket(account_id: str, support_ticket_id: int) -> Tuple[List[Dict[str, Any]], Optional[Dict[str, Any]]]:
+    try:
+        res = (
+            _sb()
+            .table("support_ticket_messages")
+            .select("id,support_ticket_id,ticket_id,account_id,sender_type,sender_name,message,is_internal_note,created_at")
+            .eq("account_id", account_id)
+            .eq("support_ticket_id", support_ticket_id)
+            .eq("is_internal_note", False)
+            .order("created_at", desc=False)
+            .execute()
+        )
+        return getattr(res, "data", None) or [], None
+    except Exception as e:
+        return [], {
+            "error": "ticket_messages_failed",
+            "root_cause": f"{type(e).__name__}: {_clip(e)}",
+        }
+
+
+def _update_ticket_reply_state(
+    *,
+    ticket_pk: int,
+    status: Optional[str] = None,
+    last_reply_by: Optional[str] = None,
+    last_message_preview: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    payload: Dict[str, Any] = {}
+    if status:
+        payload["status"] = status
+    if last_reply_by:
+        payload["last_reply_by"] = last_reply_by
+    if last_message_preview is not None:
+        payload["last_message_preview"] = (last_message_preview or "")[:200]
+
+    if not payload:
+        return None
+
+    try:
+        res = (
+            _sb()
+            .table("support_tickets")
+            .update(payload)
+            .eq("id", ticket_pk)
+            .execute()
+        )
+        rows = getattr(res, "data", None) or []
+        return rows[0] if rows else None
+    except Exception:
+        return None
+
+
+@bp.get("/support/health")
+def support_health():
+    to_email = _support_to_email()
+    return (
+        jsonify(
+            {
+                "ok": True,
+                "route_group": "support",
+                "mail_ready": bool(to_email),
+                "support_to_email": to_email or None,
+            }
+        ),
+        200,
+    )
+
+
+@bp.get("/support/latest")
+def support_latest():
+    account_id, auth_debug = get_account_id_from_request(request)
+    if not account_id:
+        return _unauthorized(auth_debug)
+
+    ticket, lookup_err = _latest_ticket_for_account(account_id)
+    if lookup_err:
+        return _fail(
+            error=lookup_err.get("error") or "latest_ticket_lookup_failed",
+            root_cause=lookup_err.get("root_cause"),
+            status=500,
+        )
+
+    return (
+        jsonify(
+            {
+                "ok": True,
+                "ticket": ticket,
+                "debug": {"auth": auth_debug},
+            }
+        ),
+        200,
+    )
+
+
+@bp.get("/support/tickets")
+def support_tickets():
+    account_id, auth_debug = get_account_id_from_request(request)
+    if not account_id:
+        return _unauthorized(auth_debug)
+
+    raw_limit = request.args.get("limit", "20")
+    try:
+        limit = int(raw_limit)
+    except Exception:
+        limit = 20
+
+    tickets, err = _list_tickets_for_account(account_id, limit=limit)
+    if err:
+        return _fail(
+            error=err.get("error") or "ticket_list_failed",
+            root_cause=err.get("root_cause"),
+            status=500,
+        )
+
+    return (
+        jsonify(
+            {
+                "ok": True,
+                "tickets": tickets,
+                "count": len(tickets),
+                "debug": {"auth": auth_debug},
+            }
+        ),
+        200,
+    )
+
+
+@bp.get("/support/tickets/<ticket_id>")
+def support_ticket_detail(ticket_id: str):
+    account_id, auth_debug = get_account_id_from_request(request)
+    if not account_id:
+        return _unauthorized(auth_debug)
+
+    ticket_id = (ticket_id or "").strip()
+    if not ticket_id:
+        return _fail(
+            error="ticket_id_required",
+            message="Ticket ID is required.",
+            status=400,
+        )
+
+    ticket, err = _find_ticket_for_account(account_id, ticket_id)
+    if err:
+        return _fail(
+            error=err.get("error") or "ticket_lookup_failed",
+            root_cause=err.get("root_cause"),
+            status=500,
+        )
+
+    if not ticket:
+        return _fail(
+            error="ticket_not_found",
+            message="Support ticket was not found for this account.",
+            status=404,
+        )
+
+    messages, msg_err = _list_messages_for_ticket(account_id, int(ticket["id"]))
+    if msg_err:
+        return _fail(
+            error=msg_err.get("error") or "ticket_messages_failed",
+            root_cause=msg_err.get("root_cause"),
+            status=500,
+        )
+
+    return (
+        jsonify(
+            {
+                "ok": True,
+                "ticket": ticket,
+                "messages": messages,
+                "debug": {"auth": auth_debug},
+            }
+        ),
+        200,
+    )
+
+
+@bp.post("/support/tickets/<ticket_id>/reply")
+def support_ticket_reply(ticket_id: str):
+    account_id, auth_debug = get_account_id_from_request(request)
+    if not account_id:
+        return _unauthorized(auth_debug)
+
+    ticket_id = (ticket_id or "").strip()
+    if not ticket_id:
+        return _fail(
+            error="ticket_id_required",
+            message="Ticket ID is required.",
+            status=400,
+        )
+
+    body = _safe_json()
+    message = (body.get("message") or "").strip()
+    sender_name = (
+        body.get("senderName")
+        or body.get("sender_name")
+        or body.get("fullName")
+        or body.get("full_name")
+        or ""
+    ).strip()
+
+    if not message:
+        return _fail(
+            error="message_required",
+            message="Reply message is required.",
+            status=400,
+        )
+
+    if len(message) < 2:
+        return _fail(
+            error="message_too_short",
+            message="Reply message is too short.",
+            extra={"min_length": 2},
+            status=400,
+        )
+
+    ticket, err = _find_ticket_for_account(account_id, ticket_id)
+    if err:
+        return _fail(
+            error=err.get("error") or "ticket_lookup_failed",
+            root_cause=err.get("root_cause"),
+            status=500,
+        )
+
+    if not ticket:
+        return _fail(
+            error="ticket_not_found",
+            message="Support ticket was not found for this account.",
+            status=404,
+        )
+
+    account, acct_err = _get_account_row(account_id)
+    if acct_err:
+        return _fail(
+            error=acct_err.get("error") or "account_lookup_failed",
+            root_cause=acct_err.get("root_cause"),
+            extra={"fix": acct_err.get("fix")},
+            status=400,
+        )
+
+    resolved_sender_name = (
+        sender_name
+        or (account.get("display_name") or "").strip()
+        or (ticket.get("account_name") or "").strip()
+        or "User"
+    )
+
+    msg_record = {
+        "support_ticket_id": ticket["id"],
+        "ticket_id": ticket["ticket_id"],
+        "account_id": account_id,
+        "sender_type": "user",
+        "sender_name": resolved_sender_name,
+        "message": message,
+        "is_internal_note": False,
+    }
+
+    saved_message, msg_err = _insert_ticket_message(msg_record)
+    if msg_err:
+        return _fail(
+            error=msg_err.get("error") or "message_insert_failed",
+            message="Reply could not be stored.",
+            root_cause=msg_err.get("root_cause"),
+            status=500,
+        )
+
+    _update_ticket_reply_state(
+        ticket_pk=int(ticket["id"]),
+        status="open",
+        last_reply_by="user",
+        last_message_preview=message,
+    )
+
+    support_to = _support_to_email()
+    mail_delivery: Dict[str, Any] = {"attempted": False, "ok": False}
+
+    if support_to:
+        contact_email = _best_contact_email(account, ticket.get("account_email") or "")
+        mail_subject = f"[Naija Tax Guide][REPLY][{ticket['ticket_id']}] {ticket.get('subject') or 'Support ticket reply'}"
+        mail_text = "\n".join(
+            [
+                "Naija Tax Guide Support Reply",
+                "",
+                f"Ticket ID: {ticket['ticket_id']}",
+                f"Account ID: {account_id}",
+                f"Sender: {resolved_sender_name}",
+                f"Account Email: {contact_email or '—'}",
+                "",
+                "Reply Message:",
+                message,
+            ]
+        ).strip()
+
+        mail_html = f"""
+        <div style="font-family:Arial,sans-serif;max-width:760px;margin:auto;color:#111;">
+          <h2 style="margin-bottom:8px;">{_support_from_name().replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")}</h2>
+          <p style="margin-top:0;color:#555;">A user replied to an existing support ticket.</p>
+
+          <table style="border-collapse:collapse;width:100%;margin-top:16px;">
+            <tr><td style="padding:8px;border:1px solid #ddd;font-weight:bold;">Ticket ID</td><td style="padding:8px;border:1px solid #ddd;">{ticket['ticket_id']}</td></tr>
+            <tr><td style="padding:8px;border:1px solid #ddd;font-weight:bold;">Account ID</td><td style="padding:8px;border:1px solid #ddd;">{account_id}</td></tr>
+            <tr><td style="padding:8px;border:1px solid #ddd;font-weight:bold;">Sender</td><td style="padding:8px;border:1px solid #ddd;">{resolved_sender_name.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")}</td></tr>
+            <tr><td style="padding:8px;border:1px solid #ddd;font-weight:bold;">Subject</td><td style="padding:8px;border:1px solid #ddd;">{str(ticket.get('subject') or '—').replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")}</td></tr>
+          </table>
+
+          <div style="margin-top:20px;padding:16px;border:1px solid #ddd;border-radius:8px;background:#fafafa;">
+            <div style="font-weight:bold;margin-bottom:8px;">Reply Message</div>
+            <div style="line-height:1.7;">{message.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\\n", "<br>")}</div>
           </div>
-        </WorkspaceSectionCard>
+        </div>
+        """.strip()
 
-        <WorkspaceSectionCard
-          title="Support center"
-          subtitle="Use this page to submit a clear support request together with the visible account context that may help review it faster."
-        >
-          <div style={pageGridStyle()}>
-            <div style={{ display: "grid", gap: 18 }}>
-              <div style={infoBoxStyle()}>
-                <div style={{ fontSize: 18, fontWeight: 900, color: "var(--text)" }}>
-                  Open a support request
-                </div>
-                <div style={{ color: "var(--text-muted)", lineHeight: 1.7 }}>
-                  Choose the issue type, set the priority, and explain clearly what happened.
-                </div>
-              </div>
+        mail_res = send_mail(
+            to=support_to,
+            subject=mail_subject,
+            text=mail_text,
+            html=mail_html,
+            reply_to=contact_email or None,
+            debug=True,
+        )
+        mail_delivery = {
+            "attempted": True,
+            "ok": bool(mail_res.get("ok")),
+            "provider": mail_res.get("provider"),
+            "mode": mail_res.get("mode"),
+            "error": mail_res.get("error"),
+            "message": mail_res.get("message"),
+        }
 
-              <div style={{ display: "grid", gap: 14 }}>
-                <select
-                  value={form.category}
-                  onChange={(event) => setField("category", event.target.value)}
-                  style={appSelectStyle()}
-                >
-                  <option value="general">Issue type: General support</option>
-                  <option value="billing">Issue type: Billing or subscription</option>
-                  <option value="credits">Issue type: Credits or access</option>
-                  <option value="channels">Issue type: WhatsApp or Telegram linking</option>
-                  <option value="login">Issue type: Login or authentication</option>
-                  <option value="technical">Issue type: Technical issue</option>
-                </select>
+    refreshed_ticket, _ = _find_ticket_for_account(account_id, ticket_id)
 
-                <select
-                  value={form.priority}
-                  onChange={(event) => setField("priority", event.target.value)}
-                  style={appSelectStyle()}
-                >
-                  <option value="normal">Priority: Normal</option>
-                  <option value="high">Priority: High</option>
-                  <option value="urgent">Priority: Urgent</option>
-                </select>
+    return (
+        jsonify(
+            {
+                "ok": True,
+                "message": "Support reply submitted successfully.",
+                "ticket": refreshed_ticket or ticket,
+                "reply": saved_message,
+                "delivery": mail_delivery,
+                "debug": {"auth": auth_debug},
+            }
+        ),
+        200,
+    )
 
-                <input
-                  value={form.subject}
-                  onChange={(event) => setField("subject", event.target.value)}
-                  placeholder="Support subject"
-                  style={appInputStyle()}
-                />
 
-                <textarea
-                  value={form.message}
-                  onChange={(event) => setField("message", event.target.value)}
-                  placeholder="Describe the issue clearly. Include what happened, what you expected, and what you already checked."
-                  rows={9}
-                  style={appTextareaStyle()}
-                />
+@bp.post("/support")
+def submit_support():
+    account_id, auth_debug = get_account_id_from_request(request)
+    if not account_id:
+        return _unauthorized(auth_debug)
 
-                <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-                  <button
-                    onClick={handleSubmit}
-                    disabled={submitting}
-                    style={{
-                      ...shellButtonPrimary(),
-                      opacity: submitting ? 0.7 : 1,
-                      cursor: submitting ? "not-allowed" : "pointer",
-                    }}
-                  >
-                    {submitting ? "Submitting..." : "Submit Support Request"}
-                  </button>
+    body = _safe_json()
 
-                  <button onClick={handleClear} style={shellButtonSecondary()}>
-                    Clear Form
-                  </button>
-                </div>
-              </div>
-            </div>
+    full_name = (body.get("fullName") or body.get("full_name") or body.get("account_name") or "").strip()
+    contact_email = (body.get("contactEmail") or body.get("contact_email") or body.get("account_email") or "").strip().lower()
+    issue_type = (body.get("issueType") or body.get("issue_type") or body.get("category") or "general").strip().lower()
+    priority = (body.get("priority") or "normal").strip().lower()
+    channel = (body.get("channel") or "web").strip().lower()
+    subject = (body.get("subject") or "").strip()
+    message = (body.get("message") or "").strip()
+    plan_name = (body.get("planName") or body.get("plan_name") or "").strip()
+    plan_status = (body.get("planStatus") or body.get("plan_status") or "").strip()
+    latest_payment_reference = (
+        body.get("latestPaymentReference")
+        or body.get("latest_payment_reference")
+        or body.get("paymentReference")
+        or body.get("payment_reference")
+        or ""
+    ).strip()
+    latest_payment_date = (
+        body.get("latestPaymentDate")
+        or body.get("latest_payment_date")
+        or body.get("paymentDate")
+        or body.get("payment_date")
+        or ""
+    ).strip()
+    expires_at = (
+        body.get("expiresAt")
+        or body.get("expires_at")
+        or body.get("subscriptionExpires")
+        or body.get("subscription_expires")
+        or ""
+    ).strip()
+    credit_balance = body.get("creditBalance") or body.get("credit_balance") or 0
+    channel_state = (body.get("channelState") or body.get("channel_state") or "").strip()
 
-            <div style={{ display: "grid", gap: 18 }}>
-              <div style={infoBoxStyle()}>
-                <div style={{ fontSize: 18, fontWeight: 900, color: "var(--text)" }}>
-                  Visible account context
-                </div>
-                <div style={{ color: "var(--text-muted)", lineHeight: 1.7 }}>
-                  This summary helps support understand the likely source of the issue without
-                  needing unrelated dashboard details.
-                </div>
-              </div>
+    if issue_type not in {"general", "billing", "credits", "channels", "login", "technical"}:
+        issue_type = "general"
 
-              <CardsGrid min={220}>
-                <MetricCard
-                  label="Account Email"
-                  value={accountEmail}
-                  helper="Visible email currently associated with the workspace."
-                />
-                <MetricCard
-                  label="Current Plan"
-                  value={planName}
-                  tone={activeNow ? "good" : "warn"}
-                  helper={`Status: ${planStatus}`}
-                />
-                <MetricCard
-                  label="Credits"
-                  value={String(creditBalance)}
-                  tone={creditBalance > 0 ? "good" : "warn"}
-                  helper="Visible AI credit balance at the time of review."
-                />
-                <MetricCard
-                  label="Channel State"
-                  value={channelState}
-                  helper="Visible WhatsApp and Telegram linking state."
-                />
-              </CardsGrid>
-            </div>
-          </div>
-        </WorkspaceSectionCard>
+    if priority not in {"normal", "high", "urgent"}:
+        priority = "normal"
 
-        <WorkspaceSectionCard
-          title="My support requests"
-          subtitle="Track your ticket status and open any ticket to see the full in-app support conversation."
-        >
-          {loadingTickets ? (
-            <Banner tone="default" title="Loading support requests" subtitle="Please wait..." />
-          ) : tickets.length === 0 ? (
-            <Banner
-              tone="default"
-              title="No support requests yet"
-              subtitle="Your submitted tickets will appear here."
-            />
-          ) : (
-            <div style={{ display: "grid", gap: 12 }}>
-              {tickets.map((ticket) => {
-                const active = ticket.ticket_id === selectedTicketId;
-                return (
-                  <div
-                    key={ticket.ticket_id}
-                    style={ticketRowStyle(active)}
-                    onClick={() => loadTicketDetail(ticket.ticket_id)}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        gap: 12,
-                        flexWrap: "wrap",
-                        alignItems: "center",
-                      }}
-                    >
-                      <div style={{ fontSize: 16, fontWeight: 800, color: "var(--text)" }}>
-                        {ticket.subject || "Untitled support request"}
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 13,
-                          fontWeight: 700,
-                          color: "var(--text)",
-                          opacity: 0.9,
-                        }}
-                      >
-                        {ticket.ticket_id}
-                      </div>
-                    </div>
+    if not subject:
+        return _fail(
+            error="subject_required",
+            message="Support subject is required.",
+            status=400,
+        )
 
-                    <div
-                      style={{
-                        display: "flex",
-                        gap: 12,
-                        flexWrap: "wrap",
-                        color: "var(--text-muted)",
-                        fontSize: 14,
-                      }}
-                    >
-                      <span>Status: {ticket.status}</span>
-                      <span>Priority: {ticket.priority}</span>
-                      <span>Type: {ticket.category}</span>
-                      <span>
-                        Updated: {ticket.updated_at ? formatDate(ticket.updated_at) : "Not shown"}
-                      </span>
-                    </div>
+    if not message:
+        return _fail(
+            error="message_required",
+            message="Support message is required.",
+            status=400,
+        )
 
-                    <div style={{ color: "var(--text-muted)", lineHeight: 1.7 }}>
-                      {safeText(
-                        ticket.last_message_preview || ticket.message || "No message preview available."
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </WorkspaceSectionCard>
+    if len(message) < 10:
+        return _fail(
+            error="message_too_short",
+            message="Support message is too short.",
+            extra={"min_length": 10},
+            status=400,
+        )
 
-        <WorkspaceSectionCard
-          title="In-app support inbox"
-          subtitle="Open your selected ticket thread, view support replies, and continue the conversation inside the app."
-        >
-          {!selectedTicketId ? (
-            <Banner
-              tone="default"
-              title="No ticket selected"
-              subtitle="Select a support request above to view its conversation."
-            />
-          ) : loadingThread ? (
-            <Banner tone="default" title="Loading support thread" subtitle="Please wait..." />
-          ) : selectedTicket ? (
-            <div style={{ display: "grid", gap: 18 }}>
-              <div style={infoBoxStyle()}>
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    gap: 12,
-                    flexWrap: "wrap",
-                    alignItems: "center",
-                  }}
-                >
-                  <div style={{ fontSize: 18, fontWeight: 900, color: "var(--text)" }}>
-                    {selectedTicket.subject}
-                  </div>
-                  <div style={{ color: "var(--text-muted)", fontSize: 14 }}>
-                    Ticket ID: {selectedTicket.ticket_id}
-                  </div>
-                </div>
+    message = _compose_message_with_live_context(
+        message=message,
+        issue_type=issue_type,
+        plan_name=plan_name,
+        plan_status=plan_status,
+        latest_payment_reference=latest_payment_reference,
+        latest_payment_date=latest_payment_date,
+        expires_at=expires_at,
+        credit_balance=credit_balance,
+        channel_state=channel_state,
+    )
 
-                <div
-                  style={{
-                    display: "flex",
-                    gap: 12,
-                    flexWrap: "wrap",
-                    color: "var(--text-muted)",
-                    fontSize: 14,
-                  }}
-                >
-                  <span>Status: {selectedTicket.status}</span>
-                  <span>Priority: {selectedTicket.priority}</span>
-                  <span>Type: {selectedTicket.category}</span>
-                  <span>
-                    Last updated:{" "}
-                    {selectedTicket.updated_at
-                      ? formatDate(selectedTicket.updated_at)
-                      : "Not shown"}
-                  </span>
-                </div>
+    account, acct_err = _get_account_row(account_id)
+    if acct_err:
+        return _fail(
+            error=acct_err.get("error") or "account_lookup_failed",
+            root_cause=acct_err.get("root_cause"),
+            extra={"fix": acct_err.get("fix")},
+            status=400,
+        )
 
-                <Banner
-                  tone={statusTone(selectedTicket.status)}
-                  title={`Current status: ${selectedTicket.status}`}
-                  subtitle={
-                    selectedTicket.status === "awaiting_user"
-                      ? "Support is waiting for your reply."
-                      : selectedTicket.status === "resolved"
-                      ? "This ticket has been marked as resolved."
-                      : selectedTicket.status === "in_review"
-                      ? "Your request is currently under review."
-                      : "Your support request is open and active."
-                  }
-                />
-              </div>
+    resolved_contact_email = _best_contact_email(account, contact_email)
+    if not resolved_contact_email:
+        return _fail(
+            error="contact_email_required",
+            message="A valid support contact email is required.",
+            root_cause="No valid submitted or account-linked email address was found.",
+            extra={
+                "fix": "Submit contactEmail from the frontend or ensure accounts.email is populated.",
+                "account_id": account_id,
+            },
+            status=400,
+        )
 
-              <div
-                style={{
-                  display: "grid",
-                  gap: 12,
-                  border: "1px solid var(--border)",
-                  borderRadius: 18,
-                  background: "var(--surface)",
-                  padding: 16,
-                  minHeight: 220,
-                }}
-              >
-                {threadMessages.length === 0 ? (
-                  <Banner
-                    tone="default"
-                    title="No thread messages yet"
-                    subtitle="The original request or future support replies will appear here."
-                  />
-                ) : (
-                  threadMessages.map((msg) => (
-                    <div key={msg.id} style={messageBubbleStyle(msg.sender_type)}>
-                      <div
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          gap: 12,
-                          flexWrap: "wrap",
-                          alignItems: "center",
-                        }}
-                      >
-                        <div style={{ fontWeight: 800, color: "var(--text)" }}>
-                          {msg.sender_type === "admin"
-                            ? msg.sender_name || "Support Team"
-                            : msg.sender_name || "You"}
-                        </div>
-                        <div style={{ color: "var(--text-muted)", fontSize: 12 }}>
-                          {msg.created_at ? formatDate(msg.created_at) : "Not shown"}
-                        </div>
-                      </div>
-                      <div
-                        style={{
-                          color: "var(--text)",
-                          lineHeight: 1.8,
-                          whiteSpace: "pre-wrap",
-                          wordBreak: "break-word",
-                        }}
-                      >
-                        {msg.message}
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
+    support_to = _support_to_email()
+    if not support_to:
+        return _fail(
+            error="support_email_not_configured",
+            message="Support inbox is not configured on the backend.",
+            root_cause="SUPPORT_TO_EMAIL / SUPPORT_EMAIL / MAIL_FROM_EMAIL is missing.",
+            extra={
+                "fix": "Set SUPPORT_TO_EMAIL in backend environment variables.",
+            },
+            status=500,
+        )
 
-              <div style={infoBoxStyle()}>
-                <div style={{ fontSize: 17, fontWeight: 900, color: "var(--text)" }}>
-                  Reply in-app
-                </div>
-                <div style={{ color: "var(--text-muted)", lineHeight: 1.7 }}>
-                  Send your follow-up directly from this page. Your message will become part of the
-                  ticket conversation.
-                </div>
+    final_ticket_id = _ticket_id()
 
-                <textarea
-                  value={replyMessage}
-                  onChange={(event) => {
-                    setReplyMessage(event.target.value);
-                    setNotice("");
-                    setError("");
-                  }}
-                  placeholder="Write your reply to support here..."
-                  rows={5}
-                  style={appTextareaStyle()}
-                />
+    text_body = _build_support_text(
+        ticket_id=final_ticket_id,
+        account_id=account_id,
+        account=account,
+        full_name=full_name,
+        contact_email=resolved_contact_email,
+        issue_type=issue_type,
+        priority=priority,
+        channel=channel,
+        subject=subject,
+        message=message,
+        plan_name=plan_name,
+        plan_status=plan_status,
+        latest_payment_reference=latest_payment_reference,
+        latest_payment_date=latest_payment_date,
+        expires_at=expires_at,
+        credit_balance=credit_balance,
+        channel_state=channel_state,
+    )
 
-                <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-                  <button
-                    onClick={handleReplySubmit}
-                    disabled={replying}
-                    style={{
-                      ...shellButtonPrimary(),
-                      opacity: replying ? 0.7 : 1,
-                      cursor: replying ? "not-allowed" : "pointer",
-                    }}
-                  >
-                    {replying ? "Sending reply..." : "Send Reply"}
-                  </button>
+    html_body = _build_support_html(
+        ticket_id=final_ticket_id,
+        account_id=account_id,
+        account=account,
+        full_name=full_name,
+        contact_email=resolved_contact_email,
+        issue_type=issue_type,
+        priority=priority,
+        channel=channel,
+        subject=subject,
+        message=message,
+        plan_name=plan_name,
+        plan_status=plan_status,
+        latest_payment_reference=latest_payment_reference,
+        latest_payment_date=latest_payment_date,
+        expires_at=expires_at,
+        credit_balance=credit_balance,
+        channel_state=channel_state,
+    )
 
-                  <button
-                    onClick={() => setReplyMessage("")}
-                    style={shellButtonSecondary()}
-                  >
-                    Clear Reply
-                  </button>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <Banner
-              tone="default"
-              title="Support thread not available"
-              subtitle="Select a valid ticket to view its thread."
-            />
-          )}
-        </WorkspaceSectionCard>
+    ticket_record = {
+        "ticket_id": final_ticket_id,
+        "account_id": account_id,
+        "account_email": resolved_contact_email,
+        "account_name": (account.get("display_name") or full_name or "").strip() or None,
+        "category": issue_type,
+        "priority": priority,
+        "subject": subject,
+        "message": message,
+        "plan_name": plan_name or None,
+        "credit_balance": int(credit_balance or 0),
+        "channel_state": channel_state or None,
+        "status": "open",
+        "last_reply_by": "user",
+        "last_message_preview": message[:200],
+    }
 
-        <WorkspaceSectionCard
-          title="Before submitting"
-          subtitle="Only the most relevant checks before you open a support request."
-        >
-          <div
-            style={{
-              display: "grid",
-              gap: 12,
-              color: "var(--text)",
-              fontSize: 15,
-              lineHeight: 1.8,
-            }}
-          >
-            <div style={infoBoxStyle()}>
-              Check Billing if the issue is about subscription status, renewal, or plan access.
-            </div>
-            <div style={infoBoxStyle()}>
-              Check Credits if the assistant stops answering or access feels unexpectedly limited.
-            </div>
-            <div style={infoBoxStyle()}>
-              Check Channels if the issue involves WhatsApp or Telegram linking behavior.
-            </div>
-            <div style={infoBoxStyle()}>
-              Use Help first if you are unsure whether the issue is billing, credits, channels, or
-              normal app behavior.
-            </div>
-          </div>
-        </WorkspaceSectionCard>
-      </SectionStack>
-    </AppShell>
-  );
-}
+    saved_ticket, insert_err = _insert_ticket(ticket_record)
+    if insert_err:
+        return _fail(
+            error=insert_err.get("error") or "ticket_insert_failed",
+            message="Support request could not be stored.",
+            root_cause=insert_err.get("root_cause"),
+            status=500,
+        )
+
+    message_record = {
+        "support_ticket_id": saved_ticket["id"],
+        "ticket_id": saved_ticket["ticket_id"],
+        "account_id": account_id,
+        "sender_type": "user",
+        "sender_name": saved_ticket.get("account_name") or (account.get("display_name") or "").strip() or "User",
+        "message": message,
+        "is_internal_note": False,
+    }
+
+    saved_message, msg_err = _insert_ticket_message(message_record)
+    if msg_err:
+        return _fail(
+            error=msg_err.get("error") or "message_insert_failed",
+            message="Support request ticket was stored but thread initialization failed.",
+            root_cause=msg_err.get("root_cause"),
+            extra={"ticket": saved_ticket},
+            status=500,
+        )
+
+    final_subject = _build_support_subject(
+        issue_type=issue_type,
+        priority=priority,
+        subject=subject,
+        account_id=account_id,
+    )
+
+    mail_res = send_mail(
+        to=support_to,
+        subject=final_subject,
+        text=text_body,
+        html=html_body,
+        reply_to=resolved_contact_email,
+        debug=True,
+    )
+
+    if not mail_res.get("ok"):
+        return _fail(
+            error=mail_res.get("error") or "support_send_failed",
+            message="Support request was stored but email delivery failed.",
+            root_cause=mail_res.get("message") or mail_res.get("root_cause"),
+            extra={
+                "mail_debug": mail_res.get("debug"),
+                "account_id": account_id,
+                "ticket": saved_ticket,
+                "thread_message": saved_message,
+            },
+            status=502,
+        )
+
+    refreshed_ticket, _ = _find_ticket_for_account(account_id, saved_ticket["ticket_id"])
+
+    return (
+        jsonify(
+            {
+                "ok": True,
+                "message": "Support request submitted successfully.",
+                "account_id": account_id,
+                "ticket": refreshed_ticket or saved_ticket,
+                "thread_message": saved_message,
+                "delivery": {
+                    "to": support_to,
+                    "reply_to": resolved_contact_email,
+                    "provider": mail_res.get("provider"),
+                    "mode": mail_res.get("mode"),
+                },
+                "debug": {
+                    "auth": auth_debug,
+                },
+            }
+        ),
+        200,
+    )
