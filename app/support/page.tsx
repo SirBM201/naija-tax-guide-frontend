@@ -639,6 +639,10 @@ export default function SupportPage() {
     }
   }
 
+  const visibleTickets = useMemo(() => {
+    return showBillingOnly ? tickets.filter(isBillingRelatedTicket) : tickets;
+  }, [showBillingOnly, tickets]);
+
   const effectiveCategory = intentPreset?.category || form.category;
   const effectivePriority = intentPreset?.priority || form.priority;
   const effectiveSubject = intentPreset?.subject || form.subject;
