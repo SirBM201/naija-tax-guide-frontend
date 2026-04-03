@@ -48,11 +48,21 @@ export type WorkspaceBillingResp = {
     current_plan_code?: string | null;
   } | null;
   checkout_email?: string | null;
+  guard?: {
+    access?: {
+      allowed?: boolean;
+    };
+    plan_code?: string | null;
+    daily_answers_limit?: number;
+  } | null;
   plan_code?: string | null;
   plan_name?: string | null;
   status?: string | null;
   active?: boolean | null;
+  starts_at?: string | null;
+  started_at?: string | null;
   expires_at?: string | null;
+  current_period_end?: string | null;
   pending_plan_code?: string | null;
   pending_starts_at?: string | null;
   payment_reference?: string | null;
@@ -63,6 +73,11 @@ export type WorkspaceBillingResp = {
   auto_renew?: boolean | null;
   included_credits?: number | null;
   ai_used_month?: number | null;
+  credit_balance?: number | null;
+  credit_exists?: boolean | null;
+  credit_updated_at?: string | null;
+  daily_usage_count?: number | null;
+  daily_answers_limit?: number | null;
   error?: string;
 };
 
@@ -307,7 +322,7 @@ export function useWorkspaceState(options?: UseWorkspaceStateOptions) {
 
   const sub = billingRaw?.subscription || null;
   const summary = billingRaw?.subscription_summary || null;
-  const guard = pickGuard(debugStateRaw);
+  const guard = billingRaw?.guard || pickGuard(debugStateRaw);
 
   const derived = useMemo(() => {
     const accountId =
@@ -339,16 +354,23 @@ export function useWorkspaceState(options?: UseWorkspaceStateOptions) {
       planCode ||
       null;
 
-    const creditBalance = safeNumber(debugStateRaw?.credit_balance?.balance, 0);
+    const creditBalance = safeNumber(
+      debugStateRaw?.credit_balance?.balance,
+      safeNumber(billingRaw?.credit_balance, 0)
+    );
     const creditUsed =
       safeNumber(debugStateRaw?.credit_balance?.used, 0) ||
       safeNumber(debugStateRaw?.credit_balance?.consumed, 0);
 
     const dailyUsage =
       safeNumber(debugStateRaw?.daily_usage_today?.count, 0) ||
-      safeNumber(debugStateRaw?.daily_usage_today?.daily_usage, 0);
+      safeNumber(debugStateRaw?.daily_usage_today?.daily_usage, 0) ||
+      safeNumber(billingRaw?.daily_usage_count, 0);
 
-    const dailyLimit = safeNumber(guard?.daily_answers_limit, 0);
+    const dailyLimit = safeNumber(
+      guard?.daily_answers_limit,
+      safeNumber(billingRaw?.daily_answers_limit, 0)
+    );
     const usageRemaining = dailyLimit > 0 ? Math.max(dailyLimit - dailyUsage, 0) : null;
 
     const profile: WorkspaceProfile = {
@@ -420,7 +442,9 @@ export function useWorkspaceState(options?: UseWorkspaceStateOptions) {
       used: creditUsed,
       consumed: creditUsed,
       used_this_month: safeNumber(debugStateRaw?.credit_balance?.used_this_month, creditUsed),
-      updated_at: safeText(debugStateRaw?.credit_balance?.updated_at),
+      updated_at:
+        safeText(debugStateRaw?.credit_balance?.updated_at) ||
+        safeText(billingRaw?.credit_updated_at),
       last_updated_at: safeText(debugStateRaw?.credit_balance?.last_updated_at),
     };
 
@@ -429,16 +453,16 @@ export function useWorkspaceState(options?: UseWorkspaceStateOptions) {
       limit: dailyLimit,
       remaining: usageRemaining,
       daily_usage: dailyUsage,
-      used_this_month: safeNumber(
-        billing.ai_used_month,
+      used_this_month: Math.max(
+        safeNumber(billing.ai_used_month, 0),
         safeNumber(credits.used_this_month, 0)
       ),
-      monthly_used: safeNumber(
-        billing.ai_used_month,
+      monthly_used: Math.max(
+        safeNumber(billing.ai_used_month, 0),
         safeNumber(credits.used_this_month, 0)
       ),
-      ai_used_month: safeNumber(
-        billing.ai_used_month,
+      ai_used_month: Math.max(
+        safeNumber(billing.ai_used_month, 0),
         safeNumber(credits.used_this_month, 0)
       ),
     };
