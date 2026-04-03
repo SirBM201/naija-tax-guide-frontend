@@ -7,14 +7,17 @@ import { apiJson, isApiError } from "@/lib/api";
 type VerifyResp = {
   ok?: boolean;
   paid?: boolean;
+  applied?: boolean;
   reference?: string;
   status?: string;
+  activation_state?: string;
   plan?: unknown;
   subscription?: unknown;
   error?: string;
   stage?: string;
   root_cause?: string;
   debug?: unknown;
+  message?: string;
 };
 
 function BillingSuccessPageContent() {
@@ -33,28 +36,44 @@ function BillingSuccessPageContent() {
       }
 
       try {
-        const data = await apiJson<VerifyResp>(
-          `/billing/verify?reference=${encodeURIComponent(reference)}&debug=1`,
-          {
-            method: "GET",
-            timeoutMs: 25000,
+        let latest: VerifyResp | null = null;
+
+        for (let attempt = 0; attempt < 6; attempt += 1) {
+          const data = await apiJson<VerifyResp>(
+            `/billing/verify?reference=${encodeURIComponent(reference)}&debug=1`,
+            {
+              method: "GET",
+              timeoutMs: 25000,
+            }
+          );
+
+          latest = data;
+          setRaw(data);
+
+          if (!data?.ok) {
+            setStatus(`Verify failed (${data?.error || "unknown_error"})`);
+            return;
           }
-        );
 
-        setRaw(data);
+          if (!data?.paid) {
+            setStatus(`Payment not completed yet (status: ${data?.status || "unknown"}).`);
+            return;
+          }
 
-        if (!data?.ok) {
-          setStatus(`Verify failed (${data?.error || "unknown_error"})`);
-          return;
+          if (data?.applied) {
+            setStatus("Payment verified and subscription applied ✅ Redirecting to dashboard...");
+            window.setTimeout(() => router.push("/dashboard?billing=verified"), 800);
+            return;
+          }
+
+          setStatus(data?.message || "Payment verified. Waiting for webhook finalization...");
+
+          if (attempt < 5) {
+            await new Promise((resolve) => window.setTimeout(resolve, 2000));
+          }
         }
 
-        if (!data?.paid) {
-          setStatus(`Payment not completed yet (status: ${data?.status || "unknown"}).`);
-          return;
-        }
-
-        setStatus("Payment verified ✅ Redirecting to dashboard...");
-        window.setTimeout(() => router.push("/dashboard"), 800);
+        setRaw(latest);
       } catch (err: unknown) {
         if (isApiError(err)) {
           setStatus(`Verify failed (${err.status})`);
