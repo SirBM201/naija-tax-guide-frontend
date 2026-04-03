@@ -367,6 +367,42 @@ export default function SupportPage() {
 
   function normalizeTicketType(value: string): string {
     const raw = (value || "").trim().toLowerCase();
+    if (!raw) return "General";
+    if (raw === "billing") return "Billing";
+    if (raw === "credits") return "Credits";
+    if (raw === "channels") return "Channels";
+    if (raw === "login") return "Login";
+    if (raw === "technical") return "Technical";
+    return raw.charAt(0).toUpperCase() + raw.slice(1);
+  }
+
+  function isBillingRelatedTicket(ticket: SupportTicket): boolean {
+    const haystack = [
+      ticket.category,
+      ticket.subject,
+      ticket.message,
+      ticket.last_message_preview,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+
+    return /billing|refund|duplicate charge|wrong plan|activation|payment|subscription|credit/.test(
+      haystack
+    );
+  }
+
+  function previewText(ticket: SupportTicket): string {
+    const raw = safeText(
+      ticket.last_message_preview || ticket.message || "No message preview available.",
+      "No message preview available."
+    ).replace(/\s+/g, " ");
+
+    return raw.length > 180 ? `${raw.slice(0, 177)}…` : raw;
+  }
+
+  function normalizeTicketType(value: string): string {
+    const raw = (value || "").trim().toLowerCase();
     if (raw === "billing") return "Billing";
     if (raw === "credits") return "Credits";
     if (raw === "channels") return "Channels";
@@ -557,13 +593,22 @@ export default function SupportPage() {
         `Your support request was sent successfully. Ticket ID: ${savedTicketId}. You can now track replies inside the in-app support inbox below.`
       );
 
-      setForm({
-        category: "general",
-        priority: "normal",
-        subject: "",
-        message: "",
-      });
-      setShowBillingOnly(true);
+      setForm(
+        intentPreset
+          ? {
+              category: intentPreset.category,
+              priority: intentPreset.priority,
+              subject: intentPreset.subject,
+              message: intentPreset.message,
+            }
+          : {
+              category: "general",
+              priority: "normal",
+              subject: "",
+              message: "",
+            }
+      );
+      setShowBillingOnly(Boolean(intentPreset) || true);
 
       await loadTickets(true);
 
@@ -647,6 +692,11 @@ export default function SupportPage() {
     const rows = showBillingOnly ? tickets.filter(isBillingRelatedTicket) : tickets;
     return rows;
   }, [showBillingOnly, tickets]);
+
+  const visibleTickets = useMemo(() => {
+    return showBillingOnly ? tickets.filter(isBillingRelatedTicket) : tickets;
+  }, [showBillingOnly, tickets]);
+
 
   function handleClear() {
     setForm({
@@ -831,24 +881,49 @@ export default function SupportPage() {
 
         <WorkspaceSectionCard
           title="My support requests"
-          subtitle="Track your ticket status and open any ticket to see the full in-app support conversation."
+          subtitle="Track your ticket status, focus on billing-related requests when needed, and open any ticket to see the full in-app conversation."
         >
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
+            <button
+              onClick={() => setShowBillingOnly(false)}
+              style={showBillingOnly ? shellButtonSecondary() : shellButtonPrimary()}
+            >
+              All Tickets
+            </button>
+            <button
+              onClick={() => setShowBillingOnly(true)}
+              style={showBillingOnly ? shellButtonPrimary() : shellButtonSecondary()}
+            >
+              Billing Tickets Only
+            </button>
+          </div>
+
           {loadingTickets ? (
             <Banner tone="default" title="Loading support requests" subtitle="Please wait..." />
-          ) : tickets.length === 0 ? (
+          ) : visibleTickets.length === 0 ? (
             <Banner
               tone="default"
-              title="No support requests yet"
-              subtitle="Your submitted tickets will appear here."
+              title={tickets.length === 0 ? "No support requests yet" : "No tickets in this view"}
+              subtitle={
+                tickets.length === 0
+                  ? "Your submitted tickets will appear here."
+                  : "Switch back to All Tickets to see non-billing support requests."
+              }
             />
           ) : (
             <div style={{ display: "grid", gap: 12 }}>
-              {tickets.map((ticket) => {
+              {visibleTickets.map((ticket) => {
                 const active = ticket.ticket_id === selectedTicketId;
+                const billingRelated = isBillingRelatedTicket(ticket);
+                const latestCreated = latestCreatedTicketId && ticket.ticket_id === latestCreatedTicketId;
+
                 return (
                   <div
                     key={ticket.ticket_id}
-                    style={ticketRowStyle(active)}
+                    style={{
+                      ...ticketRowStyle(active),
+                      borderColor: latestCreated ? "rgba(78, 110, 255, 0.55)" : "var(--border)",
+                    }}
                     onClick={() => loadTicketDetail(ticket.ticket_id)}
                   >
                     <div
@@ -860,9 +935,46 @@ export default function SupportPage() {
                         alignItems: "center",
                       }}
                     >
-                      <div style={{ fontSize: 16, fontWeight: 800, color: "var(--text)" }}>
-                        {ticket.subject || "Untitled support request"}
+                      <div style={{ display: "grid", gap: 8 }}>
+                        <div style={{ fontSize: 16, fontWeight: 800, color: "var(--text)" }}>
+                          {ticket.subject || "Untitled support request"}
+                        </div>
+
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                          {billingRelated ? (
+                            <span
+                              style={{
+                                fontSize: 12,
+                                fontWeight: 800,
+                                borderRadius: 999,
+                                padding: "4px 10px",
+                                border: "1px solid rgba(78, 110, 255, 0.35)",
+                                background: "rgba(78, 110, 255, 0.12)",
+                                color: "var(--text)",
+                              }}
+                            >
+                              Billing-related
+                            </span>
+                          ) : null}
+
+                          {latestCreated ? (
+                            <span
+                              style={{
+                                fontSize: 12,
+                                fontWeight: 800,
+                                borderRadius: 999,
+                                padding: "4px 10px",
+                                border: "1px solid rgba(34, 197, 94, 0.35)",
+                                background: "rgba(34, 197, 94, 0.12)",
+                                color: "var(--text)",
+                              }}
+                            >
+                              Latest created
+                            </span>
+                          ) : null}
+                        </div>
                       </div>
+
                       <div
                         style={{
                           fontSize: 13,
@@ -886,16 +998,23 @@ export default function SupportPage() {
                     >
                       <span>Status: {ticket.status}</span>
                       <span>Priority: {ticket.priority}</span>
-                      <span>Type: {ticket.category}</span>
+                      <span>Type: {normalizeTicketType(ticket.category)}</span>
                       <span>
                         Updated: {ticket.updated_at ? formatDate(ticket.updated_at) : "Not shown"}
                       </span>
                     </div>
 
-                    <div style={{ color: "var(--text-muted)", lineHeight: 1.7 }}>
-                      {safeText(
-                        ticket.last_message_preview || ticket.message || "No message preview available."
-                      )}
+                    <div
+                      style={{
+                        color: "var(--text-muted)",
+                        lineHeight: 1.7,
+                        display: "-webkit-box",
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: "vertical",
+                        overflow: "hidden",
+                      }}
+                    >
+                      {previewText(ticket)}
                     </div>
                   </div>
                 );
