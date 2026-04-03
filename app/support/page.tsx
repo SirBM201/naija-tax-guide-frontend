@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import AppShell, {
   shellButtonPrimary,
@@ -139,6 +139,7 @@ function apiUrl(path: string): string {
 
 export default function SupportPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user, token } = useAuth();
 
   const { profile, usage, subscription, channelLinks, billing, credits } =
@@ -184,6 +185,23 @@ export default function SupportPage() {
       planStatus.toLowerCase() === "active"
   );
 
+  const billingView = (billing ?? {}) as Record<string, unknown>;
+  const latestPaymentReference = safeText(
+    billingView["payment_reference"] || billingView["last_payment_reference"] || "Not visible"
+  );
+  const latestPaymentDate = safeText(
+    billingView["payment_date"] ||
+      billingView["last_payment_date"] ||
+      billingView["paid_at"] ||
+      "Not visible"
+  );
+  const expiresAt = safeText(
+    billingView["expires_at"] ||
+      billingView["expiry_date"] ||
+      subscription?.expires_at ||
+      "Not visible"
+  );
+
   const creditBalance = Number(credits?.balance ?? 0);
 
   const whatsappLinked = truthyValue(
@@ -223,11 +241,100 @@ export default function SupportPage() {
   const [selectedTicket, setSelectedTicket] = useState<SupportTicket | null>(null);
   const [threadMessages, setThreadMessages] = useState<SupportMessage[]>([]);
 
+  const supportIntent = searchParams.get("intent") || "";
+
+  const intentPreset = useMemo(() => {
+    const intent = supportIntent.trim().toLowerCase();
+
+    const contextLines = [
+      `Current plan: ${planName}`,
+      `Plan status: ${planStatus}`,
+      `Latest payment reference: ${latestPaymentReference}`,
+      `Latest payment date: ${latestPaymentDate}`,
+      `Visible credits: ${creditBalance}`,
+      `Channel state: ${channelState}`,
+      `Subscription expiry: ${expiresAt}`,
+    ];
+
+    if (intent === "duplicate_charge") {
+      return {
+        category: "billing",
+        priority: "high",
+        subject: "Duplicate charge review request",
+        message:
+          "I want to report a possible duplicate charge. Please review whether more than one payment was captured for the same intended purchase.\n\n" +
+          contextLines.join("\n"),
+      };
+    }
+
+    if (intent === "wrong_plan") {
+      return {
+        category: "billing",
+        priority: "high",
+        subject: "Wrong plan activated after payment",
+        message:
+          "Payment appears successful, but the visible plan does not match what I intended to buy. Please review the activation result against the payment record.\n\n" +
+          contextLines.join("\n"),
+      };
+    }
+
+    if (intent === "activation_issue") {
+      return {
+        category: "credits",
+        priority: "high",
+        subject: "Payment successful but activation or access failed",
+        message:
+          "Payment appears successful, but activation, credits, or access did not update as expected. Please review the billing result and activation state.\n\n" +
+          contextLines.join("\n"),
+      };
+    }
+
+    if (intent === "refund_review") {
+      return {
+        category: "billing",
+        priority: "high",
+        subject: "Refund review request",
+        message:
+          "I want this payment reviewed under the refund policy. Please check whether the transaction qualifies for refund review based on payment evidence and activation outcome.\n\n" +
+          contextLines.join("\n"),
+      };
+    }
+
+    return null;
+  }, [
+    supportIntent,
+    planName,
+    planStatus,
+    latestPaymentReference,
+    latestPaymentDate,
+    creditBalance,
+    channelState,
+    expiresAt,
+  ]);
+
   function setField<K extends keyof SupportFormState>(key: K, value: SupportFormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
     setNotice("");
     setError("");
   }
+
+  useEffect(() => {
+    if (!intentPreset) return;
+
+    setForm((prev) => {
+      const hasMeaningfulContent =
+        prev.subject.trim().length > 0 || prev.message.trim().length > 0 || prev.category !== "general";
+
+      if (hasMeaningfulContent) return prev;
+
+      return {
+        category: intentPreset.category,
+        priority: intentPreset.priority,
+        subject: intentPreset.subject,
+        message: intentPreset.message,
+      };
+    });
+  }, [intentPreset]);
 
   async function loadTickets(selectLatest = false) {
     setLoadingTickets(true);
@@ -496,6 +603,14 @@ export default function SupportPage() {
             tone={primaryAlert.tone}
             title={primaryAlert.title}
             subtitle={primaryAlert.subtitle}
+          />
+        ) : null}
+
+        {intentPreset ? (
+          <Banner
+            tone="default"
+            title={`Support flow ready: ${safeText(intentPreset.subject, "Support request")}`}
+            subtitle="This form was prefilled from your Refund page action. Review the details, add any extra evidence, and submit when ready."
           />
         ) : null}
 
