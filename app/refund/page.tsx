@@ -219,34 +219,37 @@ export default function RefundPage() {
           </CardsGrid>
         </WorkspaceSectionCard>
 
-        <TwoColumnSection
-          left={
-            <WorkspaceSectionCard
-              title="Situations that may qualify for refund review"
-              subtitle="These are review scenarios, not guaranteed approvals."
-            >
-              <ul style={bulletListStyle()}>
-                <li>Duplicate payments or duplicate billing for the same intended service item.</li>
-                <li>Technical activation failure after a successful payment.</li>
-                <li>Unauthorized transaction concerns, subject to investigation.</li>
-                <li>Clear platform-side billing or processing error that blocked the intended outcome.</li>
-              </ul>
-            </WorkspaceSectionCard>
-          }
-          right={
-            <WorkspaceSectionCard
-              title="Situations generally not refundable"
-              subtitle="These usually fail refund review once value has already been consumed correctly."
-            >
-              <ul style={bulletListStyle()}>
-                <li>Used subscription time or already-consumed access window.</li>
-                <li>Correct plan activation followed by change of mind.</li>
-                <li>Requests where the purchased service was delivered as described.</li>
-                <li>Refund claims made only because a different plan would have been preferred later.</li>
-              </ul>
-            </WorkspaceSectionCard>
-          }
-        />
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+            gap: 24,
+          }}
+        >
+          <WorkspaceSectionCard
+            title="Situations that may qualify for refund review"
+            subtitle="These are review scenarios, not guaranteed approvals."
+          >
+            <ul style={bulletListStyle()}>
+              <li>Duplicate payments or duplicate billing for the same intended service item.</li>
+              <li>Technical activation failure after a successful payment.</li>
+              <li>Unauthorized transaction concerns, subject to investigation.</li>
+              <li>Clear platform-side billing or processing error that blocked the intended outcome.</li>
+            </ul>
+          </WorkspaceSectionCard>
+
+          <WorkspaceSectionCard
+            title="Situations generally not refundable"
+            subtitle="These usually fail refund review once value has already been consumed correctly."
+          >
+            <ul style={bulletListStyle()}>
+              <li>Used subscription time or already-consumed access window.</li>
+              <li>Correct plan activation followed by change of mind.</li>
+              <li>Requests where the purchased service was delivered as described.</li>
+              <li>Refund claims made only because a different plan would have been preferred later.</li>
+            </ul>
+          </WorkspaceSectionCard>
+        </div>
 
         <WorkspaceSectionCard
           title="Refund review window"
