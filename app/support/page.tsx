@@ -689,11 +689,6 @@ export default function SupportPage() {
   }
 
   const visibleTickets = useMemo(() => {
-    const rows = showBillingOnly ? tickets.filter(isBillingRelatedTicket) : tickets;
-    return rows;
-  }, [showBillingOnly, tickets]);
-
-  const visibleTickets = useMemo(() => {
     return showBillingOnly ? tickets.filter(isBillingRelatedTicket) : tickets;
   }, [showBillingOnly, tickets]);
 
