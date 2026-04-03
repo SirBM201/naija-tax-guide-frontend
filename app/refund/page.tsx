@@ -156,7 +156,7 @@ export default function RefundPage() {
           title="Fastest next step"
           subtitle="Choose the path that matches the billing problem instead of opening a vague support ticket."
         >
-          <CardsGrid minWidth={250}>
+          <CardsGrid min={250}>
             <div>
               <p style={valueStyle()}>Duplicate charge</p>
               <p style={bodyTextStyle()}>
