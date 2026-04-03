@@ -267,13 +267,15 @@ export default function BillingPage() {
     ""
   );
 
-  const creditBalance = Number(credits?.balance ?? billing?.credit_balance ?? 0);
+  const billingAny = billing as any;
+
+  const creditBalance = Number(credits?.balance ?? billingAny?.credit_balance ?? 0);
   const creditUpdatedAt = safeText(
-    credits?.updated_at || billing?.credit_updated_at || "",
+    credits?.updated_at || billingAny?.credit_updated_at || "",
     ""
   );
   const usageToday = safeText(
-    usage?.count ?? billing?.daily_usage_count ?? usage?.daily_usage ?? "",
+    usage?.count ?? billingAny?.daily_usage_count ?? usage?.daily_usage ?? "",
     ""
   );
 
