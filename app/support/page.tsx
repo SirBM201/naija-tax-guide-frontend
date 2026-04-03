@@ -337,18 +337,25 @@ export default function SupportPage() {
     return () => window.removeEventListener("popstate", applyFromLocation);
   }, []);
 
-  useEffect(() => {
-    if (!intentPreset) return;
+  function buildLiveContextMessage(rawMessage: string): string {
+    const messageText = (rawMessage || "").trim();
+    if (!supportIntent) return messageText;
 
-    setForm({
-      category: intentPreset.category,
-      priority: intentPreset.priority,
-      subject: intentPreset.subject,
-      message: intentPreset.message,
-    });
-    setNotice("");
-    setError("");
-  }, [intentPreset]);
+    const parts = messageText.split(/\n\s*\n/);
+    const issueIntro = (parts[0] || "").trim();
+
+    const liveContext = [
+      `Current plan: ${planName}`,
+      `Plan status: ${planStatus}`,
+      `Latest payment reference: ${supportReference || latestPaymentReference}`,
+      `Latest payment date: ${latestPaymentDate}`,
+      `Visible credits: ${creditBalance}`,
+      `Channel state: ${channelState}`,
+      `Subscription expiry: ${expiresAt}`,
+    ].join("\n");
+
+    return [issueIntro, liveContext].filter(Boolean).join("\n\n").trim();
+  }
 
   async function loadTickets(selectLatest = false) {
     setLoadingTickets(true);
@@ -463,6 +470,8 @@ export default function SupportPage() {
     setError("");
 
     try {
+      const finalMessage = buildLiveContextMessage(form.message);
+
       const response = await fetch(apiUrl("/api/support"), {
         method: "POST",
         credentials: "include",
@@ -477,8 +486,12 @@ export default function SupportPage() {
           priority: form.priority,
           channel: "web",
           subject: form.subject.trim(),
-          message: form.message.trim(),
+          message: finalMessage,
           planName,
+          planStatus,
+          latestPaymentReference: supportReference || latestPaymentReference,
+          latestPaymentDate,
+          expiresAt,
           creditBalance,
           channelState,
         }),
