@@ -497,7 +497,7 @@ export default function SupportPage() {
   }, [token]);
 
   async function handleSubmit() {
-    if (!form.subject.trim() || !form.message.trim()) {
+    if (!effectiveSubject.trim() || !form.message.trim()) {
       setError("Please provide both a support subject and a clear description of the issue.");
       setNotice("");
       return;
@@ -526,10 +526,10 @@ export default function SupportPage() {
         body: JSON.stringify({
           fullName: accountName,
           contactEmail: accountEmail === "Not visible" ? "" : accountEmail,
-          issueType: form.category,
-          priority: form.priority,
+          issueType: effectiveCategory,
+          priority: effectivePriority,
           channel: "web",
-          subject: form.subject.trim(),
+          subject: effectiveSubject.trim(),
           message: finalMessage,
           planName,
           planStatus,
@@ -558,21 +558,7 @@ export default function SupportPage() {
         `Your support request was sent successfully. Ticket ID: ${savedTicketId}. You can now track replies inside the in-app support inbox below.`
       );
 
-      setForm(
-        intentPreset
-          ? {
-              category: intentPreset.category,
-              priority: intentPreset.priority,
-              subject: intentPreset.subject,
-              message: intentPreset.message,
-            }
-          : {
-              category: "general",
-              priority: "normal",
-              subject: "",
-              message: "",
-            }
-      );
+      resetFormForCurrentFlow();
       setShowBillingOnly(Boolean(intentPreset) || true);
 
       await loadTickets(true);
@@ -653,18 +639,32 @@ export default function SupportPage() {
     }
   }
 
-  const visibleTickets = useMemo(() => {
-    return showBillingOnly ? tickets.filter(isBillingRelatedTicket) : tickets;
-  }, [showBillingOnly, tickets]);
+  const effectiveCategory = intentPreset?.category || form.category;
+  const effectivePriority = intentPreset?.priority || form.priority;
+  const effectiveSubject = intentPreset?.subject || form.subject;
+  const isIntentLocked = Boolean(intentPreset);
+
+  function resetFormForCurrentFlow() {
+    setForm(
+      intentPreset
+        ? {
+            category: intentPreset.category,
+            priority: intentPreset.priority,
+            subject: intentPreset.subject,
+            message: intentPreset.message,
+          }
+        : {
+            category: "general",
+            priority: "normal",
+            subject: "",
+            message: "",
+          }
+    );
+  }
 
 
   function handleClear() {
-    setForm({
-      category: "general",
-      priority: "normal",
-      subject: "",
-      message: "",
-    });
+    resetFormForCurrentFlow();
     setNotice("");
     setError("");
   }
@@ -739,13 +739,23 @@ export default function SupportPage() {
                 <div style={{ color: "var(--text-muted)", lineHeight: 1.7 }}>
                   Choose the issue type, set the priority, and explain clearly what happened.
                 </div>
+                {isIntentLocked ? (
+                  <div style={{ color: "var(--text-muted)", lineHeight: 1.7, marginTop: 8 }}>
+                    Billing handoff is active, so issue type, priority, and subject stay aligned to this refund flow. Add your extra evidence in the description box below.
+                  </div>
+                ) : null}
               </div>
 
               <div style={{ display: "grid", gap: 14 }}>
                 <select
-                  value={form.category}
+                  value={effectiveCategory}
                   onChange={(event) => setField("category", event.target.value)}
-                  style={appSelectStyle()}
+                  disabled={isIntentLocked}
+                  style={{
+                    ...appSelectStyle(),
+                    opacity: isIntentLocked ? 0.75 : 1,
+                    cursor: isIntentLocked ? "not-allowed" : "pointer",
+                  }}
                 >
                   <option value="general">Issue type: General support</option>
                   <option value="billing">Issue type: Billing or subscription</option>
@@ -756,9 +766,14 @@ export default function SupportPage() {
                 </select>
 
                 <select
-                  value={form.priority}
+                  value={effectivePriority}
                   onChange={(event) => setField("priority", event.target.value)}
-                  style={appSelectStyle()}
+                  disabled={isIntentLocked}
+                  style={{
+                    ...appSelectStyle(),
+                    opacity: isIntentLocked ? 0.75 : 1,
+                    cursor: isIntentLocked ? "not-allowed" : "pointer",
+                  }}
                 >
                   <option value="normal">Priority: Normal</option>
                   <option value="high">Priority: High</option>
@@ -766,10 +781,15 @@ export default function SupportPage() {
                 </select>
 
                 <input
-                  value={form.subject}
+                  value={effectiveSubject}
                   onChange={(event) => setField("subject", event.target.value)}
                   placeholder="Support subject"
-                  style={appInputStyle()}
+                  disabled={isIntentLocked}
+                  style={{
+                    ...appInputStyle(),
+                    opacity: isIntentLocked ? 0.85 : 1,
+                    cursor: isIntentLocked ? "not-allowed" : "text",
+                  }}
                 />
 
                 <textarea
