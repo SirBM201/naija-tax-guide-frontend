@@ -128,7 +128,7 @@ export default function RefundPage() {
           title="Visible billing context"
           subtitle="This snapshot helps you confirm whether the visible account state matches the issue you want to report."
         >
-          <CardsGrid minWidth={220}>
+          <CardsGrid min={220}>
             <div>
               <p style={labelStyle()}>Current plan</p>
               <p style={valueStyle()}>{formatPlanName(currentPlan)}</p>
