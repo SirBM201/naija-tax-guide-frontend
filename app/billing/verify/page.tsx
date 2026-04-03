@@ -9,11 +9,13 @@ import { apiJson } from "@/lib/api";
 
 type VerifyResp = {
   ok?: boolean;
+  paid?: boolean;
+  applied?: boolean;
+  activation_state?: string;
   message?: string;
   status?: string;
   reference?: string;
   plan_code?: string;
-  amount_kobo?: number;
   redirect_to?: string;
 };
 
@@ -102,26 +104,48 @@ function VerifyPageContent() {
         setLoading(true);
         setError("");
 
-        const resp = await apiJson<VerifyResp>(
-          `/billing/verify?reference=${encodeURIComponent(reference)}`,
-          {
-            method: "GET",
+        let latest: VerifyResp | null = null;
+
+        for (let attempt = 0; attempt < 6; attempt += 1) {
+          const resp = await apiJson<VerifyResp>(
+            `/billing/verify?reference=${encodeURIComponent(reference)}`,
+            {
+              method: "GET",
+              timeoutMs: 20000,
+            }
+          );
+
+          if (!active) return;
+          latest = resp;
+          setResult(resp);
+
+          if (resp?.ok && resp?.redirect_to) {
+            window.location.replace(resp.redirect_to);
+            return;
           }
-        );
+
+          if (resp?.ok && resp?.paid && resp?.applied) {
+            setLoading(false);
+            window.setTimeout(() => {
+              router.replace("/dashboard?billing=verified");
+            }, 1200);
+            return;
+          }
+
+          if (!(resp?.ok && resp?.paid)) {
+            break;
+          }
+
+          if (attempt < 5) {
+            await new Promise((resolve) => window.setTimeout(resolve, 2000));
+          }
+        }
 
         if (!active) return;
 
-        setResult(resp);
-
-        if (resp?.ok && resp?.redirect_to) {
-          window.location.replace(resp.redirect_to);
-          return;
-        }
-
-        if (resp?.ok) {
-          setTimeout(() => {
-            router.replace("/dashboard?billing=verified");
-          }, 1500);
+        setResult(latest);
+        if (latest?.ok && latest?.paid && !latest?.applied) {
+          setError(latest.message || "Payment was verified, but subscription finalization is still pending.");
         }
       } catch (err: any) {
         if (!active) return;
@@ -131,12 +155,34 @@ function VerifyPageContent() {
       }
     }
 
-    run();
+    void run();
 
     return () => {
       active = false;
     };
   }, [reference, router]);
+
+  const statusTone = loading
+    ? "neutral"
+    : error
+    ? "warning"
+    : result?.ok && result?.paid && result?.applied
+    ? "success"
+    : "warning";
+
+  const statusTitle = loading
+    ? "Verifying payment..."
+    : error
+    ? "Finalization pending"
+    : result?.ok && result?.paid && result?.applied
+    ? "Payment verified successfully"
+    : "Verification incomplete";
+
+  const statusMessage = loading
+    ? "Please wait while we confirm your payment reference and finalize your subscription."
+    : error ||
+      result?.message ||
+      "We could not confirm the payment yet. Please check Billing or try again shortly.";
 
   return (
     <AppShell>
@@ -163,39 +209,11 @@ function VerifyPageContent() {
               fontSize: 16,
             }}
           >
-            We are confirming your Paystack payment and updating your
-            subscription.
+            We are confirming your Paystack payment and waiting for subscription finalization.
           </p>
         </div>
 
-        {loading ? (
-          <StatusCard
-            title="Verifying payment..."
-            message="Please wait while we confirm your payment reference and activate your plan."
-            tone="neutral"
-          />
-        ) : error ? (
-          <StatusCard
-            title="Verification failed"
-            message={error}
-            tone="error"
-          />
-        ) : result?.ok ? (
-          <StatusCard
-            title="Payment verified successfully"
-            message="Your subscription has been updated successfully. You will be redirected to your dashboard shortly."
-            tone="success"
-          />
-        ) : (
-          <StatusCard
-            title="Verification incomplete"
-            message={
-              result?.message ||
-              "We could not confirm the payment yet. Please check Billing or try again shortly."
-            }
-            tone="warning"
-          />
-        )}
+        <StatusCard title={statusTitle} message={statusMessage} tone={statusTone} />
 
         <Card
           style={{
@@ -205,8 +223,7 @@ function VerifyPageContent() {
           }}
         >
           <div>
-            <strong>Reference:</strong>{" "}
-            <span>{reference || "Not available"}</span>
+            <strong>Reference:</strong> <span>{reference || "Not available"}</span>
           </div>
 
           {result?.status ? (
@@ -215,103 +232,18 @@ function VerifyPageContent() {
             </div>
           ) : null}
 
-          {result?.plan_code ? (
+          {result?.activation_state ? (
             <div>
-              <strong>Plan:</strong> <span>{result.plan_code}</span>
+              <strong>Activation State:</strong> <span>{result.activation_state}</span>
             </div>
           ) : null}
 
-          {typeof result?.amount_kobo === "number" ? (
-            <div>
-              <strong>Amount:</strong>{" "}
-              <span>₦{(result.amount_kobo / 100).toLocaleString()}</span>
-            </div>
-          ) : null}
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 8 }}>
+            <Link href="/billing">Open Billing</Link>
+            <Link href="/dashboard">Open Dashboard</Link>
+            <Link href="/support">Contact Support</Link>
+          </div>
         </Card>
-
-        <div
-          style={{
-            display: "flex",
-            gap: 12,
-            flexWrap: "wrap",
-          }}
-        >
-          <Link
-            href="/billing"
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              minHeight: 44,
-              padding: "0 18px",
-              borderRadius: 12,
-              textDecoration: "none",
-              border: "1px solid var(--border)",
-              color: "var(--foreground)",
-              fontWeight: 700,
-            }}
-          >
-            Go to Billing
-          </Link>
-
-          <Link
-            href="/dashboard"
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              minHeight: 44,
-              padding: "0 18px",
-              borderRadius: 12,
-              textDecoration: "none",
-              background: "var(--primary)",
-              color: "var(--primary-foreground)",
-              fontWeight: 700,
-            }}
-          >
-            Back to Dashboard
-          </Link>
-        </div>
-      </div>
-    </AppShell>
-  );
-}
-
-function VerifyPageFallback() {
-  return (
-    <AppShell>
-      <div
-        style={{
-          display: "grid",
-          gap: 20,
-        }}
-      >
-        <div>
-          <h1
-            style={{
-              margin: 0,
-              fontSize: 32,
-              fontWeight: 800,
-            }}
-          >
-            Payment Verification
-          </h1>
-          <p
-            style={{
-              marginTop: 8,
-              color: "var(--muted-foreground)",
-              fontSize: 16,
-            }}
-          >
-            Preparing payment verification...
-          </p>
-        </div>
-
-        <StatusCard
-          title="Loading verification details..."
-          message="Please wait while we prepare your payment verification page."
-          tone="neutral"
-        />
       </div>
     </AppShell>
   );
@@ -319,7 +251,7 @@ function VerifyPageFallback() {
 
 export default function BillingVerifyPage() {
   return (
-    <Suspense fallback={<VerifyPageFallback />}>
+    <Suspense fallback={<AppShell><StatusCard title="Loading..." message="Preparing billing verification page." /></AppShell>}>
       <VerifyPageContent />
     </Suspense>
   );
