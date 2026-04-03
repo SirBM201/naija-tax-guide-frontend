@@ -94,10 +94,10 @@ export default function RefundPage() {
 
   const supportLinks = useMemo(
     () => ({
-      duplicate: `/support?issue=duplicate_charge&reference=${encodeURIComponent(latestReference)}`,
-      wrongPlan: `/support?issue=wrong_plan&reference=${encodeURIComponent(latestReference)}`,
-      activation: `/support?issue=activation_issue&reference=${encodeURIComponent(latestReference)}`,
-      refund: `/support?issue=refund_request&reference=${encodeURIComponent(latestReference)}`,
+      duplicate: `/support?intent=duplicate_charge&reference=${encodeURIComponent(latestReference)}`,
+      wrongPlan: `/support?intent=wrong_plan&reference=${encodeURIComponent(latestReference)}`,
+      activation: `/support?intent=activation_issue&reference=${encodeURIComponent(latestReference)}`,
+      refund: `/support?intent=refund_review&reference=${encodeURIComponent(latestReference)}`,
     }),
     [latestReference]
   );
