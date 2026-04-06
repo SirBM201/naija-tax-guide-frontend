@@ -121,32 +121,23 @@ export type WorkspaceDebugStateResp = {
   error?: string;
 };
 
-export type WorkspaceLinkStatusResp = {
-  ok?: boolean;
-  account_id?: string;
-  whatsapp?: {
-    linked?: boolean;
-    provider_user_id?: string | null;
-    display_name?: string | null;
-    updated_at?: string | null;
-  } | null;
-  telegram?: {
-    linked?: boolean;
-    provider_user_id?: string | null;
-    display_name?: string | null;
-    updated_at?: string | null;
-  } | null;
-  error?: string;
-};
-
 type UseWorkspaceStateOptions = {
   refreshSession?: () => Promise<boolean>;
   autoLoad?: boolean;
   includeAccount?: boolean;
   includeBilling?: boolean;
   includeDebug?: boolean;
+  includeLinkStatus?: boolean;
   loadingMessage?: string;
   revalidateSessionOnLoad?: boolean;
+};
+
+type WorkspaceLinkStatusResp = {
+  ok?: boolean;
+  account_id?: string;
+  telegram?: { linked?: boolean; provider_user_id?: string | null; display_name?: string | null; updated_at?: string | null; is_verified?: boolean | null } | null;
+  whatsapp?: { linked?: boolean; provider_user_id?: string | null; display_name?: string | null; updated_at?: string | null; is_verified?: boolean | null } | null;
+  error?: string;
 };
 
 type WorkspaceProfile = {
@@ -249,6 +240,7 @@ export function useWorkspaceState(options?: UseWorkspaceStateOptions) {
     includeAccount = true,
     includeBilling = true,
     includeDebug = true,
+    includeLinkStatus = true,
     loadingMessage = "Loading workspace...",
     revalidateSessionOnLoad = false,
   } = options || {};
@@ -299,12 +291,8 @@ export function useWorkspaceState(options?: UseWorkspaceStateOptions) {
             }).catch(() => null)
           : Promise.resolve(null);
 
-        const linkStatusRequest: Promise<WorkspaceLinkStatusResp | null> = includeDebug
-          ? apiJson<WorkspaceLinkStatusResp>("/link/status", {
-              method: "GET",
-              timeoutMs: 20000,
-              useAuthToken: false,
-            }).catch(() => null)
+        const linkStatusRequest: Promise<WorkspaceLinkStatusResp | null> = includeLinkStatus
+          ? apiJson<WorkspaceLinkStatusResp>("/link/status", { method: "GET", timeoutMs: 20000, useAuthToken: false }).catch(() => null)
           : Promise.resolve(null);
 
         const [accountResult, billingResult, debugResult, linkStatusResult] = await Promise.all([
@@ -339,6 +327,7 @@ export function useWorkspaceState(options?: UseWorkspaceStateOptions) {
       includeAccount,
       includeBilling,
       includeDebug,
+      includeLinkStatus,
       loadingMessage,
       revalidateSessionOnLoad,
     ]
@@ -358,7 +347,6 @@ export function useWorkspaceState(options?: UseWorkspaceStateOptions) {
       accountRaw?.account_id ||
       billingRaw?.account_id ||
       debugStateRaw?.account_id ||
-      linkStatusRaw?.account_id ||
       "";
 
     const email = accountRaw?.email || billingRaw?.checkout_email || null;
@@ -497,25 +485,15 @@ export function useWorkspaceState(options?: UseWorkspaceStateOptions) {
       ),
     };
 
-    const whatsappLinked =
-      truthyValue(linkStatusRaw?.whatsapp?.linked) || truthyValue(debugStateRaw?.whatsapp_linked);
-    const telegramLinked =
-      truthyValue(linkStatusRaw?.telegram?.linked) || truthyValue(debugStateRaw?.telegram_linked);
-    const whatsappVerified =
-      truthyValue(debugStateRaw?.whatsapp_verified) || truthyValue(linkStatusRaw?.whatsapp?.linked);
-    const telegramVerified =
-      truthyValue(debugStateRaw?.telegram_verified) || truthyValue(linkStatusRaw?.telegram?.linked);
+    const whatsappLinked = truthyValue(linkStatusRaw?.whatsapp?.linked ?? debugStateRaw?.whatsapp_linked);
+    const telegramLinked = truthyValue(linkStatusRaw?.telegram?.linked ?? debugStateRaw?.telegram_linked);
+    const whatsappVerified = truthyValue(linkStatusRaw?.whatsapp?.is_verified ?? debugStateRaw?.whatsapp_verified);
+    const telegramVerified = truthyValue(linkStatusRaw?.telegram?.is_verified ?? debugStateRaw?.telegram_verified);
 
-    const whatsappNumber =
-      safeText(linkStatusRaw?.whatsapp?.provider_user_id) || safeText(debugStateRaw?.whatsapp_number);
-    const telegramUsername =
-      safeText(linkStatusRaw?.telegram?.provider_user_id) ||
-      safeText(linkStatusRaw?.telegram?.display_name) ||
-      safeText(debugStateRaw?.telegram_username);
-    const whatsappUpdatedAt =
-      safeText(linkStatusRaw?.whatsapp?.updated_at) || safeText(debugStateRaw?.whatsapp_updated_at);
-    const telegramUpdatedAt =
-      safeText(linkStatusRaw?.telegram?.updated_at) || safeText(debugStateRaw?.telegram_updated_at);
+    const whatsappNumber = safeText(linkStatusRaw?.whatsapp?.provider_user_id) || safeText(debugStateRaw?.whatsapp_number);
+    const telegramUsername = safeText(linkStatusRaw?.telegram?.provider_user_id) || safeText(debugStateRaw?.telegram_username);
+    const whatsappUpdatedAt = safeText(linkStatusRaw?.whatsapp?.updated_at) || safeText(debugStateRaw?.whatsapp_updated_at);
+    const telegramUpdatedAt = safeText(linkStatusRaw?.telegram?.updated_at) || safeText(debugStateRaw?.telegram_updated_at);
 
     const channelLinks: WorkspaceChannelLinks = {
       whatsapp_linked: whatsappLinked,
@@ -568,7 +546,7 @@ export function useWorkspaceState(options?: UseWorkspaceStateOptions) {
       usage,
       channelLinks,
     };
-  }, [accountRaw, billingRaw, debugStateRaw, linkStatusRaw, sub, summary, guard]);
+  }, [accountRaw, billingRaw, debugStateRaw, sub, summary, guard]);
 
   const refreshAll = useCallback(async () => {
     await load("Refreshing workspace...");
@@ -580,7 +558,6 @@ export function useWorkspaceState(options?: UseWorkspaceStateOptions) {
     accountRaw,
     billingRaw,
     debugStateRaw,
-    linkStatusRaw,
     load,
     refreshAll,
     ...derived,
