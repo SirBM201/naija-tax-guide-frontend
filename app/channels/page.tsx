@@ -361,6 +361,44 @@ function LinkCodePanel({
   );
 }
 
+
+
+function UnlinkButton({ provider, title, onDone }: { provider: LinkProvider; title: string; onDone: () => Promise<void> | void }) {
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  async function handleUnlink() {
+    if (!window.confirm(`Unlink ${title} from this website account?`)) return;
+    setBusy(true);
+    setMsg("");
+    try {
+      const res = await apiJson<{ ok?: boolean; unlinked?: boolean; reason?: string; error?: string }>("/link/unlink", {
+        method: "POST",
+        timeoutMs: 20000,
+        useAuthToken: false,
+        body: { provider },
+      });
+      if (res?.ok) {
+        setMsg(res.unlinked ? `${title} unlinked successfully.` : `${title} is not currently linked.`);
+        await onDone();
+      } else {
+        setMsg(res?.error || "Could not unlink right now.");
+      }
+    } catch (error: unknown) {
+      setMsg(isApiError(error) ? error.message || "Could not unlink right now." : "Could not unlink right now.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div style={{ display: "grid", gap: 8 }}>
+      <button onClick={handleUnlink} disabled={busy} style={shellButtonSecondary()}>
+        {busy ? `Unlinking ${title}...` : `Unlink ${title}`}
+      </button>
+      {msg ? <div style={{ color: "var(--text-muted)", fontSize: 13 }}>{msg}</div> : null}
+    </div>
+  );
+}
+
 export default function ChannelsPage() {
   const { refreshSession } = useAuth();
 
@@ -499,6 +537,8 @@ export default function ChannelsPage() {
                 {whatsappUpdatedAt ? formatDate(whatsappUpdatedAt) : "Not shown"}
               </div>
             </div>
+
+            <UnlinkButton provider="wa" title="WhatsApp" onDone={() => load("Refreshing channel status...")} />
           </div>
 
           <div style={channelCardStyle()}>
@@ -537,6 +577,8 @@ export default function ChannelsPage() {
                 {telegramUpdatedAt ? formatDate(telegramUpdatedAt) : "Not shown"}
               </div>
             </div>
+
+            <UnlinkButton provider="tg" title="Telegram" onDone={() => load("Refreshing channel status...")} />
           </div>
         </CardsGrid>
 
