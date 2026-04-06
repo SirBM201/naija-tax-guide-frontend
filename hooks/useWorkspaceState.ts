@@ -121,6 +121,24 @@ export type WorkspaceDebugStateResp = {
   error?: string;
 };
 
+export type WorkspaceLinkStatusResp = {
+  ok?: boolean;
+  account_id?: string;
+  whatsapp?: {
+    linked?: boolean;
+    provider_user_id?: string | null;
+    display_name?: string | null;
+    updated_at?: string | null;
+  } | null;
+  telegram?: {
+    linked?: boolean;
+    provider_user_id?: string | null;
+    display_name?: string | null;
+    updated_at?: string | null;
+  } | null;
+  error?: string;
+};
+
 type UseWorkspaceStateOptions = {
   refreshSession?: () => Promise<boolean>;
   autoLoad?: boolean;
@@ -241,6 +259,7 @@ export function useWorkspaceState(options?: UseWorkspaceStateOptions) {
   const [accountRaw, setAccountRaw] = useState<WorkspaceAccountResp | null>(null);
   const [billingRaw, setBillingRaw] = useState<WorkspaceBillingResp | null>(null);
   const [debugStateRaw, setDebugStateRaw] = useState<WorkspaceDebugStateResp | null>(null);
+  const [linkStatusRaw, setLinkStatusRaw] = useState<WorkspaceLinkStatusResp | null>(null);
 
   const load = useCallback(
     async (nextLoadingMessage?: string) => {
@@ -280,17 +299,27 @@ export function useWorkspaceState(options?: UseWorkspaceStateOptions) {
             }).catch(() => null)
           : Promise.resolve(null);
 
-        const [accountResult, billingResult, debugResult] = await Promise.all([
+        const linkStatusRequest: Promise<WorkspaceLinkStatusResp | null> = includeDebug
+          ? apiJson<WorkspaceLinkStatusResp>("/link/status", {
+              method: "GET",
+              timeoutMs: 20000,
+              useAuthToken: false,
+            }).catch(() => null)
+          : Promise.resolve(null);
+
+        const [accountResult, billingResult, debugResult, linkStatusResult] = await Promise.all([
           accountRequest,
           billingRequest,
           debugRequest,
+          linkStatusRequest,
         ]);
 
         if (accountResult) setAccountRaw(accountResult);
         if (billingResult) setBillingRaw(billingResult);
         if (debugResult) setDebugStateRaw(debugResult);
+        if (linkStatusResult) setLinkStatusRaw(linkStatusResult);
 
-        const successCount = [accountResult, billingResult, debugResult].filter(Boolean).length;
+        const successCount = [accountResult, billingResult, debugResult, linkStatusResult].filter(Boolean).length;
 
         if (successCount >= 2) {
           setStatus("Ready.");
@@ -329,6 +358,7 @@ export function useWorkspaceState(options?: UseWorkspaceStateOptions) {
       accountRaw?.account_id ||
       billingRaw?.account_id ||
       debugStateRaw?.account_id ||
+      linkStatusRaw?.account_id ||
       "";
 
     const email = accountRaw?.email || billingRaw?.checkout_email || null;
@@ -467,15 +497,25 @@ export function useWorkspaceState(options?: UseWorkspaceStateOptions) {
       ),
     };
 
-    const whatsappLinked = truthyValue(debugStateRaw?.whatsapp_linked);
-    const telegramLinked = truthyValue(debugStateRaw?.telegram_linked);
-    const whatsappVerified = truthyValue(debugStateRaw?.whatsapp_verified);
-    const telegramVerified = truthyValue(debugStateRaw?.telegram_verified);
+    const whatsappLinked =
+      truthyValue(linkStatusRaw?.whatsapp?.linked) || truthyValue(debugStateRaw?.whatsapp_linked);
+    const telegramLinked =
+      truthyValue(linkStatusRaw?.telegram?.linked) || truthyValue(debugStateRaw?.telegram_linked);
+    const whatsappVerified =
+      truthyValue(debugStateRaw?.whatsapp_verified) || truthyValue(linkStatusRaw?.whatsapp?.linked);
+    const telegramVerified =
+      truthyValue(debugStateRaw?.telegram_verified) || truthyValue(linkStatusRaw?.telegram?.linked);
 
-    const whatsappNumber = safeText(debugStateRaw?.whatsapp_number);
-    const telegramUsername = safeText(debugStateRaw?.telegram_username);
-    const whatsappUpdatedAt = safeText(debugStateRaw?.whatsapp_updated_at);
-    const telegramUpdatedAt = safeText(debugStateRaw?.telegram_updated_at);
+    const whatsappNumber =
+      safeText(linkStatusRaw?.whatsapp?.provider_user_id) || safeText(debugStateRaw?.whatsapp_number);
+    const telegramUsername =
+      safeText(linkStatusRaw?.telegram?.provider_user_id) ||
+      safeText(linkStatusRaw?.telegram?.display_name) ||
+      safeText(debugStateRaw?.telegram_username);
+    const whatsappUpdatedAt =
+      safeText(linkStatusRaw?.whatsapp?.updated_at) || safeText(debugStateRaw?.whatsapp_updated_at);
+    const telegramUpdatedAt =
+      safeText(linkStatusRaw?.telegram?.updated_at) || safeText(debugStateRaw?.telegram_updated_at);
 
     const channelLinks: WorkspaceChannelLinks = {
       whatsapp_linked: whatsappLinked,
@@ -528,7 +568,7 @@ export function useWorkspaceState(options?: UseWorkspaceStateOptions) {
       usage,
       channelLinks,
     };
-  }, [accountRaw, billingRaw, debugStateRaw, sub, summary, guard]);
+  }, [accountRaw, billingRaw, debugStateRaw, linkStatusRaw, sub, summary, guard]);
 
   const refreshAll = useCallback(async () => {
     await load("Refreshing workspace...");
@@ -540,6 +580,7 @@ export function useWorkspaceState(options?: UseWorkspaceStateOptions) {
     accountRaw,
     billingRaw,
     debugStateRaw,
+    linkStatusRaw,
     load,
     refreshAll,
     ...derived,
