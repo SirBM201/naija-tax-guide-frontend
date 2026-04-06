@@ -3,7 +3,10 @@
 import React, { useMemo, useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { apiJson, isApiError } from "@/lib/api";
-import AppShell, { shellButtonPrimary, shellButtonSecondary } from "@/components/app-shell";
+import AppShell, {
+  shellButtonPrimary,
+  shellButtonSecondary,
+} from "@/components/app-shell";
 import WorkspaceSectionCard from "@/components/workspace-section-card";
 import { Banner, formatDate } from "@/components/ui";
 import { CardsGrid, SectionStack } from "@/components/page-layout";
@@ -24,6 +27,13 @@ type LinkGenerateResponse = {
   bot_url?: string;
   whatsapp_url?: string;
   telegram_url?: string;
+};
+
+type LinkUnlinkResponse = {
+  ok?: boolean;
+  unlinked?: boolean;
+  reason?: string;
+  error?: string;
 };
 
 type LinkState = {
@@ -122,6 +132,38 @@ function formatMinutesLabel(minutes: number | null) {
   return `Code expires in ${minutes} minutes.`;
 }
 
+async function postDirectJson<T>(url: string, body: Record<string, unknown>): Promise<T> {
+  const response = await fetch(url, {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      "Cache-Control": "no-store",
+      Pragma: "no-cache",
+    },
+    cache: "no-store",
+    body: JSON.stringify(body),
+  });
+
+  let data: unknown = null;
+  try {
+    data = await response.json();
+  } catch {
+    data = null;
+  }
+
+  if (!response.ok) {
+    const message =
+      data && typeof data === "object" && "error" in data && typeof (data as { error?: unknown }).error === "string"
+        ? ((data as { error?: string }).error as string)
+        : `Request failed with status ${response.status}`;
+    throw new Error(message);
+  }
+
+  return (data ?? {}) as T;
+}
+
 function LinkCodePanel({
   provider,
   title,
@@ -159,20 +201,27 @@ function LinkCodePanel({
     }));
 
     try {
-      const res = await apiJson<LinkGenerateResponse>("/link/generate", {
-        method: "POST",
-        timeoutMs: 20000,
-        useAuthToken: false,
-        body: {
-          provider,
-        },
-      });
+      const res = await postDirectJson<LinkGenerateResponse>(
+        `/api/link/generate?provider=${encodeURIComponent(provider)}`,
+        { provider }
+      );
 
       if (!res?.ok || !res?.code) {
         setState((prev) => ({
           ...prev,
           loading: false,
-          error: res?.error || "Could not generate a new link code.",
+          error: res?.error || `Could not generate a new ${title} link code.`,
+          success: "",
+        }));
+        return;
+      }
+
+      const returnedProvider = safeText(res.provider || "", "").toLowerCase();
+      if (returnedProvider && returnedProvider !== provider) {
+        setState((prev) => ({
+          ...prev,
+          loading: false,
+          error: `${title} generate returned wrong provider (${returnedProvider}).`,
           success: "",
         }));
         return;
@@ -200,9 +249,10 @@ function LinkCodePanel({
         launchUrl,
       });
     } catch (error: unknown) {
-      const message = isApiError(error)
-        ? error.message || "Request failed while generating link code."
-        : "Unexpected error while generating link code.";
+      const message =
+        error instanceof Error
+          ? error.message || `Request failed while generating ${title} link code.`
+          : "Unexpected error while generating link code.";
 
       setState((prev) => ({
         ...prev,
@@ -361,22 +411,29 @@ function LinkCodePanel({
   );
 }
 
-
-
-function UnlinkButton({ provider, title, onDone }: { provider: LinkProvider; title: string; onDone: () => Promise<void> | void }) {
+function UnlinkButton({
+  provider,
+  title,
+  onDone,
+}: {
+  provider: LinkProvider;
+  title: string;
+  onDone: () => Promise<void> | void;
+}) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+
   async function handleUnlink() {
     if (!window.confirm(`Unlink ${title} from this website account?`)) return;
     setBusy(true);
     setMsg("");
+
     try {
-      const res = await apiJson<{ ok?: boolean; unlinked?: boolean; reason?: string; error?: string }>("/link/unlink", {
-        method: "POST",
-        timeoutMs: 20000,
-        useAuthToken: false,
-        body: { provider },
-      });
+      const res = await postDirectJson<LinkUnlinkResponse>(
+        `/api/link/unlink?provider=${encodeURIComponent(provider)}`,
+        { provider }
+      );
+
       if (res?.ok) {
         setMsg(res.unlinked ? `${title} unlinked successfully.` : `${title} is not currently linked.`);
         await onDone();
@@ -384,11 +441,16 @@ function UnlinkButton({ provider, title, onDone }: { provider: LinkProvider; tit
         setMsg(res?.error || "Could not unlink right now.");
       }
     } catch (error: unknown) {
-      setMsg(isApiError(error) ? error.message || "Could not unlink right now." : "Could not unlink right now.");
+      setMsg(
+        error instanceof Error
+          ? error.message || "Could not unlink right now."
+          : "Could not unlink right now."
+      );
     } finally {
       setBusy(false);
     }
   }
+
   return (
     <div style={{ display: "grid", gap: 8 }}>
       <button onClick={handleUnlink} disabled={busy} style={shellButtonSecondary()}>
@@ -538,7 +600,11 @@ export default function ChannelsPage() {
               </div>
             </div>
 
-            <UnlinkButton provider="wa" title="WhatsApp" onDone={() => load("Refreshing channel status...")} />
+            <UnlinkButton
+              provider="wa"
+              title="WhatsApp"
+              onDone={() => load("Refreshing channel status...")}
+            />
           </div>
 
           <div style={channelCardStyle()}>
@@ -578,7 +644,11 @@ export default function ChannelsPage() {
               </div>
             </div>
 
-            <UnlinkButton provider="tg" title="Telegram" onDone={() => load("Refreshing channel status...")} />
+            <UnlinkButton
+              provider="tg"
+              title="Telegram"
+              onDone={() => load("Refreshing channel status...")}
+            />
           </div>
         </CardsGrid>
 
