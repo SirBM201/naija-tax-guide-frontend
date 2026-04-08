@@ -132,38 +132,6 @@ function formatMinutesLabel(minutes: number | null) {
   return `Code expires in ${minutes} minutes.`;
 }
 
-async function postDirectJson<T>(url: string, body: Record<string, unknown>): Promise<T> {
-  const response = await fetch(url, {
-    method: "POST",
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json",
-      "Cache-Control": "no-store",
-      Pragma: "no-cache",
-    },
-    cache: "no-store",
-    body: JSON.stringify(body),
-  });
-
-  let data: unknown = null;
-  try {
-    data = await response.json();
-  } catch {
-    data = null;
-  }
-
-  if (!response.ok) {
-    const message =
-      data && typeof data === "object" && "error" in data && typeof (data as { error?: unknown }).error === "string"
-        ? ((data as { error?: string }).error as string)
-        : `Request failed with status ${response.status}`;
-    throw new Error(message);
-  }
-
-  return (data ?? {}) as T;
-}
-
 function LinkCodePanel({
   provider,
   title,
@@ -201,10 +169,13 @@ function LinkCodePanel({
     }));
 
     try {
-      const res = await postDirectJson<LinkGenerateResponse>(
-        `/api/link/generate?provider=${encodeURIComponent(provider)}`,
-        { provider }
-      );
+      const res = await apiJson<LinkGenerateResponse>("/link/generate", {
+        method: "POST",
+        timeoutMs: 20000,
+        useAuthToken: false,
+        query: { provider },
+        body: { provider },
+      });
 
       if (!res?.ok || !res?.code) {
         setState((prev) => ({
@@ -249,10 +220,11 @@ function LinkCodePanel({
         launchUrl,
       });
     } catch (error: unknown) {
-      const message =
-        error instanceof Error
-          ? error.message || `Request failed while generating ${title} link code.`
-          : "Unexpected error while generating link code.";
+      const message = isApiError(error)
+        ? error.message || `Request failed while generating ${title} link code.`
+        : error instanceof Error
+        ? error.message || `Request failed while generating ${title} link code.`
+        : "Unexpected error while generating link code.";
 
       setState((prev) => ({
         ...prev,
@@ -429,10 +401,13 @@ function UnlinkButton({
     setMsg("");
 
     try {
-      const res = await postDirectJson<LinkUnlinkResponse>(
-        `/api/link/unlink?provider=${encodeURIComponent(provider)}`,
-        { provider }
-      );
+      const res = await apiJson<LinkUnlinkResponse>("/link/unlink", {
+        method: "POST",
+        timeoutMs: 20000,
+        useAuthToken: false,
+        query: { provider },
+        body: { provider },
+      });
 
       if (res?.ok) {
         setMsg(res.unlinked ? `${title} unlinked successfully.` : `${title} is not currently linked.`);
@@ -441,11 +416,7 @@ function UnlinkButton({
         setMsg(res?.error || "Could not unlink right now.");
       }
     } catch (error: unknown) {
-      setMsg(
-        error instanceof Error
-          ? error.message || "Could not unlink right now."
-          : "Could not unlink right now."
-      );
+      setMsg(isApiError(error) ? error.message || "Could not unlink right now." : "Could not unlink right now.");
     } finally {
       setBusy(false);
     }
