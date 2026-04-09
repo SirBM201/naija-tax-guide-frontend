@@ -1,6 +1,6 @@
 "use client";
 
-import React, { Suspense, useEffect, useState } from "react";
+import React, { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { apiJson, isApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -36,6 +36,34 @@ type AskResp = {
   } | null;
   citations?: string[];
   clarification_prompt?: string;
+};
+
+type WorkspaceLimitsResponse = {
+  ok?: boolean;
+  counts?: {
+    active_members_only?: number;
+    owner_included_total?: number;
+  };
+  entitlements?: {
+    ok?: boolean;
+    plan?: {
+      name?: string;
+      code?: string;
+      plan_family?: string;
+      active?: boolean;
+    };
+    plan_code?: string | null;
+    plan_family?: string | null;
+    workspace_limits?: {
+      max_workspace_users?: number;
+      max_linked_web_accounts?: number;
+    };
+    channel_limits?: {
+      max_total_channels?: number;
+      max_whatsapp_channels?: number;
+      max_telegram_channels?: number;
+    };
+  };
 };
 
 const SHOW_ASK_DEBUG = process.env.NEXT_PUBLIC_SHOW_ASK_DEBUG === "true";
@@ -76,6 +104,26 @@ function normalizeText(value: unknown): string {
 function safeNumber(value: unknown): number {
   const num = Number(value ?? 0);
   return Number.isFinite(num) ? num : 0;
+}
+
+function truthyValue(value: unknown): boolean {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value > 0;
+  if (typeof value === "string") {
+    const raw = value.trim().toLowerCase();
+    return ["1", "true", "yes", "active", "linked", "enabled", "paid", "verified"].includes(raw);
+  }
+  return false;
+}
+
+function safeText(value: unknown, fallback = "—"): string {
+  const text =
+    typeof value === "string"
+      ? value.trim()
+      : value == null
+      ? ""
+      : String(value).trim();
+  return text || fallback;
 }
 
 function fieldLabelStyle(): React.CSSProperties {
@@ -125,12 +173,55 @@ function looksLikeBrokenAnswer(text: string): boolean {
 function sanitizeAnswerForDisplay(text: string): string {
   const raw = String(text || "").trim();
   if (!raw) return "";
-
-  if (looksLikeBrokenAnswer(raw)) {
-    return "";
-  }
-
+  if (looksLikeBrokenAnswer(raw)) return "";
   return raw;
+}
+
+function summaryGridStyle(): React.CSSProperties {
+  return {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+    gap: 16,
+  };
+}
+
+function summaryCardStyle(): React.CSSProperties {
+  return {
+    border: "1px solid var(--border)",
+    borderRadius: 22,
+    background: "var(--surface)",
+    padding: 18,
+    boxShadow: "0 8px 24px rgba(15, 23, 42, 0.04)",
+    display: "grid",
+    gap: 8,
+  };
+}
+
+function summaryLabelStyle(): React.CSSProperties {
+  return {
+    fontSize: 12,
+    fontWeight: 900,
+    color: "var(--text-faint)",
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+  };
+}
+
+function summaryValueStyle(): React.CSSProperties {
+  return {
+    fontSize: 22,
+    fontWeight: 900,
+    color: "var(--text)",
+    lineHeight: 1.2,
+  };
+}
+
+function summarySubStyle(): React.CSSProperties {
+  return {
+    fontSize: 13,
+    color: "var(--text-muted)",
+    lineHeight: 1.6,
+  };
 }
 
 function AskPageContent() {
@@ -148,12 +239,14 @@ function AskPageContent() {
     dailyUsage,
     dailyLimit,
     expiresAt,
+    channelLinks,
   } = useWorkspaceState({
     refreshSession,
     autoLoad: true,
     includeAccount: false,
     includeBilling: true,
     includeDebug: true,
+    includeLinkStatus: true,
     loadingMessage: "Loading your assistant...",
   });
 
@@ -167,6 +260,8 @@ function AskPageContent() {
   const [citations, setCitations] = useState<string[]>([]);
   const [clarificationPrompt, setClarificationPrompt] = useState("");
   const [monthlyAiUsed, setMonthlyAiUsed] = useState(0);
+  const [limitsData, setLimitsData] = useState<WorkspaceLimitsResponse | null>(null);
+  const [limitsError, setLimitsError] = useState("");
 
   const busy = workspaceBusy || submitting;
 
@@ -177,6 +272,35 @@ function AskPageContent() {
     if (q) setQuestion(q);
     if (lang) setLanguage(normalizeLanguageLabel(lang));
   }, [sp]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadLimits() {
+      try {
+        setLimitsError("");
+        const res = await apiJson<WorkspaceLimitsResponse>("/workspace/limits", {
+          method: "GET",
+          timeoutMs: 20000,
+          useAuthToken: false,
+        });
+        if (!cancelled) setLimitsData(res);
+      } catch (error) {
+        if (cancelled) return;
+        const message = isApiError(error)
+          ? error.message || "Unable to load ask-page readiness state."
+          : error instanceof Error
+          ? error.message || "Unable to load ask-page readiness state."
+          : "Unable to load ask-page readiness state.";
+        setLimitsError(message);
+      }
+    }
+
+    void loadLimits();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleAsk = async () => {
     const q = question.trim();
@@ -377,6 +501,34 @@ function AskPageContent() {
       ? "Your workspace does not currently show an active subscription. You can still submit a question now to test the live flow, but the backend may still reject it until billing is active."
       : status || "Write your question clearly and choose the reply language before submitting.";
 
+  const planName =
+    limitsData?.entitlements?.plan?.name ||
+    safeText(planCode || "", "Free");
+
+  const workspaceMaxUsers = safeNumber(
+    limitsData?.entitlements?.workspace_limits?.max_workspace_users
+  );
+  const workspaceUsed = safeNumber(limitsData?.counts?.owner_included_total);
+  const workspaceAvailable =
+    workspaceMaxUsers > 0 ? Math.max(workspaceMaxUsers - workspaceUsed, 0) : 0;
+
+  const maxTotalChannels = safeNumber(
+    limitsData?.entitlements?.channel_limits?.max_total_channels
+  );
+  const whatsappLinked = truthyValue(
+    channelLinks?.whatsapp_linked || channelLinks?.whatsapp?.linked
+  );
+  const telegramLinked = truthyValue(
+    channelLinks?.telegram_linked || channelLinks?.telegram?.linked
+  );
+  const linkedChannelsUsed = (whatsappLinked ? 1 : 0) + (telegramLinked ? 1 : 0);
+  const channelStatusLabel =
+    whatsappLinked && telegramLinked
+      ? "All linked"
+      : whatsappLinked || telegramLinked
+      ? "Partially linked"
+      : "Not linked";
+
   return (
     <AppShell
       title="Ask Naija Tax Guide"
@@ -394,6 +546,53 @@ function AskPageContent() {
     >
       <SectionStack>
         <Banner tone={topTone} title={topTitle} subtitle={topSubtitle} />
+
+        {limitsError ? (
+          <Banner
+            tone="warn"
+            title="Ask-page readiness could not be fully loaded"
+            subtitle={limitsError}
+          />
+        ) : null}
+
+        <div style={summaryGridStyle()}>
+          <div style={summaryCardStyle()}>
+            <div style={summaryLabelStyle()}>Plan</div>
+            <div style={summaryValueStyle()}>{planName}</div>
+            <div style={summarySubStyle()}>
+              Status: {activeNow ? "Active" : "Attention needed"}
+            </div>
+          </div>
+
+          <div style={summaryCardStyle()}>
+            <div style={summaryLabelStyle()}>Credits</div>
+            <div style={summaryValueStyle()}>{creditBalance}</div>
+            <div style={summarySubStyle()}>
+              AI used this month: {monthlyAiUsed}
+            </div>
+          </div>
+
+          <div style={summaryCardStyle()}>
+            <div style={summaryLabelStyle()}>Workspace</div>
+            <div style={summaryValueStyle()}>
+              {workspaceUsed} / {workspaceMaxUsers || 0}
+            </div>
+            <div style={summarySubStyle()}>
+              Available slots: {workspaceAvailable}
+            </div>
+          </div>
+
+          <div style={summaryCardStyle()}>
+            <div style={summaryLabelStyle()}>Channels</div>
+            <div style={summaryValueStyle()}>
+              {linkedChannelsUsed} / {maxTotalChannels}
+            </div>
+            <div style={summarySubStyle()}>
+              {channelStatusLabel} · WhatsApp: {whatsappLinked ? "Linked" : "Not linked"} · Telegram:{" "}
+              {telegramLinked ? "Linked" : "Not linked"}
+            </div>
+          </div>
+        </div>
 
         <div
           style={{
@@ -473,12 +672,12 @@ function AskPageContent() {
 
           <WorkspaceSectionCard
             title="Current access"
-            subtitle="Only the small account summary that matters before asking."
+            subtitle="The small readiness summary that matters before asking."
           >
             <CardsGrid min={180}>
               <MetricCard
                 label="Plan"
-                value={planCode || "No active plan"}
+                value={planName}
                 tone={activeNow ? "good" : "warn"}
                 helper="Visible active plan in your workspace."
               />
@@ -487,6 +686,18 @@ function AskPageContent() {
                 value={String(creditBalance)}
                 tone={creditBalance > 0 ? "good" : "danger"}
                 helper="Visible AI credits currently available."
+              />
+              <MetricCard
+                label="Workspace"
+                value={`${workspaceUsed}/${workspaceMaxUsers || 0}`}
+                tone={workspaceAvailable > 0 ? "good" : "warn"}
+                helper={`Available slots: ${workspaceAvailable}`}
+              />
+              <MetricCard
+                label="Channels"
+                value={`${linkedChannelsUsed}/${maxTotalChannels}`}
+                tone={linkedChannelsUsed > 0 ? "good" : "warn"}
+                helper={channelStatusLabel}
               />
               <MetricCard
                 label="AI Used This Month"
