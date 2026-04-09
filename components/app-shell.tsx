@@ -11,6 +11,7 @@ const navSections = [
       { href: "/dashboard", label: "Dashboard" },
       { href: "/ask", label: "Ask" },
       { href: "/channels", label: "Channels" },
+      { href: "/workspace", label: "Workspace" },
       { href: "/history", label: "History" },
       { href: "/referrals", label: "Referrals" },
       { href: "/help", label: "Help Center" },
@@ -455,7 +456,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
 
   footerTitle: {
-    fontSize: 13,
+    fontSize: 18,
     fontWeight: 900,
     color: "var(--text)",
   },
@@ -463,44 +464,42 @@ const styles: Record<string, React.CSSProperties> = {
   footerLine: {
     fontSize: 13,
     color: "var(--text-muted)",
-    lineHeight: 1.5,
+    lineHeight: 1.45,
   },
 
   footerLinks: {
     display: "flex",
-    gap: 10,
+    gap: 14,
     flexWrap: "wrap",
-    marginTop: 2,
-    marginBottom: 2,
+    marginTop: 4,
   },
 
   footerLink: {
-    fontSize: 12,
-    color: "var(--text-soft)",
+    color: "var(--text)",
     textDecoration: "none",
-    fontWeight: 700,
+    fontWeight: 800,
+    fontSize: 13,
   },
 
   main: {
     minHeight: "100vh",
+    transition: "margin-left 0.25s ease",
     display: "flex",
     flexDirection: "column",
-    transition: "margin-left 0.25s ease",
-    background: "var(--app-bg)",
   },
 
   topbar: {
-    minHeight: 82,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: "16px 20px",
-    borderBottom: "1px solid var(--border)",
-    background: "var(--panel-bg)",
     position: "sticky",
     top: 0,
-    zIndex: 15,
+    zIndex: 10,
+    minHeight: 76,
+    padding: "18px 24px",
+    borderBottom: "1px solid var(--border)",
+    background: "rgba(248,250,252,0.88)",
     backdropFilter: "blur(10px)",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
     gap: 16,
     flexWrap: "wrap",
   },
@@ -510,11 +509,11 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: "center",
     gap: 14,
     minWidth: 0,
-    flex: "1 1 320px",
   },
 
   mobileMenuBtn: {
-    padding: "10px 14px",
+    minHeight: 44,
+    padding: "0 14px",
     borderRadius: 14,
     border: "1px solid var(--border)",
     background: "var(--surface-soft)",
@@ -525,53 +524,47 @@ const styles: Record<string, React.CSSProperties> = {
   },
 
   topbarTitle: {
-    fontSize: 18,
+    fontSize: 22,
     fontWeight: 900,
     color: "var(--text)",
-    lineHeight: 1.1,
+    lineHeight: 1.15,
   },
 
   topbarSubtitle: {
-    fontSize: 14,
+    fontSize: 13,
     color: "var(--text-muted)",
-    lineHeight: 1.45,
-    maxWidth: 760,
+    lineHeight: 1.5,
   },
 
   topbarRight: {
     display: "flex",
-    gap: 10,
     alignItems: "center",
+    gap: 12,
     flexWrap: "wrap",
-    justifyContent: "flex-end",
-    marginLeft: "auto",
-    flex: "0 1 auto",
   },
 
   topbarSlotWrap: {
     display: "flex",
-    gap: 10,
     alignItems: "center",
-    flexWrap: "wrap",
+    gap: 10,
   },
 
   content: {
-    padding: 20,
-    flex: "1 1 auto",
-    background: "var(--app-bg)",
+    flex: 1,
+    padding: 24,
   },
 
   pageFooter: {
+    marginTop: "auto",
     borderTop: "1px solid var(--border)",
     background: "var(--panel-bg)",
-    padding: "20px 20px 16px",
-    marginTop: "auto",
+    padding: "22px 24px 18px",
   },
 
   pageFooterInner: {
     display: "flex",
     justifyContent: "space-between",
-    gap: 20,
+    gap: 24,
     flexWrap: "wrap",
   },
 
@@ -580,15 +573,8 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 6,
   },
 
-  pageFooterRight: {
-    display: "grid",
-    gap: 10,
-    justifyItems: "end",
-    alignContent: "start",
-  },
-
   pageFooterTitle: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: 900,
     color: "var(--text)",
   },
@@ -599,12 +585,10 @@ const styles: Record<string, React.CSSProperties> = {
     lineHeight: 1.5,
   },
 
-  pageFooterSlogan: {
-    fontSize: 13,
-    color: "var(--gold)",
-    fontWeight: 800,
-    lineHeight: 1.5,
-    textAlign: "right",
+  pageFooterRight: {
+    display: "grid",
+    gap: 10,
+    justifyItems: "end",
   },
 
   pageFooterLinks: {
@@ -612,13 +596,18 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 14,
     flexWrap: "wrap",
     justifyContent: "flex-end",
-    alignItems: "flex-start",
   },
 
   pageFooterLink: {
-    fontSize: 13,
-    color: "var(--text-soft)",
+    color: "var(--text)",
     textDecoration: "none",
+    fontWeight: 800,
+    fontSize: 13,
+  },
+
+  pageFooterSlogan: {
+    fontSize: 12,
+    color: "var(--text-faint)",
     fontWeight: 700,
   },
 
@@ -628,6 +617,5 @@ const styles: Record<string, React.CSSProperties> = {
     borderTop: "1px solid var(--border)",
     fontSize: 12,
     color: "var(--text-faint)",
-    lineHeight: 1.5,
   },
 };
