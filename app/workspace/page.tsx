@@ -166,6 +166,65 @@ const styles = {
     maxWidth: "1180px",
     margin: "0 auto",
   } as React.CSSProperties,
+  topSummary: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
+    gap: 14,
+    marginBottom: 20,
+  } as React.CSSProperties,
+  summaryCard: {
+    background: "linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)",
+    border: "1px solid #e2e8f0",
+    borderRadius: 20,
+    padding: 16,
+    boxShadow: "0 8px 20px rgba(15, 23, 42, 0.05)",
+  } as React.CSSProperties,
+  summaryLabel: {
+    fontSize: 11,
+    fontWeight: 800,
+    textTransform: "uppercase" as const,
+    letterSpacing: "0.08em",
+    color: "#64748b",
+    marginBottom: 8,
+  } as React.CSSProperties,
+  summaryValue: {
+    fontSize: 20,
+    fontWeight: 800,
+    color: "#0f172a",
+    lineHeight: 1.3,
+  } as React.CSSProperties,
+  summarySub: {
+    fontSize: 13,
+    color: "#64748b",
+    marginTop: 6,
+    lineHeight: 1.5,
+  } as React.CSSProperties,
+  heroAlert: {
+    background: "linear-gradient(180deg, #fff7ed 0%, #fffbeb 100%)",
+    border: "1px solid #fed7aa",
+    color: "#9a3412",
+    borderRadius: 22,
+    padding: 18,
+    marginBottom: 20,
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 16,
+    flexWrap: "wrap",
+  } as React.CSSProperties,
+  heroAlertTitle: {
+    margin: 0,
+    fontSize: 18,
+    fontWeight: 800,
+    color: "#9a3412",
+  } as React.CSSProperties,
+  heroAlertText: {
+    marginTop: 6,
+    fontSize: 14,
+    lineHeight: 1.6,
+    color: "#9a3412",
+    maxWidth: 760,
+  } as React.CSSProperties,
   button: {
     border: "none",
     borderRadius: 16,
@@ -199,6 +258,21 @@ const styles = {
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
+  } as React.CSSProperties,
+  buttonWarning: {
+    border: "1px solid #fdba74",
+    borderRadius: 16,
+    padding: "12px 18px",
+    background: "#ea580c",
+    color: "#ffffff",
+    fontSize: 14,
+    fontWeight: 800,
+    cursor: "pointer",
+    textDecoration: "none",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    boxShadow: "0 10px 22px rgba(234, 88, 12, 0.20)",
   } as React.CSSProperties,
   bannerError: {
     border: "1px solid #fecaca",
@@ -646,6 +720,66 @@ export default function WorkspacePage() {
       <main style={styles.page}>
         <div style={styles.container}>
           {pageError ? <div style={styles.bannerError}>{pageError}</div> : null}
+
+          {!loading && hasNoAvailableSlots ? (
+            <div style={styles.heroAlert}>
+              <div>
+                <h2 style={styles.heroAlertTitle}>Workspace plan is currently full</h2>
+                <div style={styles.heroAlertText}>
+                  You are using {usedSlots} of {maxWorkspaceUsers} allowed workspace slot
+                  {maxWorkspaceUsers === 1 ? "" : "s"} on the{" "}
+                  <strong>{plan?.name || "current plan"}</strong>. Upgrade your plan to
+                  add more members, or remove an existing member first.
+                </div>
+              </div>
+
+              <div style={styles.actionRow}>
+                <a href="/plans" style={styles.buttonWarning}>
+                  Upgrade to add more members
+                </a>
+                <a href="/billing" style={styles.buttonSecondary}>
+                  Go to Billing
+                </a>
+              </div>
+            </div>
+          ) : null}
+
+          {!loading ? (
+            <section style={styles.topSummary}>
+              <div style={styles.summaryCard}>
+                <div style={styles.summaryLabel}>Plan</div>
+                <div style={styles.summaryValue}>{plan?.name || "No active plan"}</div>
+                <div style={styles.summarySub}>
+                  Family: {plan?.plan_family || limits?.entitlements?.plan_family || "—"}
+                </div>
+              </div>
+
+              <div style={styles.summaryCard}>
+                <div style={styles.summaryLabel}>Workspace usage</div>
+                <div style={styles.summaryValue}>
+                  {usedSlots} / {maxWorkspaceUsers || 0}
+                </div>
+                <div style={styles.summarySub}>Owner included total usage</div>
+              </div>
+
+              <div style={styles.summaryCard}>
+                <div style={styles.summaryLabel}>Total channels allowed</div>
+                <div style={styles.summaryValue}>
+                  {channelLimits.max_total_channels ?? 0}
+                </div>
+                <div style={styles.summarySub}>Across all supported channels</div>
+              </div>
+
+              <div style={styles.summaryCard}>
+                <div style={styles.summaryLabel}>WhatsApp / Telegram</div>
+                <div style={styles.summaryValue}>
+                  {channelLimits.max_whatsapp_channels ?? 0} /{" "}
+                  {channelLimits.max_telegram_channels ?? 0}
+                </div>
+                <div style={styles.summarySub}>Per-channel entitlement split</div>
+              </div>
+            </section>
+          ) : null}
 
           {loading ? (
             <div style={styles.loadingCard}>Loading workspace data...</div>
