@@ -3,6 +3,53 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import React, { useEffect, useMemo, useState } from "react";
+import { apiJson, isApiError } from "@/lib/api";
+
+type WorkspaceLimitsResponse = {
+  ok?: boolean;
+  counts?: {
+    active_members_only?: number;
+    owner_included_total?: number;
+  };
+  entitlements?: {
+    ok?: boolean;
+    plan?: {
+      name?: string;
+      code?: string;
+      plan_family?: string;
+    };
+    plan_code?: string | null;
+    plan_family?: string | null;
+    workspace_limits?: {
+      max_workspace_users?: number;
+      max_linked_web_accounts?: number;
+    };
+    channel_limits?: {
+      max_total_channels?: number;
+      max_whatsapp_channels?: number;
+      max_telegram_channels?: number;
+    };
+  };
+};
+
+type LinkStatusResponse = {
+  ok?: boolean;
+  telegram?: {
+    linked?: boolean;
+    is_verified?: boolean | null;
+  } | null;
+  whatsapp?: {
+    linked?: boolean;
+    is_verified?: boolean | null;
+  } | null;
+};
+
+type SidebarStatus = {
+  workspaceBadge: string;
+  workspaceTone: "default" | "good" | "warn";
+  channelsBadge: string;
+  channelsTone: "default" | "good" | "warn";
+};
 
 const navSections = [
   {
@@ -45,6 +92,39 @@ const navSections = [
   },
 ];
 
+function safeNumber(value: unknown, fallback = 0) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function truthyValue(value: unknown) {
+  return value === true || value === "true" || value === 1 || value === "1";
+}
+
+function toneStyle(tone: "default" | "good" | "warn"): React.CSSProperties {
+  if (tone === "good") {
+    return {
+      background: "rgba(16,185,129,0.12)",
+      border: "1px solid rgba(16,185,129,0.24)",
+      color: "#065f46",
+    };
+  }
+
+  if (tone === "warn") {
+    return {
+      background: "rgba(245,158,11,0.14)",
+      border: "1px solid rgba(245,158,11,0.26)",
+      color: "#92400e",
+    };
+  }
+
+  return {
+    background: "rgba(255,255,255,0.72)",
+    border: "1px solid rgba(148,163,184,0.26)",
+    color: "var(--text-muted)",
+  };
+}
+
 export default function AppShell({
   title,
   subtitle,
@@ -63,6 +143,12 @@ export default function AppShell({
   const [isMobile, setIsMobile] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [userCollapsedDesktop, setUserCollapsedDesktop] = useState(false);
+  const [sidebarStatus, setSidebarStatus] = useState<SidebarStatus>({
+    workspaceBadge: "…",
+    workspaceTone: "default",
+    channelsBadge: "…",
+    channelsTone: "default",
+  });
 
   useEffect(() => {
     const syncLayout = () => {
@@ -87,6 +173,89 @@ export default function AppShell({
     }
   }, [pathname, isMobile]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadSidebarStatus() {
+      try {
+        const [workspaceRes, linkRes] = await Promise.all([
+          apiJson<WorkspaceLimitsResponse>("/workspace/limits", {
+            method: "GET",
+            timeoutMs: 20000,
+            useAuthToken: false,
+          }),
+          apiJson<LinkStatusResponse>("/link/status", {
+            method: "GET",
+            timeoutMs: 20000,
+            useAuthToken: false,
+          }),
+        ]);
+
+        if (cancelled) return;
+
+        const workspaceLimits = workspaceRes?.entitlements?.workspace_limits || {};
+        const channelLimits = workspaceRes?.entitlements?.channel_limits || {};
+        const counts = workspaceRes?.counts || {};
+
+        const maxWorkspaceUsers = safeNumber(workspaceLimits.max_workspace_users, 1);
+        const usedWorkspace = safeNumber(counts.owner_included_total, 1);
+        const workspaceRemaining =
+          maxWorkspaceUsers > 0 ? Math.max(maxWorkspaceUsers - usedWorkspace, 0) : 0;
+
+        const workspaceBadge =
+          workspaceRemaining <= 0 ? "Full" : `${workspaceRemaining} left`;
+        const workspaceTone: SidebarStatus["workspaceTone"] =
+          workspaceRemaining <= 0 ? "warn" : "good";
+
+        const maxTotalChannels = safeNumber(channelLimits.max_total_channels, 0);
+        const whatsappLinked = truthyValue(linkRes?.whatsapp?.linked);
+        const telegramLinked = truthyValue(linkRes?.telegram?.linked);
+        const usedChannels = (whatsappLinked ? 1 : 0) + (telegramLinked ? 1 : 0);
+        const channelRemaining =
+          maxTotalChannels > 0 ? Math.max(maxTotalChannels - usedChannels, 0) : 0;
+
+        let channelsBadge = "Locked";
+        let channelsTone: SidebarStatus["channelsTone"] = "default";
+
+        if (maxTotalChannels <= 0) {
+          channelsBadge = "Locked";
+          channelsTone = "warn";
+        } else if (channelRemaining <= 0) {
+          channelsBadge = "Full";
+          channelsTone = "warn";
+        } else if (usedChannels > 0) {
+          channelsBadge = `${channelRemaining} left`;
+          channelsTone = "good";
+        } else {
+          channelsBadge = `${maxTotalChannels} open`;
+          channelsTone = "default";
+        }
+
+        setSidebarStatus({
+          workspaceBadge,
+          workspaceTone,
+          channelsBadge,
+          channelsTone,
+        });
+      } catch (error) {
+        if (cancelled) return;
+
+        const isExpected = isApiError(error);
+        setSidebarStatus({
+          workspaceBadge: isExpected ? "Check" : "—",
+          workspaceTone: "default",
+          channelsBadge: isExpected ? "Check" : "—",
+          channelsTone: "default",
+        });
+      }
+    }
+
+    void loadSidebarStatus();
+    return () => {
+      cancelled = true;
+    };
+  }, [pathname]);
+
   const sidebarWidth = useMemo(() => {
     if (isMobile) return 0;
     return sidebarOpen ? 320 : 96;
@@ -104,6 +273,24 @@ export default function AppShell({
 
   function closeSidebarOnMobile() {
     if (isMobile) setSidebarOpen(false);
+  }
+
+  function getBadgeForHref(href: string) {
+    if (href === "/workspace") {
+      return {
+        label: sidebarStatus.workspaceBadge,
+        tone: sidebarStatus.workspaceTone,
+      };
+    }
+
+    if (href === "/channels") {
+      return {
+        label: sidebarStatus.channelsBadge,
+        tone: sidebarStatus.channelsTone,
+      };
+    }
+
+    return null;
   }
 
   const footerYear = new Date().getFullYear();
@@ -170,6 +357,8 @@ export default function AppShell({
                     pathname === item.href ||
                     (item.href !== "/" && pathname?.startsWith(item.href + "/"));
 
+                  const badge = getBadgeForHref(item.href);
+
                   return (
                     <Link
                       key={item.href}
@@ -177,12 +366,28 @@ export default function AppShell({
                       style={{
                         ...styles.link,
                         ...(active ? styles.linkActive : {}),
-                        justifyContent: sidebarOpen ? "flex-start" : "center",
-                        padding: sidebarOpen ? "13px 18px" : "13px 8px",
+                        justifyContent: sidebarOpen ? "space-between" : "center",
+                        padding: sidebarOpen ? "13px 16px" : "13px 8px",
                       }}
                       title={item.label}
                     >
-                      {sidebarOpen ? item.label : item.label.charAt(0)}
+                      {sidebarOpen ? (
+                        <>
+                          <span>{item.label}</span>
+                          {badge ? (
+                            <span
+                              style={{
+                                ...styles.statusBadge,
+                                ...toneStyle(badge.tone),
+                              }}
+                            >
+                              {badge.label}
+                            </span>
+                          ) : null}
+                        </>
+                      ) : (
+                        item.label.charAt(0)
+                      )}
                     </Link>
                   );
                 })}
@@ -269,7 +474,7 @@ export default function AppShell({
                 </Link>
               </div>
 
-              <div style={styles.pageFooterSlogan}>From Deep Root, We Soar.</div>
+              <div style={styles.pageFooterSlogan}>From Deep Roots, We Soar.</div>
             </div>
           </div>
 
@@ -433,6 +638,7 @@ const styles: Record<string, React.CSSProperties> = {
     background: "transparent",
     display: "flex",
     alignItems: "center",
+    gap: 10,
     fontSize: 16,
     fontWeight: 800,
     transition: "all 0.2s ease",
@@ -443,6 +649,17 @@ const styles: Record<string, React.CSSProperties> = {
     border: "1px solid var(--accent-border)",
     color: "var(--text)",
     boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.02)",
+  },
+
+  statusBadge: {
+    minWidth: 58,
+    padding: "4px 10px",
+    borderRadius: 999,
+    fontSize: 11,
+    fontWeight: 900,
+    letterSpacing: 0.2,
+    textAlign: "center",
+    flexShrink: 0,
   },
 
   sidebarFooter: {
