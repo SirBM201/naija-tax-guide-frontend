@@ -232,7 +232,7 @@ function LinkCodePanel({
 
   const canGenerate =
     Boolean(accountId && accountId !== "—") && !busy && !state.loading && !locked;
-  const hasCode = Boolean(state.code);
+  const hasCode = Boolean(state.code) && !locked;
   const hasLaunchUrl = Boolean(state.launchUrl) && !locked;
 
   async function handleGenerate() {
@@ -381,6 +381,7 @@ function LinkCodePanel({
               fontSize: 28,
               letterSpacing: 3,
               wordBreak: "break-word",
+              opacity: locked ? 0.6 : 1,
             }}
           >
             {state.code || "--------"}
@@ -434,11 +435,11 @@ function LinkCodePanel({
 
         <button
           onClick={handleCopy}
-          disabled={!hasCode || locked}
+          disabled={!hasCode}
           style={{
             ...shellButtonSecondary(),
-            opacity: hasCode && !locked ? 1 : 0.55,
-            cursor: hasCode && !locked ? "pointer" : "not-allowed",
+            opacity: hasCode ? 1 : 0.55,
+            cursor: hasCode ? "pointer" : "not-allowed",
           }}
         >
           Copy Code
@@ -546,13 +547,7 @@ function UnlinkButton({
 export default function ChannelsPage() {
   const { refreshSession } = useAuth();
 
-  const {
-    busy,
-    load,
-    accountId,
-    activeNow,
-    channelLinks,
-  } = useWorkspaceState({
+  const { busy, load, accountId, activeNow, channelLinks } = useWorkspaceState({
     refreshSession,
     autoLoad: true,
     includeAccount: true,
@@ -579,12 +574,11 @@ export default function ChannelsPage() {
         if (!cancelled) setLimitsData(res);
       } catch (error) {
         if (cancelled) return;
-        const message =
-          isApiError(error)
-            ? error.message || "Unable to load channel entitlements."
-            : error instanceof Error
-            ? error.message || "Unable to load channel entitlements."
-            : "Unable to load channel entitlements.";
+        const message = isApiError(error)
+          ? error.message || "Unable to load channel entitlements."
+          : error instanceof Error
+          ? error.message || "Unable to load channel entitlements."
+          : "Unable to load channel entitlements.";
         setLimitsError(message);
       }
     }
@@ -673,7 +667,7 @@ export default function ChannelsPage() {
   const lockMessage =
     maxTotalChannels <= 0
       ? "Your current plan does not allow channel linking yet. Upgrade to unlock channel connection."
-      : "All available channel slots are already in use. Unlink an existing channel or upgrade your plan before generating another link code.";
+      : "All available channel slots are already in use. Unlink the currently connected channel or upgrade your plan before generating any new link code.";
 
   const topBanner = useMemo(() => {
     if (whatsappLinked && telegramLinked) {
@@ -689,7 +683,7 @@ export default function ChannelsPage() {
         tone: "warn" as const,
         title: "One channel is connected",
         subtitle:
-          "A supported messaging channel is already linked. Because your current channel capacity is full, no additional link code can be generated until you unlink the existing channel or upgrade your plan.",
+          "A supported messaging channel is already linked. Because your total channel capacity is now full, both link generators are locked until you unlink the current channel or upgrade your plan.",
       };
     }
 
@@ -698,8 +692,7 @@ export default function ChannelsPage() {
       title: "No messaging channel is connected yet",
       subtitle:
         "Connect WhatsApp or Telegram so your workspace can work across supported channels.",
-      };
-    }
+    };
   }, [whatsappLinked, telegramLinked]);
 
   return (
