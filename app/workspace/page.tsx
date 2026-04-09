@@ -202,11 +202,29 @@ const styles = {
     fontWeight: 700,
     cursor: "pointer",
     boxShadow: "0 6px 18px rgba(79, 70, 229, 0.25)",
+    textDecoration: "none",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
   } as React.CSSProperties,
   buttonDisabled: {
     background: "#94a3b8",
     cursor: "not-allowed",
     boxShadow: "none",
+  } as React.CSSProperties,
+  buttonSecondary: {
+    border: "1px solid #c7d2fe",
+    borderRadius: 16,
+    padding: "14px 20px",
+    background: "#eef2ff",
+    color: "#3730a3",
+    fontSize: 15,
+    fontWeight: 700,
+    cursor: "pointer",
+    textDecoration: "none",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
   } as React.CSSProperties,
   bannerError: {
     border: "1px solid #fecaca",
@@ -342,6 +360,11 @@ const styles = {
     color: "#0f172a",
     boxSizing: "border-box" as const,
   } as React.CSSProperties,
+  inputDisabled: {
+    background: "#f1f5f9",
+    color: "#94a3b8",
+    cursor: "not-allowed",
+  } as React.CSSProperties,
   select: {
     width: "100%",
     borderRadius: 16,
@@ -352,6 +375,11 @@ const styles = {
     background: "#ffffff",
     color: "#0f172a",
     boxSizing: "border-box" as const,
+  } as React.CSSProperties,
+  selectDisabled: {
+    background: "#f1f5f9",
+    color: "#94a3b8",
+    cursor: "not-allowed",
   } as React.CSSProperties,
   successBox: {
     border: "1px solid #bbf7d0",
@@ -371,6 +399,16 @@ const styles = {
     marginTop: 14,
     fontSize: 14,
   } as React.CSSProperties,
+  warningBox: {
+    border: "1px solid #fcd34d",
+    background: "#fffbeb",
+    color: "#92400e",
+    borderRadius: 16,
+    padding: "14px 16px",
+    marginTop: 16,
+    fontSize: 14,
+    lineHeight: 1.6,
+  } as React.CSSProperties,
   noteBox: {
     marginTop: 16,
     borderRadius: 18,
@@ -379,6 +417,12 @@ const styles = {
     fontSize: 14,
     lineHeight: 1.6,
     color: "#475569",
+  } as React.CSSProperties,
+  actionRow: {
+    display: "flex",
+    gap: 12,
+    flexWrap: "wrap" as const,
+    marginTop: 14,
   } as React.CSSProperties,
   membersHeader: {
     display: "flex",
@@ -526,6 +570,7 @@ export default function WorkspacePage() {
   const maxWorkspaceUsers = workspaceLimits.max_workspace_users ?? 0;
   const availableSlots =
     maxWorkspaceUsers > 0 ? Math.max(maxWorkspaceUsers - usedSlots, 0) : 0;
+  const hasNoAvailableSlots = availableSlots <= 0;
 
   async function handleAddMember(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -533,6 +578,11 @@ export default function WorkspacePage() {
     setAddError("");
     setRemoveMessage("");
     setRemoveError("");
+
+    if (hasNoAvailableSlots) {
+      setAddError("Your current plan is full. Upgrade your plan or remove an existing member.");
+      return;
+    }
 
     const cleanEmail = memberEmail.trim().toLowerCase();
     if (!cleanEmail) {
@@ -760,7 +810,11 @@ export default function WorkspacePage() {
                       value={memberEmail}
                       onChange={(e) => setMemberEmail(e.target.value)}
                       placeholder="user@example.com"
-                      style={styles.input}
+                      disabled={hasNoAvailableSlots || submittingAdd}
+                      style={{
+                        ...styles.input,
+                        ...(hasNoAvailableSlots || submittingAdd ? styles.inputDisabled : {}),
+                      }}
                     />
                   </div>
 
@@ -772,26 +826,49 @@ export default function WorkspacePage() {
                       id="member_role"
                       value={role}
                       onChange={(e) => setRole(e.target.value)}
-                      style={styles.select}
+                      disabled={hasNoAvailableSlots || submittingAdd}
+                      style={{
+                        ...styles.select,
+                        ...(hasNoAvailableSlots || submittingAdd ? styles.selectDisabled : {}),
+                      }}
                     >
                       <option value="member">member</option>
                     </select>
                   </div>
+
+                  {hasNoAvailableSlots ? (
+                    <div style={styles.warningBox}>
+                      <strong>Your current plan is full.</strong> Upgrade your plan or remove
+                      an existing member before adding another workspace user.
+                      <div style={styles.actionRow}>
+                        <a href="/billing" style={styles.buttonSecondary}>
+                          Go to Billing
+                        </a>
+                        <a href="/plans" style={styles.buttonSecondary}>
+                          View Plans
+                        </a>
+                      </div>
+                    </div>
+                  ) : null}
 
                   {addMessage ? <div style={styles.successBox}>{addMessage}</div> : null}
                   {addError ? <div style={styles.errorBox}>{addError}</div> : null}
 
                   <button
                     type="submit"
-                    disabled={submittingAdd}
+                    disabled={submittingAdd || hasNoAvailableSlots}
                     style={{
                       ...styles.button,
                       width: "100%",
                       marginTop: 16,
-                      ...(submittingAdd ? styles.buttonDisabled : {}),
+                      ...(submittingAdd || hasNoAvailableSlots ? styles.buttonDisabled : {}),
                     }}
                   >
-                    {submittingAdd ? "Adding member..." : "Add member"}
+                    {submittingAdd
+                      ? "Adding member..."
+                      : hasNoAvailableSlots
+                      ? "No slots available"
+                      : "Add member"}
                   </button>
                 </form>
 
