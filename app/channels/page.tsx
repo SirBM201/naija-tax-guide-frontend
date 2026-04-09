@@ -218,6 +218,7 @@ function LinkCodePanel({
   accountId,
   busy,
   locked,
+  lockedMessage,
 }: {
   provider: LinkProvider;
   title: string;
@@ -225,19 +226,20 @@ function LinkCodePanel({
   accountId: string;
   busy: boolean;
   locked: boolean;
+  lockedMessage: string;
 }) {
   const [state, setState] = useState<LinkState>(makeEmptyLinkState());
 
   const canGenerate =
     Boolean(accountId && accountId !== "—") && !busy && !state.loading && !locked;
   const hasCode = Boolean(state.code);
-  const hasLaunchUrl = Boolean(state.launchUrl);
+  const hasLaunchUrl = Boolean(state.launchUrl) && !locked;
 
   async function handleGenerate() {
     if (locked) {
       setState((prev) => ({
         ...prev,
-        error: "Your current channel entitlement is full. Upgrade your plan or unlink an existing channel first.",
+        error: lockedMessage,
         success: "",
       }));
       return;
@@ -327,7 +329,7 @@ function LinkCodePanel({
   }
 
   async function handleCopy() {
-    if (!state.code) return;
+    if (!state.code || locked) return;
 
     try {
       await navigator.clipboard.writeText(state.code);
@@ -346,7 +348,7 @@ function LinkCodePanel({
   }
 
   function handleOpenLink() {
-    if (!state.launchUrl) return;
+    if (!state.launchUrl || locked) return;
     window.open(state.launchUrl, "_blank", "noopener,noreferrer");
   }
 
@@ -364,7 +366,7 @@ function LinkCodePanel({
         <div style={{ fontSize: 14, color: "var(--text-muted)", fontWeight: 700 }}>
           {title}
         </div>
-        <div style={{ fontSize: 24, fontWeight: 900, color: "var(--text)" }}>
+        <div style={{ fontSize: 26, fontWeight: 900, color: "var(--text)" }}>
           Live link setup
         </div>
         <div style={{ color: "var(--text-muted)", lineHeight: 1.7 }}>{description}</div>
@@ -401,13 +403,29 @@ function LinkCodePanel({
         </div>
       </div>
 
+      {locked ? (
+        <div
+          style={{
+            borderRadius: 14,
+            border: "1px solid #fed7aa",
+            background: "#fff7ed",
+            padding: 12,
+            color: "#9a3412",
+            fontSize: 14,
+            lineHeight: 1.6,
+          }}
+        >
+          {lockedMessage}
+        </div>
+      ) : null}
+
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
         <button
           onClick={handleGenerate}
           disabled={!canGenerate}
           style={{
             ...shellButtonPrimary(),
-            opacity: canGenerate ? 1 : 0.6,
+            opacity: canGenerate ? 1 : 0.55,
             cursor: canGenerate ? "pointer" : "not-allowed",
           }}
         >
@@ -416,11 +434,11 @@ function LinkCodePanel({
 
         <button
           onClick={handleCopy}
-          disabled={!hasCode}
+          disabled={!hasCode || locked}
           style={{
             ...shellButtonSecondary(),
-            opacity: hasCode ? 1 : 0.55,
-            cursor: hasCode ? "pointer" : "not-allowed",
+            opacity: hasCode && !locked ? 1 : 0.55,
+            cursor: hasCode && !locked ? "pointer" : "not-allowed",
           }}
         >
           Copy Code
@@ -652,6 +670,11 @@ export default function ChannelsPage() {
 
   const channelsLockedOrFull = maxTotalChannels <= 0 || totalChannelsRemaining <= 0;
 
+  const lockMessage =
+    maxTotalChannels <= 0
+      ? "Your current plan does not allow channel linking yet. Upgrade to unlock channel connection."
+      : "All available channel slots are already in use. Unlink an existing channel or upgrade your plan before generating another link code.";
+
   const topBanner = useMemo(() => {
     if (whatsappLinked && telegramLinked) {
       return {
@@ -664,9 +687,9 @@ export default function ChannelsPage() {
     if (whatsappLinked || telegramLinked) {
       return {
         tone: "warn" as const,
-        title: "One channel still needs attention",
+        title: "One channel is connected",
         subtitle:
-          "At least one supported messaging channel is connected, but another one is still not ready.",
+          "A supported messaging channel is already linked. Because your current channel capacity is full, no additional link code can be generated until you unlink the existing channel or upgrade your plan.",
       };
     }
 
@@ -676,6 +699,7 @@ export default function ChannelsPage() {
       subtitle:
         "Connect WhatsApp or Telegram so your workspace can work across supported channels.",
       };
+    }
   }, [whatsappLinked, telegramLinked]);
 
   return (
@@ -893,7 +917,8 @@ export default function ChannelsPage() {
             description="Generate a temporary WhatsApp linking code for this logged-in workspace, then send that code into the connected WhatsApp channel."
             accountId={accountId}
             busy={busy}
-            locked={channelsLockedOrFull && !whatsappLinked}
+            locked={channelsLockedOrFull}
+            lockedMessage={lockMessage}
           />
 
           <LinkCodePanel
@@ -902,7 +927,8 @@ export default function ChannelsPage() {
             description="Generate a temporary Telegram linking code for this logged-in workspace, then send that code to the Telegram bot immediately."
             accountId={accountId}
             busy={busy}
-            locked={channelsLockedOrFull && !telegramLinked}
+            locked={channelsLockedOrFull}
+            lockedMessage={lockMessage}
           />
         </CardsGrid>
 
