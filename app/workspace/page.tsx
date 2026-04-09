@@ -105,10 +105,6 @@ const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/+$/, "") ||
   "https://incredible-nonie-bmsconcept-37359733.koyeb.app";
 
-function classNames(...parts: Array<string | false | null | undefined>) {
-  return parts.filter(Boolean).join(" ");
-}
-
 function formatDate(value?: string) {
   if (!value) return "—";
   const date = new Date(value);
@@ -157,6 +153,314 @@ async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   return data as T;
 }
 
+const styles = {
+  page: {
+    minHeight: "100vh",
+    background: "#f4f7fb",
+    padding: "24px 16px 48px",
+    color: "#0f172a",
+    fontFamily:
+      'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+  } as React.CSSProperties,
+  container: {
+    maxWidth: "1180px",
+    margin: "0 auto",
+  } as React.CSSProperties,
+  hero: {
+    background: "#ffffff",
+    borderRadius: 24,
+    padding: 24,
+    boxShadow: "0 8px 24px rgba(15, 23, 42, 0.06)",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 16,
+    flexWrap: "wrap",
+    marginBottom: 20,
+  } as React.CSSProperties,
+  heroTitle: {
+    margin: 0,
+    fontSize: 44,
+    lineHeight: 1.05,
+    fontWeight: 800,
+    color: "#0b1533",
+  } as React.CSSProperties,
+  heroText: {
+    marginTop: 10,
+    fontSize: 18,
+    lineHeight: 1.6,
+    color: "#475569",
+    maxWidth: 760,
+  } as React.CSSProperties,
+  button: {
+    border: "none",
+    borderRadius: 16,
+    padding: "14px 20px",
+    background: "#4f46e5",
+    color: "#ffffff",
+    fontSize: 15,
+    fontWeight: 700,
+    cursor: "pointer",
+    boxShadow: "0 6px 18px rgba(79, 70, 229, 0.25)",
+  } as React.CSSProperties,
+  buttonDisabled: {
+    background: "#94a3b8",
+    cursor: "not-allowed",
+    boxShadow: "none",
+  } as React.CSSProperties,
+  bannerError: {
+    border: "1px solid #fecaca",
+    background: "#fef2f2",
+    color: "#b91c1c",
+    borderRadius: 18,
+    padding: 14,
+    marginBottom: 20,
+    fontSize: 14,
+  } as React.CSSProperties,
+  grid4: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+    gap: 16,
+    marginBottom: 20,
+  } as React.CSSProperties,
+  grid3: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+    gap: 16,
+    marginBottom: 20,
+  } as React.CSSProperties,
+  grid2: {
+    display: "grid",
+    gridTemplateColumns: "minmax(320px, 420px) minmax(0, 1fr)",
+    gap: 20,
+    alignItems: "start",
+    marginBottom: 20,
+  } as React.CSSProperties,
+  card: {
+    background: "#ffffff",
+    borderRadius: 24,
+    padding: 20,
+    boxShadow: "0 8px 24px rgba(15, 23, 42, 0.06)",
+  } as React.CSSProperties,
+  label: {
+    fontSize: 12,
+    fontWeight: 800,
+    textTransform: "uppercase" as const,
+    letterSpacing: "0.08em",
+    color: "#64748b",
+    marginBottom: 8,
+  } as React.CSSProperties,
+  bigTitle: {
+    margin: 0,
+    fontSize: 24,
+    fontWeight: 800,
+    color: "#0f172a",
+  } as React.CSSProperties,
+  hugeValue: {
+    margin: "8px 0 0",
+    fontSize: 42,
+    fontWeight: 800,
+    color: "#0f172a",
+  } as React.CSSProperties,
+  subText: {
+    marginTop: 8,
+    fontSize: 14,
+    color: "#64748b",
+    lineHeight: 1.5,
+  } as React.CSSProperties,
+  statRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+    borderRadius: 16,
+    background: "#f8fafc",
+    padding: "14px 16px",
+    marginTop: 10,
+    fontSize: 15,
+  } as React.CSSProperties,
+  statValue: {
+    fontWeight: 700,
+    color: "#0f172a",
+  } as React.CSSProperties,
+  ownerBox: {
+    border: "1px solid #e2e8f0",
+    borderRadius: 18,
+    padding: 16,
+    marginTop: 14,
+    background: "#ffffff",
+  } as React.CSSProperties,
+  ownerName: {
+    margin: 0,
+    fontSize: 18,
+    fontWeight: 700,
+    color: "#0f172a",
+  } as React.CSSProperties,
+  ownerMeta: {
+    marginTop: 6,
+    fontSize: 14,
+    color: "#475569",
+  } as React.CSSProperties,
+  miniLabel: {
+    marginTop: 14,
+    fontSize: 11,
+    fontWeight: 800,
+    textTransform: "uppercase" as const,
+    letterSpacing: "0.08em",
+    color: "#94a3b8",
+  } as React.CSSProperties,
+  sectionTitle: {
+    margin: 0,
+    fontSize: 18,
+    fontWeight: 800,
+    color: "#0f172a",
+  } as React.CSSProperties,
+  sectionText: {
+    marginTop: 8,
+    fontSize: 14,
+    color: "#64748b",
+    lineHeight: 1.6,
+  } as React.CSSProperties,
+  formGroup: {
+    marginTop: 16,
+  } as React.CSSProperties,
+  formLabel: {
+    display: "block",
+    marginBottom: 8,
+    fontSize: 14,
+    fontWeight: 600,
+    color: "#334155",
+  } as React.CSSProperties,
+  input: {
+    width: "100%",
+    borderRadius: 16,
+    border: "1px solid #cbd5e1",
+    padding: "12px 14px",
+    fontSize: 15,
+    outline: "none",
+    background: "#ffffff",
+    color: "#0f172a",
+    boxSizing: "border-box" as const,
+  } as React.CSSProperties,
+  select: {
+    width: "100%",
+    borderRadius: 16,
+    border: "1px solid #cbd5e1",
+    padding: "12px 14px",
+    fontSize: 15,
+    outline: "none",
+    background: "#ffffff",
+    color: "#0f172a",
+    boxSizing: "border-box" as const,
+  } as React.CSSProperties,
+  successBox: {
+    border: "1px solid #bbf7d0",
+    background: "#f0fdf4",
+    color: "#166534",
+    borderRadius: 16,
+    padding: "12px 14px",
+    marginTop: 14,
+    fontSize: 14,
+  } as React.CSSProperties,
+  errorBox: {
+    border: "1px solid #fecaca",
+    background: "#fef2f2",
+    color: "#b91c1c",
+    borderRadius: 16,
+    padding: "12px 14px",
+    marginTop: 14,
+    fontSize: 14,
+  } as React.CSSProperties,
+  noteBox: {
+    marginTop: 16,
+    borderRadius: 18,
+    background: "#f8fafc",
+    padding: 16,
+    fontSize: 14,
+    lineHeight: 1.6,
+    color: "#475569",
+  } as React.CSSProperties,
+  membersHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+    flexWrap: "wrap" as const,
+  } as React.CSSProperties,
+  badge: {
+    borderRadius: 999,
+    background: "#e2e8f0",
+    padding: "6px 12px",
+    fontSize: 12,
+    fontWeight: 700,
+    color: "#334155",
+  } as React.CSSProperties,
+  emptyBox: {
+    marginTop: 18,
+    border: "1px dashed #cbd5e1",
+    background: "#f8fafc",
+    borderRadius: 18,
+    padding: 24,
+    textAlign: "center" as const,
+    color: "#64748b",
+    fontSize: 15,
+  } as React.CSSProperties,
+  memberCard: {
+    border: "1px solid #e2e8f0",
+    borderRadius: 18,
+    padding: 16,
+    marginTop: 16,
+    background: "#ffffff",
+  } as React.CSSProperties,
+  memberHead: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 16,
+    flexWrap: "wrap" as const,
+  } as React.CSSProperties,
+  memberName: {
+    margin: 0,
+    fontSize: 16,
+    fontWeight: 700,
+    color: "#0f172a",
+  } as React.CSSProperties,
+  memberEmail: {
+    marginTop: 6,
+    fontSize: 14,
+    color: "#475569",
+  } as React.CSSProperties,
+  memberGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+    gap: 14,
+    marginTop: 14,
+  } as React.CSSProperties,
+  removeButton: {
+    border: "none",
+    borderRadius: 14,
+    padding: "12px 16px",
+    background: "#fef2f2",
+    color: "#b91c1c",
+    fontSize: 14,
+    fontWeight: 700,
+    cursor: "pointer",
+  } as React.CSSProperties,
+  removeButtonDisabled: {
+    background: "#e2e8f0",
+    color: "#64748b",
+    cursor: "not-allowed",
+  } as React.CSSProperties,
+  loadingCard: {
+    background: "#ffffff",
+    borderRadius: 24,
+    padding: 20,
+    boxShadow: "0 8px 24px rgba(15, 23, 42, 0.06)",
+    fontSize: 16,
+    color: "#475569",
+  } as React.CSSProperties,
+};
+
 export default function WorkspacePage() {
   const [limits, setLimits] = useState<LimitsResponse | null>(null);
   const [membersData, setMembersData] = useState<MembersResponse | null>(null);
@@ -177,11 +481,8 @@ export default function WorkspacePage() {
   const loadWorkspace = useCallback(async (isRefresh = false) => {
     try {
       setPageError("");
-      if (isRefresh) {
-        setRefreshing(true);
-      } else {
-        setLoading(true);
-      }
+      if (isRefresh) setRefreshing(true);
+      else setLoading(true);
 
       const [limitsRes, membersRes] = await Promise.all([
         apiRequest<LimitsResponse>("/api/workspace/limits"),
@@ -301,197 +602,156 @@ export default function WorkspacePage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#f7f8fc] px-4 py-6 md:px-8">
-      <div className="mx-auto max-w-6xl">
-        <div className="mb-6 flex flex-col gap-4 rounded-3xl bg-white p-5 shadow-sm md:flex-row md:items-start md:justify-between">
+    <main style={styles.page}>
+      <div style={styles.container}>
+        <div style={styles.hero}>
           <div>
-            <h1 className="text-3xl font-bold tracking-tight text-slate-900">
-              Workspace
-            </h1>
-            <p className="mt-2 max-w-2xl text-sm text-slate-600">
+            <h1 style={styles.heroTitle}>Workspace</h1>
+            <div style={styles.heroText}>
               Manage your owner account, workspace member slots, and current plan
               limits from one place.
-            </p>
+            </div>
           </div>
 
           <button
             type="button"
             onClick={() => void loadWorkspace(true)}
             disabled={loading || refreshing}
-            className={classNames(
-              "inline-flex items-center justify-center rounded-2xl px-5 py-3 text-sm font-semibold text-white transition",
-              loading || refreshing
-                ? "cursor-not-allowed bg-slate-400"
-                : "bg-indigo-600 hover:bg-indigo-700"
-            )}
+            style={{
+              ...styles.button,
+              ...(loading || refreshing ? styles.buttonDisabled : {}),
+            }}
           >
             {refreshing ? "Refreshing..." : "Refresh Status"}
           </button>
         </div>
 
-        {pageError ? (
-          <div className="mb-6 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-            {pageError}
-          </div>
-        ) : null}
+        {pageError ? <div style={styles.bannerError}>{pageError}</div> : null}
 
         {loading ? (
-          <div className="rounded-3xl bg-white p-6 shadow-sm">
-            <div className="animate-pulse space-y-4">
-              <div className="h-7 w-48 rounded bg-slate-200" />
-              <div className="grid gap-4 md:grid-cols-4">
-                <div className="h-28 rounded-2xl bg-slate-200" />
-                <div className="h-28 rounded-2xl bg-slate-200" />
-                <div className="h-28 rounded-2xl bg-slate-200" />
-                <div className="h-28 rounded-2xl bg-slate-200" />
-              </div>
-            </div>
-          </div>
+          <div style={styles.loadingCard}>Loading workspace data...</div>
         ) : (
           <>
-            <section className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <div className="rounded-3xl bg-white p-5 shadow-sm">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Current plan
-                </p>
-                <h2 className="mt-2 text-2xl font-bold text-slate-900">
-                  {plan?.name || "No active plan"}
-                </h2>
-                <p className="mt-2 text-sm text-slate-600">
+            <section style={styles.grid4}>
+              <div style={styles.card}>
+                <div style={styles.label}>Current plan</div>
+                <h2 style={styles.bigTitle}>{plan?.name || "No active plan"}</h2>
+                <div style={styles.subText}>
                   Family:{" "}
-                  <span className="font-semibold capitalize text-slate-800">
+                  <strong style={{ color: "#0f172a", textTransform: "capitalize" }}>
                     {limits?.entitlements?.plan_family || plan?.plan_family || "—"}
-                  </span>
-                </p>
-                <p className="mt-1 text-sm text-slate-600">
+                  </strong>
+                </div>
+                <div style={styles.subText}>
                   Code:{" "}
-                  <span className="font-medium text-slate-800">
+                  <strong style={{ color: "#0f172a" }}>
                     {limits?.entitlements?.plan_code || plan?.code || "—"}
-                  </span>
-                </p>
+                  </strong>
+                </div>
               </div>
 
-              <div className="rounded-3xl bg-white p-5 shadow-sm">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Workspace slots used
-                </p>
-                <h2 className="mt-2 text-3xl font-bold text-slate-900">
+              <div style={styles.card}>
+                <div style={styles.label}>Workspace slots used</div>
+                <div style={styles.hugeValue}>
                   {usedSlots}
-                  <span className="text-lg font-medium text-slate-500">
+                  <span style={{ fontSize: 22, color: "#64748b", fontWeight: 600 }}>
                     {" "}
                     / {maxWorkspaceUsers || 0}
                   </span>
-                </h2>
-                <p className="mt-2 text-sm text-slate-600">
-                  Owner included total
-                </p>
+                </div>
+                <div style={styles.subText}>Owner included total</div>
               </div>
 
-              <div className="rounded-3xl bg-white p-5 shadow-sm">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Additional members
-                </p>
-                <h2 className="mt-2 text-3xl font-bold text-slate-900">
-                  {memberOnlyCount}
-                </h2>
-                <p className="mt-2 text-sm text-slate-600">
-                  Active members only
-                </p>
+              <div style={styles.card}>
+                <div style={styles.label}>Additional members</div>
+                <div style={styles.hugeValue}>{memberOnlyCount}</div>
+                <div style={styles.subText}>Active members only</div>
               </div>
 
-              <div className="rounded-3xl bg-white p-5 shadow-sm">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Available slots
-                </p>
-                <h2 className="mt-2 text-3xl font-bold text-slate-900">
-                  {availableSlots}
-                </h2>
-                <p className="mt-2 text-sm text-slate-600">
-                  Remaining under this plan
-                </p>
+              <div style={styles.card}>
+                <div style={styles.label}>Available slots</div>
+                <div style={styles.hugeValue}>{availableSlots}</div>
+                <div style={styles.subText}>Remaining under this plan</div>
               </div>
             </section>
 
-            <section className="mb-6 grid gap-4 lg:grid-cols-3">
-              <div className="rounded-3xl bg-white p-5 shadow-sm">
-                <h3 className="text-lg font-bold text-slate-900">Workspace limits</h3>
-                <div className="mt-4 space-y-3 text-sm text-slate-700">
-                  <div className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3">
-                    <span>Max workspace users</span>
-                    <span className="font-semibold">
-                      {workspaceLimits.max_workspace_users ?? 0}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3">
-                    <span>Max linked web accounts</span>
-                    <span className="font-semibold">
-                      {workspaceLimits.max_linked_web_accounts ?? 0}
-                    </span>
-                  </div>
+            <section style={styles.grid3}>
+              <div style={styles.card}>
+                <h3 style={styles.sectionTitle}>Workspace limits</h3>
+                <div style={styles.statRow}>
+                  <span>Max workspace users</span>
+                  <span style={styles.statValue}>
+                    {workspaceLimits.max_workspace_users ?? 0}
+                  </span>
+                </div>
+                <div style={styles.statRow}>
+                  <span>Max linked web accounts</span>
+                  <span style={styles.statValue}>
+                    {workspaceLimits.max_linked_web_accounts ?? 0}
+                  </span>
                 </div>
               </div>
 
-              <div className="rounded-3xl bg-white p-5 shadow-sm">
-                <h3 className="text-lg font-bold text-slate-900">Channel limits</h3>
-                <div className="mt-4 space-y-3 text-sm text-slate-700">
-                  <div className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3">
-                    <span>Total channels</span>
-                    <span className="font-semibold">
-                      {channelLimits.max_total_channels ?? 0}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3">
-                    <span>WhatsApp channels</span>
-                    <span className="font-semibold">
-                      {channelLimits.max_whatsapp_channels ?? 0}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3">
-                    <span>Telegram channels</span>
-                    <span className="font-semibold">
-                      {channelLimits.max_telegram_channels ?? 0}
-                    </span>
-                  </div>
+              <div style={styles.card}>
+                <h3 style={styles.sectionTitle}>Channel limits</h3>
+                <div style={styles.statRow}>
+                  <span>Total channels</span>
+                  <span style={styles.statValue}>
+                    {channelLimits.max_total_channels ?? 0}
+                  </span>
+                </div>
+                <div style={styles.statRow}>
+                  <span>WhatsApp channels</span>
+                  <span style={styles.statValue}>
+                    {channelLimits.max_whatsapp_channels ?? 0}
+                  </span>
+                </div>
+                <div style={styles.statRow}>
+                  <span>Telegram channels</span>
+                  <span style={styles.statValue}>
+                    {channelLimits.max_telegram_channels ?? 0}
+                  </span>
                 </div>
               </div>
 
-              <div className="rounded-3xl bg-white p-5 shadow-sm">
-                <h3 className="text-lg font-bold text-slate-900">Workspace owner</h3>
-                <div className="mt-4 rounded-2xl border border-slate-200 p-4">
-                  <p className="text-sm font-semibold text-slate-900">
+              <div style={styles.card}>
+                <h3 style={styles.sectionTitle}>Workspace owner</h3>
+                <div style={styles.ownerBox}>
+                  <p style={styles.ownerName}>
                     {owner?.display_name || owner?.email || "Owner account"}
                   </p>
-                  <p className="mt-1 text-sm text-slate-600">
-                    {owner?.email || "—"}
-                  </p>
-                  <p className="mt-3 text-xs uppercase tracking-wide text-slate-500">
-                    Role
-                  </p>
-                  <p className="text-sm font-medium text-slate-800">Owner</p>
-                  <p className="mt-3 text-xs uppercase tracking-wide text-slate-500">
-                    Created
-                  </p>
-                  <p className="text-sm text-slate-700">
-                    {formatDate(owner?.created_at)}
-                  </p>
+                  <div style={styles.ownerMeta}>{owner?.email || "—"}</div>
+
+                  <div style={styles.miniLabel}>Role</div>
+                  <div style={styles.ownerMeta}>
+                    <strong style={{ color: "#0f172a" }}>Owner</strong>
+                  </div>
+
+                  <div style={styles.miniLabel}>Created</div>
+                  <div style={styles.ownerMeta}>{formatDate(owner?.created_at)}</div>
                 </div>
               </div>
             </section>
 
-            <section className="mb-6 grid gap-6 lg:grid-cols-[1.05fr_1.4fr]">
-              <div className="rounded-3xl bg-white p-5 shadow-sm">
-                <h3 className="text-lg font-bold text-slate-900">Add member</h3>
-                <p className="mt-2 text-sm text-slate-600">
+            <section
+              style={{
+                ...styles.grid2,
+                gridTemplateColumns:
+                  typeof window !== "undefined" && window.innerWidth < 980
+                    ? "1fr"
+                    : "minmax(320px, 420px) minmax(0, 1fr)",
+              }}
+            >
+              <div style={styles.card}>
+                <h3 style={styles.sectionTitle}>Add member</h3>
+                <div style={styles.sectionText}>
                   Enter the email address of an existing web account you want to add
                   into this workspace.
-                </p>
+                </div>
 
-                <form className="mt-5 space-y-4" onSubmit={handleAddMember}>
-                  <div>
-                    <label
-                      htmlFor="member_email"
-                      className="mb-2 block text-sm font-medium text-slate-700"
-                    >
+                <form onSubmit={handleAddMember}>
+                  <div style={styles.formGroup}>
+                    <label htmlFor="member_email" style={styles.formLabel}>
                       Member email
                     </label>
                     <input
@@ -500,183 +760,156 @@ export default function WorkspacePage() {
                       value={memberEmail}
                       onChange={(e) => setMemberEmail(e.target.value)}
                       placeholder="user@example.com"
-                      className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"
+                      style={styles.input}
                     />
                   </div>
 
-                  <div>
-                    <label
-                      htmlFor="member_role"
-                      className="mb-2 block text-sm font-medium text-slate-700"
-                    >
+                  <div style={styles.formGroup}>
+                    <label htmlFor="member_role" style={styles.formLabel}>
                       Role
                     </label>
                     <select
                       id="member_role"
                       value={role}
                       onChange={(e) => setRole(e.target.value)}
-                      className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"
+                      style={styles.select}
                     >
                       <option value="member">member</option>
                     </select>
                   </div>
 
-                  {addMessage ? (
-                    <div className="rounded-2xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
-                      {addMessage}
-                    </div>
-                  ) : null}
-
-                  {addError ? (
-                    <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                      {addError}
-                    </div>
-                  ) : null}
+                  {addMessage ? <div style={styles.successBox}>{addMessage}</div> : null}
+                  {addError ? <div style={styles.errorBox}>{addError}</div> : null}
 
                   <button
                     type="submit"
                     disabled={submittingAdd}
-                    className={classNames(
-                      "w-full rounded-2xl px-4 py-3 text-sm font-semibold text-white transition",
-                      submittingAdd
-                        ? "cursor-not-allowed bg-slate-400"
-                        : "bg-indigo-600 hover:bg-indigo-700"
-                    )}
+                    style={{
+                      ...styles.button,
+                      width: "100%",
+                      marginTop: 16,
+                      ...(submittingAdd ? styles.buttonDisabled : {}),
+                    }}
                   >
                     {submittingAdd ? "Adding member..." : "Add member"}
                   </button>
                 </form>
 
-                <div className="mt-5 rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">
-                  <p className="font-semibold text-slate-800">Current rule</p>
-                  <p className="mt-1">
-                    Your plan currently allows{" "}
-                    <span className="font-semibold text-slate-900">
-                      {maxWorkspaceUsers || 0}
-                    </span>{" "}
-                    total workspace user{maxWorkspaceUsers === 1 ? "" : "s"},
-                    including the owner.
-                  </p>
+                <div style={styles.noteBox}>
+                  <div style={{ fontWeight: 700, color: "#0f172a", marginBottom: 6 }}>
+                    Current rule
+                  </div>
+                  Your plan currently allows{" "}
+                  <strong style={{ color: "#0f172a" }}>
+                    {maxWorkspaceUsers || 0}
+                  </strong>{" "}
+                  total workspace user{maxWorkspaceUsers === 1 ? "" : "s"}, including
+                  the owner.
                 </div>
               </div>
 
-              <div className="rounded-3xl bg-white p-5 shadow-sm">
-                <div className="flex items-center justify-between gap-3">
+              <div style={styles.card}>
+                <div style={styles.membersHeader}>
                   <div>
-                    <h3 className="text-lg font-bold text-slate-900">
-                      Workspace members
-                    </h3>
-                    <p className="mt-1 text-sm text-slate-600">
+                    <h3 style={styles.sectionTitle}>Workspace members</h3>
+                    <div style={styles.sectionText}>
                       Member accounts linked under this workspace owner.
-                    </p>
+                    </div>
                   </div>
-                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                  <span style={styles.badge}>
                     {memberOnlyCount} member{memberOnlyCount === 1 ? "" : "s"}
                   </span>
                 </div>
 
                 {removeMessage ? (
-                  <div className="mt-4 rounded-2xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
-                    {removeMessage}
-                  </div>
+                  <div style={styles.successBox}>{removeMessage}</div>
                 ) : null}
+                {removeError ? <div style={styles.errorBox}>{removeError}</div> : null}
 
-                {removeError ? (
-                  <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                    {removeError}
+                {members.length === 0 ? (
+                  <div style={styles.emptyBox}>
+                    No extra workspace members have been added yet.
                   </div>
-                ) : null}
+                ) : (
+                  members.map((member) => {
+                    const display =
+                      member.member_display_name ||
+                      member.member_email ||
+                      member.member_provider_user_id ||
+                      member.member_account_id ||
+                      "Workspace member";
 
-                <div className="mt-5 space-y-4">
-                  {members.length === 0 ? (
-                    <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-600">
-                      No extra workspace members have been added yet.
-                    </div>
-                  ) : (
-                    members.map((member) => {
-                      const display =
-                        member.member_display_name ||
-                        member.member_email ||
-                        member.member_provider_user_id ||
-                        member.member_account_id ||
-                        "Workspace member";
+                    return (
+                      <div
+                        key={member.member_account_id || member.id}
+                        style={styles.memberCard}
+                      >
+                        <div style={styles.memberHead}>
+                          <div>
+                            <p style={styles.memberName}>{display}</p>
+                            <div style={styles.memberEmail}>
+                              {member.member_email || "No email available"}
+                            </div>
 
-                      return (
-                        <div
-                          key={member.member_account_id || member.id}
-                          className="rounded-2xl border border-slate-200 p-4"
-                        >
-                          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                            <div>
-                              <p className="text-sm font-semibold text-slate-900">
-                                {display}
-                              </p>
-                              <p className="mt-1 text-sm text-slate-600">
-                                {member.member_email || "No email available"}
-                              </p>
-
-                              <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                                <div>
-                                  <p className="text-[11px] uppercase tracking-wide text-slate-500">
-                                    Role
-                                  </p>
-                                  <p className="text-sm font-medium text-slate-800">
-                                    {member.role || "member"}
-                                  </p>
+                            <div style={styles.memberGrid}>
+                              <div>
+                                <div style={styles.miniLabel}>Role</div>
+                                <div style={styles.ownerMeta}>
+                                  {member.role || "member"}
                                 </div>
-                                <div>
-                                  <p className="text-[11px] uppercase tracking-wide text-slate-500">
-                                    Status
-                                  </p>
-                                  <p className="text-sm font-medium capitalize text-slate-800">
-                                    {member.status || "active"}
-                                  </p>
+                              </div>
+                              <div>
+                                <div style={styles.miniLabel}>Status</div>
+                                <div style={styles.ownerMeta}>
+                                  {member.status || "active"}
                                 </div>
-                                <div>
-                                  <p className="text-[11px] uppercase tracking-wide text-slate-500">
-                                    Added
-                                  </p>
-                                  <p className="text-sm text-slate-700">
-                                    {formatDate(member.created_at)}
-                                  </p>
+                              </div>
+                              <div>
+                                <div style={styles.miniLabel}>Added</div>
+                                <div style={styles.ownerMeta}>
+                                  {formatDate(member.created_at)}
                                 </div>
-                                <div>
-                                  <p className="text-[11px] uppercase tracking-wide text-slate-500">
-                                    Member account ID
-                                  </p>
-                                  <p className="break-all text-sm text-slate-700">
-                                    {member.member_account_id || "—"}
-                                  </p>
+                              </div>
+                              <div>
+                                <div style={styles.miniLabel}>Member account ID</div>
+                                <div
+                                  style={{
+                                    ...styles.ownerMeta,
+                                    wordBreak: "break-all",
+                                  }}
+                                >
+                                  {member.member_account_id || "—"}
                                 </div>
                               </div>
                             </div>
-
-                            <button
-                              type="button"
-                              disabled={
-                                removingId === member.member_account_id ||
-                                !member.member_account_id
-                              }
-                              onClick={() =>
-                                void handleRemoveMember(member.member_account_id)
-                              }
-                              className={classNames(
-                                "inline-flex min-w-[140px] items-center justify-center rounded-2xl px-4 py-3 text-sm font-semibold transition",
-                                removingId === member.member_account_id
-                                  ? "cursor-not-allowed bg-slate-200 text-slate-500"
-                                  : "bg-red-50 text-red-700 hover:bg-red-100"
-                              )}
-                            >
-                              {removingId === member.member_account_id
-                                ? "Removing..."
-                                : "Remove"}
-                            </button>
                           </div>
+
+                          <button
+                            type="button"
+                            disabled={
+                              removingId === member.member_account_id ||
+                              !member.member_account_id
+                            }
+                            onClick={() =>
+                              void handleRemoveMember(member.member_account_id)
+                            }
+                            style={{
+                              ...styles.removeButton,
+                              ...(removingId === member.member_account_id ||
+                              !member.member_account_id
+                                ? styles.removeButtonDisabled
+                                : {}),
+                            }}
+                          >
+                            {removingId === member.member_account_id
+                              ? "Removing..."
+                              : "Remove"}
+                          </button>
                         </div>
-                      );
-                    })
-                  )}
-                </div>
+                      </div>
+                    );
+                  })
+                )}
               </div>
             </section>
           </>
