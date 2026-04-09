@@ -1,4 +1,3 @@
-// components/Sidebar.tsx
 "use client";
 
 import React from "react";
@@ -6,7 +5,15 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 
-function NavItem({ href, label, active }: { href: string; label: string; active: boolean }) {
+function NavItem({
+  href,
+  label,
+  active,
+}: {
+  href: string;
+  label: string;
+  active: boolean;
+}) {
   return (
     <Link
       href={href}
@@ -19,6 +26,7 @@ function NavItem({ href, label, active }: { href: string; label: string; active:
         color: "rgba(255,255,255,0.92)",
         fontWeight: 900,
         letterSpacing: 0.2,
+        textDecoration: "none",
       }}
     >
       {label}
@@ -35,6 +43,8 @@ export default function Sidebar() {
     { href: "/ask", label: "Quick Ask" },
     { href: "/web-chat", label: "Tax Assistant Chat" },
     { href: "/billing", label: "Billing" },
+    { href: "/channels", label: "Channels" },
+    { href: "/workspace", label: "Workspace" },
   ];
 
   return (
@@ -47,7 +57,6 @@ export default function Sidebar() {
           "radial-gradient(600px 500px at 50% 0%, rgba(120, 140, 255, 0.16), transparent 60%), rgba(255,255,255,0.02)",
       }}
     >
-      {/* BRAND */}
       <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 18 }}>
         <div
           style={{
@@ -66,18 +75,29 @@ export default function Sidebar() {
         </div>
         <div>
           <div style={{ fontWeight: 950, fontSize: 16 }}>NaijaTax Guide</div>
-          <div style={{ color: "rgba(255,255,255,0.60)", fontSize: 12, marginTop: 2 }}>Web Portal</div>
+          <div
+            style={{
+              color: "rgba(255,255,255,0.60)",
+              fontSize: 12,
+              marginTop: 2,
+            }}
+          >
+            Web Portal
+          </div>
         </div>
       </div>
 
-      {/* NAV */}
       <div style={{ display: "grid", gap: 12 }}>
         {items.map((it) => (
-          <NavItem key={it.href} href={it.href} label={it.label} active={pathname === it.href} />
+          <NavItem
+            key={it.href}
+            href={it.href}
+            label={it.label}
+            active={pathname === it.href}
+          />
         ))}
       </div>
 
-      {/* LOGOUT */}
       <div style={{ marginTop: 18 }}>
         <button
           onClick={() => setToken(null)}
@@ -95,7 +115,14 @@ export default function Sidebar() {
           Logout
         </button>
 
-        <div style={{ marginTop: 10, color: "rgba(255,255,255,0.55)", fontSize: 12, lineHeight: 1.4 }}>
+        <div
+          style={{
+            marginTop: 10,
+            color: "rgba(255,255,255,0.55)",
+            fontSize: 12,
+            lineHeight: 1.4,
+          }}
+        >
           Clears your saved session token from this browser.
         </div>
       </div>
