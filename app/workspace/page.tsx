@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import AppShell from "@/components/app-shell";
 
 type WorkspacePlan = {
   active?: boolean;
@@ -155,9 +156,8 @@ async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
 
 const styles = {
   page: {
-    minHeight: "100vh",
-    background: "#f4f7fb",
-    padding: "24px 16px 48px",
+    minHeight: "100%",
+    background: "transparent",
     color: "#0f172a",
     fontFamily:
       'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
@@ -165,32 +165,6 @@ const styles = {
   container: {
     maxWidth: "1180px",
     margin: "0 auto",
-  } as React.CSSProperties,
-  hero: {
-    background: "#ffffff",
-    borderRadius: 24,
-    padding: 24,
-    boxShadow: "0 8px 24px rgba(15, 23, 42, 0.06)",
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: 16,
-    flexWrap: "wrap",
-    marginBottom: 20,
-  } as React.CSSProperties,
-  heroTitle: {
-    margin: 0,
-    fontSize: 44,
-    lineHeight: 1.05,
-    fontWeight: 800,
-    color: "#0b1533",
-  } as React.CSSProperties,
-  heroText: {
-    marginTop: 10,
-    fontSize: 18,
-    lineHeight: 1.6,
-    color: "#475569",
-    maxWidth: 760,
   } as React.CSSProperties,
   button: {
     border: "none",
@@ -652,346 +626,342 @@ export default function WorkspacePage() {
   }
 
   return (
-    <main style={styles.page}>
-      <div style={styles.container}>
-        <div style={styles.hero}>
-          <div>
-            <h1 style={styles.heroTitle}>Workspace</h1>
-            <div style={styles.heroText}>
-              Manage your owner account, workspace member slots, and current plan
-              limits from one place.
-            </div>
-          </div>
+    <AppShell
+      title="Workspace"
+      subtitle="Manage your owner account, workspace member slots, and current plan limits from one place."
+      actions={
+        <button
+          type="button"
+          onClick={() => void loadWorkspace(true)}
+          disabled={loading || refreshing}
+          style={{
+            ...styles.button,
+            ...(loading || refreshing ? styles.buttonDisabled : {}),
+          }}
+        >
+          {refreshing ? "Refreshing..." : "Refresh Status"}
+        </button>
+      }
+    >
+      <main style={styles.page}>
+        <div style={styles.container}>
+          {pageError ? <div style={styles.bannerError}>{pageError}</div> : null}
 
-          <button
-            type="button"
-            onClick={() => void loadWorkspace(true)}
-            disabled={loading || refreshing}
-            style={{
-              ...styles.button,
-              ...(loading || refreshing ? styles.buttonDisabled : {}),
-            }}
-          >
-            {refreshing ? "Refreshing..." : "Refresh Status"}
-          </button>
-        </div>
-
-        {pageError ? <div style={styles.bannerError}>{pageError}</div> : null}
-
-        {loading ? (
-          <div style={styles.loadingCard}>Loading workspace data...</div>
-        ) : (
-          <>
-            <section style={styles.grid4}>
-              <div style={styles.card}>
-                <div style={styles.label}>Current plan</div>
-                <h2 style={styles.bigTitle}>{plan?.name || "No active plan"}</h2>
-                <div style={styles.subText}>
-                  Family:{" "}
-                  <strong style={{ color: "#0f172a", textTransform: "capitalize" }}>
-                    {limits?.entitlements?.plan_family || plan?.plan_family || "—"}
-                  </strong>
-                </div>
-                <div style={styles.subText}>
-                  Code:{" "}
-                  <strong style={{ color: "#0f172a" }}>
-                    {limits?.entitlements?.plan_code || plan?.code || "—"}
-                  </strong>
-                </div>
-              </div>
-
-              <div style={styles.card}>
-                <div style={styles.label}>Workspace slots used</div>
-                <div style={styles.hugeValue}>
-                  {usedSlots}
-                  <span style={{ fontSize: 22, color: "#64748b", fontWeight: 600 }}>
-                    {" "}
-                    / {maxWorkspaceUsers || 0}
-                  </span>
-                </div>
-                <div style={styles.subText}>Owner included total</div>
-              </div>
-
-              <div style={styles.card}>
-                <div style={styles.label}>Additional members</div>
-                <div style={styles.hugeValue}>{memberOnlyCount}</div>
-                <div style={styles.subText}>Active members only</div>
-              </div>
-
-              <div style={styles.card}>
-                <div style={styles.label}>Available slots</div>
-                <div style={styles.hugeValue}>{availableSlots}</div>
-                <div style={styles.subText}>Remaining under this plan</div>
-              </div>
-            </section>
-
-            <section style={styles.grid3}>
-              <div style={styles.card}>
-                <h3 style={styles.sectionTitle}>Workspace limits</h3>
-                <div style={styles.statRow}>
-                  <span>Max workspace users</span>
-                  <span style={styles.statValue}>
-                    {workspaceLimits.max_workspace_users ?? 0}
-                  </span>
-                </div>
-                <div style={styles.statRow}>
-                  <span>Max linked web accounts</span>
-                  <span style={styles.statValue}>
-                    {workspaceLimits.max_linked_web_accounts ?? 0}
-                  </span>
-                </div>
-              </div>
-
-              <div style={styles.card}>
-                <h3 style={styles.sectionTitle}>Channel limits</h3>
-                <div style={styles.statRow}>
-                  <span>Total channels</span>
-                  <span style={styles.statValue}>
-                    {channelLimits.max_total_channels ?? 0}
-                  </span>
-                </div>
-                <div style={styles.statRow}>
-                  <span>WhatsApp channels</span>
-                  <span style={styles.statValue}>
-                    {channelLimits.max_whatsapp_channels ?? 0}
-                  </span>
-                </div>
-                <div style={styles.statRow}>
-                  <span>Telegram channels</span>
-                  <span style={styles.statValue}>
-                    {channelLimits.max_telegram_channels ?? 0}
-                  </span>
-                </div>
-              </div>
-
-              <div style={styles.card}>
-                <h3 style={styles.sectionTitle}>Workspace owner</h3>
-                <div style={styles.ownerBox}>
-                  <p style={styles.ownerName}>
-                    {owner?.display_name || owner?.email || "Owner account"}
-                  </p>
-                  <div style={styles.ownerMeta}>{owner?.email || "—"}</div>
-
-                  <div style={styles.miniLabel}>Role</div>
-                  <div style={styles.ownerMeta}>
-                    <strong style={{ color: "#0f172a" }}>Owner</strong>
+          {loading ? (
+            <div style={styles.loadingCard}>Loading workspace data...</div>
+          ) : (
+            <>
+              <section style={styles.grid4}>
+                <div style={styles.card}>
+                  <div style={styles.label}>Current plan</div>
+                  <h2 style={styles.bigTitle}>{plan?.name || "No active plan"}</h2>
+                  <div style={styles.subText}>
+                    Family:{" "}
+                    <strong style={{ color: "#0f172a", textTransform: "capitalize" }}>
+                      {limits?.entitlements?.plan_family || plan?.plan_family || "—"}
+                    </strong>
                   </div>
-
-                  <div style={styles.miniLabel}>Created</div>
-                  <div style={styles.ownerMeta}>{formatDate(owner?.created_at)}</div>
-                </div>
-              </div>
-            </section>
-
-            <section
-              style={{
-                ...styles.grid2,
-                gridTemplateColumns:
-                  typeof window !== "undefined" && window.innerWidth < 980
-                    ? "1fr"
-                    : "minmax(320px, 420px) minmax(0, 1fr)",
-              }}
-            >
-              <div style={styles.card}>
-                <h3 style={styles.sectionTitle}>Add member</h3>
-                <div style={styles.sectionText}>
-                  Enter the email address of an existing web account you want to add
-                  into this workspace.
+                  <div style={styles.subText}>
+                    Code:{" "}
+                    <strong style={{ color: "#0f172a" }}>
+                      {limits?.entitlements?.plan_code || plan?.code || "—"}
+                    </strong>
+                  </div>
                 </div>
 
-                <form onSubmit={handleAddMember}>
-                  <div style={styles.formGroup}>
-                    <label htmlFor="member_email" style={styles.formLabel}>
-                      Member email
-                    </label>
-                    <input
-                      id="member_email"
-                      type="email"
-                      value={memberEmail}
-                      onChange={(e) => setMemberEmail(e.target.value)}
-                      placeholder="user@example.com"
-                      disabled={hasNoAvailableSlots || submittingAdd}
-                      style={{
-                        ...styles.input,
-                        ...(hasNoAvailableSlots || submittingAdd ? styles.inputDisabled : {}),
-                      }}
-                    />
+                <div style={styles.card}>
+                  <div style={styles.label}>Workspace slots used</div>
+                  <div style={styles.hugeValue}>
+                    {usedSlots}
+                    <span style={{ fontSize: 22, color: "#64748b", fontWeight: 600 }}>
+                      {" "}
+                      / {maxWorkspaceUsers || 0}
+                    </span>
                   </div>
+                  <div style={styles.subText}>Owner included total</div>
+                </div>
 
-                  <div style={styles.formGroup}>
-                    <label htmlFor="member_role" style={styles.formLabel}>
-                      Role
-                    </label>
-                    <select
-                      id="member_role"
-                      value={role}
-                      onChange={(e) => setRole(e.target.value)}
-                      disabled={hasNoAvailableSlots || submittingAdd}
-                      style={{
-                        ...styles.select,
-                        ...(hasNoAvailableSlots || submittingAdd ? styles.selectDisabled : {}),
-                      }}
-                    >
-                      <option value="member">member</option>
-                    </select>
+                <div style={styles.card}>
+                  <div style={styles.label}>Additional members</div>
+                  <div style={styles.hugeValue}>{memberOnlyCount}</div>
+                  <div style={styles.subText}>Active members only</div>
+                </div>
+
+                <div style={styles.card}>
+                  <div style={styles.label}>Available slots</div>
+                  <div style={styles.hugeValue}>{availableSlots}</div>
+                  <div style={styles.subText}>Remaining under this plan</div>
+                </div>
+              </section>
+
+              <section style={styles.grid3}>
+                <div style={styles.card}>
+                  <h3 style={styles.sectionTitle}>Workspace limits</h3>
+                  <div style={styles.statRow}>
+                    <span>Max workspace users</span>
+                    <span style={styles.statValue}>
+                      {workspaceLimits.max_workspace_users ?? 0}
+                    </span>
                   </div>
+                  <div style={styles.statRow}>
+                    <span>Max linked web accounts</span>
+                    <span style={styles.statValue}>
+                      {workspaceLimits.max_linked_web_accounts ?? 0}
+                    </span>
+                  </div>
+                </div>
 
-                  {hasNoAvailableSlots ? (
-                    <div style={styles.warningBox}>
-                      <strong>Your current plan is full.</strong> Upgrade your plan or remove
-                      an existing member before adding another workspace user.
-                      <div style={styles.actionRow}>
-                        <a href="/billing" style={styles.buttonSecondary}>
-                          Go to Billing
-                        </a>
-                        <a href="/plans" style={styles.buttonSecondary}>
-                          View Plans
-                        </a>
-                      </div>
+                <div style={styles.card}>
+                  <h3 style={styles.sectionTitle}>Channel limits</h3>
+                  <div style={styles.statRow}>
+                    <span>Total channels</span>
+                    <span style={styles.statValue}>
+                      {channelLimits.max_total_channels ?? 0}
+                    </span>
+                  </div>
+                  <div style={styles.statRow}>
+                    <span>WhatsApp channels</span>
+                    <span style={styles.statValue}>
+                      {channelLimits.max_whatsapp_channels ?? 0}
+                    </span>
+                  </div>
+                  <div style={styles.statRow}>
+                    <span>Telegram channels</span>
+                    <span style={styles.statValue}>
+                      {channelLimits.max_telegram_channels ?? 0}
+                    </span>
+                  </div>
+                </div>
+
+                <div style={styles.card}>
+                  <h3 style={styles.sectionTitle}>Workspace owner</h3>
+                  <div style={styles.ownerBox}>
+                    <p style={styles.ownerName}>
+                      {owner?.display_name || owner?.email || "Owner account"}
+                    </p>
+                    <div style={styles.ownerMeta}>{owner?.email || "—"}</div>
+
+                    <div style={styles.miniLabel}>Role</div>
+                    <div style={styles.ownerMeta}>
+                      <strong style={{ color: "#0f172a" }}>Owner</strong>
                     </div>
-                  ) : null}
 
-                  {addMessage ? <div style={styles.successBox}>{addMessage}</div> : null}
-                  {addError ? <div style={styles.errorBox}>{addError}</div> : null}
-
-                  <button
-                    type="submit"
-                    disabled={submittingAdd || hasNoAvailableSlots}
-                    style={{
-                      ...styles.button,
-                      width: "100%",
-                      marginTop: 16,
-                      ...(submittingAdd || hasNoAvailableSlots ? styles.buttonDisabled : {}),
-                    }}
-                  >
-                    {submittingAdd
-                      ? "Adding member..."
-                      : hasNoAvailableSlots
-                      ? "No slots available"
-                      : "Add member"}
-                  </button>
-                </form>
-
-                <div style={styles.noteBox}>
-                  <div style={{ fontWeight: 700, color: "#0f172a", marginBottom: 6 }}>
-                    Current rule
+                    <div style={styles.miniLabel}>Created</div>
+                    <div style={styles.ownerMeta}>{formatDate(owner?.created_at)}</div>
                   </div>
-                  Your plan currently allows{" "}
-                  <strong style={{ color: "#0f172a" }}>
-                    {maxWorkspaceUsers || 0}
-                  </strong>{" "}
-                  total workspace user{maxWorkspaceUsers === 1 ? "" : "s"}, including
-                  the owner.
                 </div>
-              </div>
+              </section>
 
-              <div style={styles.card}>
-                <div style={styles.membersHeader}>
-                  <div>
-                    <h3 style={styles.sectionTitle}>Workspace members</h3>
-                    <div style={styles.sectionText}>
-                      Member accounts linked under this workspace owner.
+              <section
+                style={{
+                  ...styles.grid2,
+                  gridTemplateColumns:
+                    typeof window !== "undefined" && window.innerWidth < 980
+                      ? "1fr"
+                      : "minmax(320px, 420px) minmax(0, 1fr)",
+                }}
+              >
+                <div style={styles.card}>
+                  <h3 style={styles.sectionTitle}>Add member</h3>
+                  <div style={styles.sectionText}>
+                    Enter the email address of an existing web account you want to add
+                    into this workspace.
+                  </div>
+
+                  <form onSubmit={handleAddMember}>
+                    <div style={styles.formGroup}>
+                      <label htmlFor="member_email" style={styles.formLabel}>
+                        Member email
+                      </label>
+                      <input
+                        id="member_email"
+                        type="email"
+                        value={memberEmail}
+                        onChange={(e) => setMemberEmail(e.target.value)}
+                        placeholder="user@example.com"
+                        disabled={hasNoAvailableSlots || submittingAdd}
+                        style={{
+                          ...styles.input,
+                          ...(hasNoAvailableSlots || submittingAdd ? styles.inputDisabled : {}),
+                        }}
+                      />
                     </div>
-                  </div>
-                  <span style={styles.badge}>
-                    {memberOnlyCount} member{memberOnlyCount === 1 ? "" : "s"}
-                  </span>
-                </div>
 
-                {removeMessage ? (
-                  <div style={styles.successBox}>{removeMessage}</div>
-                ) : null}
-                {removeError ? <div style={styles.errorBox}>{removeError}</div> : null}
-
-                {members.length === 0 ? (
-                  <div style={styles.emptyBox}>
-                    No extra workspace members have been added yet.
-                  </div>
-                ) : (
-                  members.map((member) => {
-                    const display =
-                      member.member_display_name ||
-                      member.member_email ||
-                      member.member_provider_user_id ||
-                      member.member_account_id ||
-                      "Workspace member";
-
-                    return (
-                      <div
-                        key={member.member_account_id || member.id}
-                        style={styles.memberCard}
+                    <div style={styles.formGroup}>
+                      <label htmlFor="member_role" style={styles.formLabel}>
+                        Role
+                      </label>
+                      <select
+                        id="member_role"
+                        value={role}
+                        onChange={(e) => setRole(e.target.value)}
+                        disabled={hasNoAvailableSlots || submittingAdd}
+                        style={{
+                          ...styles.select,
+                          ...(hasNoAvailableSlots || submittingAdd ? styles.selectDisabled : {}),
+                        }}
                       >
-                        <div style={styles.memberHead}>
-                          <div>
-                            <p style={styles.memberName}>{display}</p>
-                            <div style={styles.memberEmail}>
-                              {member.member_email || "No email available"}
-                            </div>
+                        <option value="member">member</option>
+                      </select>
+                    </div>
 
-                            <div style={styles.memberGrid}>
-                              <div>
-                                <div style={styles.miniLabel}>Role</div>
-                                <div style={styles.ownerMeta}>
-                                  {member.role || "member"}
-                                </div>
-                              </div>
-                              <div>
-                                <div style={styles.miniLabel}>Status</div>
-                                <div style={styles.ownerMeta}>
-                                  {member.status || "active"}
-                                </div>
-                              </div>
-                              <div>
-                                <div style={styles.miniLabel}>Added</div>
-                                <div style={styles.ownerMeta}>
-                                  {formatDate(member.created_at)}
-                                </div>
-                              </div>
-                              <div>
-                                <div style={styles.miniLabel}>Member account ID</div>
-                                <div
-                                  style={{
-                                    ...styles.ownerMeta,
-                                    wordBreak: "break-all",
-                                  }}
-                                >
-                                  {member.member_account_id || "—"}
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-
-                          <button
-                            type="button"
-                            disabled={
-                              removingId === member.member_account_id ||
-                              !member.member_account_id
-                            }
-                            onClick={() =>
-                              void handleRemoveMember(member.member_account_id)
-                            }
-                            style={{
-                              ...styles.removeButton,
-                              ...(removingId === member.member_account_id ||
-                              !member.member_account_id
-                                ? styles.removeButtonDisabled
-                                : {}),
-                            }}
-                          >
-                            {removingId === member.member_account_id
-                              ? "Removing..."
-                              : "Remove"}
-                          </button>
+                    {hasNoAvailableSlots ? (
+                      <div style={styles.warningBox}>
+                        <strong>Your current plan is full.</strong> Upgrade your plan or remove
+                        an existing member before adding another workspace user.
+                        <div style={styles.actionRow}>
+                          <a href="/billing" style={styles.buttonSecondary}>
+                            Go to Billing
+                          </a>
+                          <a href="/plans" style={styles.buttonSecondary}>
+                            View Plans
+                          </a>
                         </div>
                       </div>
-                    );
-                  })
-                )}
-              </div>
-            </section>
-          </>
-        )}
-      </div>
-    </main>
+                    ) : null}
+
+                    {addMessage ? <div style={styles.successBox}>{addMessage}</div> : null}
+                    {addError ? <div style={styles.errorBox}>{addError}</div> : null}
+
+                    <button
+                      type="submit"
+                      disabled={submittingAdd || hasNoAvailableSlots}
+                      style={{
+                        ...styles.button,
+                        width: "100%",
+                        marginTop: 16,
+                        ...(submittingAdd || hasNoAvailableSlots ? styles.buttonDisabled : {}),
+                      }}
+                    >
+                      {submittingAdd
+                        ? "Adding member..."
+                        : hasNoAvailableSlots
+                        ? "No slots available"
+                        : "Add member"}
+                    </button>
+                  </form>
+
+                  <div style={styles.noteBox}>
+                    <div style={{ fontWeight: 700, color: "#0f172a", marginBottom: 6 }}>
+                      Current rule
+                    </div>
+                    Your plan currently allows{" "}
+                    <strong style={{ color: "#0f172a" }}>
+                      {maxWorkspaceUsers || 0}
+                    </strong>{" "}
+                    total workspace user{maxWorkspaceUsers === 1 ? "" : "s"}, including
+                    the owner.
+                  </div>
+                </div>
+
+                <div style={styles.card}>
+                  <div style={styles.membersHeader}>
+                    <div>
+                      <h3 style={styles.sectionTitle}>Workspace members</h3>
+                      <div style={styles.sectionText}>
+                        Member accounts linked under this workspace owner.
+                      </div>
+                    </div>
+                    <span style={styles.badge}>
+                      {memberOnlyCount} member{memberOnlyCount === 1 ? "" : "s"}
+                    </span>
+                  </div>
+
+                  {removeMessage ? (
+                    <div style={styles.successBox}>{removeMessage}</div>
+                  ) : null}
+                  {removeError ? <div style={styles.errorBox}>{removeError}</div> : null}
+
+                  {members.length === 0 ? (
+                    <div style={styles.emptyBox}>
+                      No extra workspace members have been added yet.
+                    </div>
+                  ) : (
+                    members.map((member) => {
+                      const display =
+                        member.member_display_name ||
+                        member.member_email ||
+                        member.member_provider_user_id ||
+                        member.member_account_id ||
+                        "Workspace member";
+
+                      return (
+                        <div
+                          key={member.member_account_id || member.id}
+                          style={styles.memberCard}
+                        >
+                          <div style={styles.memberHead}>
+                            <div>
+                              <p style={styles.memberName}>{display}</p>
+                              <div style={styles.memberEmail}>
+                                {member.member_email || "No email available"}
+                              </div>
+
+                              <div style={styles.memberGrid}>
+                                <div>
+                                  <div style={styles.miniLabel}>Role</div>
+                                  <div style={styles.ownerMeta}>
+                                    {member.role || "member"}
+                                  </div>
+                                </div>
+                                <div>
+                                  <div style={styles.miniLabel}>Status</div>
+                                  <div style={styles.ownerMeta}>
+                                    {member.status || "active"}
+                                  </div>
+                                </div>
+                                <div>
+                                  <div style={styles.miniLabel}>Added</div>
+                                  <div style={styles.ownerMeta}>
+                                    {formatDate(member.created_at)}
+                                  </div>
+                                </div>
+                                <div>
+                                  <div style={styles.miniLabel}>Member account ID</div>
+                                  <div
+                                    style={{
+                                      ...styles.ownerMeta,
+                                      wordBreak: "break-all",
+                                    }}
+                                  >
+                                    {member.member_account_id || "—"}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            <button
+                              type="button"
+                              disabled={
+                                removingId === member.member_account_id ||
+                                !member.member_account_id
+                              }
+                              onClick={() =>
+                                void handleRemoveMember(member.member_account_id)
+                              }
+                              style={{
+                                ...styles.removeButton,
+                                ...(removingId === member.member_account_id ||
+                                !member.member_account_id
+                                  ? styles.removeButtonDisabled
+                                  : {}),
+                              }}
+                            >
+                              {removingId === member.member_account_id
+                                ? "Removing..."
+                                : "Remove"}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </section>
+            </>
+          )}
+        </div>
+      </main>
+    </AppShell>
   );
 }
