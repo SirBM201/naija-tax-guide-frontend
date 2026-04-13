@@ -1,8 +1,10 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
+import { apiJson, isApiError } from "@/lib/api";
+import { CONFIG } from "@/lib/config";
 import AppShell from "@/components/app-shell";
 import WorkspaceActionBar from "@/components/workspace-action-bar";
 import WorkspaceSectionCard from "@/components/workspace-section-card";
@@ -54,10 +56,49 @@ type DisplayHistoryItem = {
   from_cache?: boolean;
 };
 
+type HistoryStats = {
+  ok?: boolean;
+  backend_history_available?: boolean;
+  continuity_state?: string;
+  daily_usage?: number;
+  expires_at?: string | null;
+  filtered_results?: number;
+  newest_item?: string | null;
+  oldest_item?: string | null;
+  saved_items?: number;
+  source_counts?: {
+    web?: number;
+    whatsapp?: number;
+    telegram?: number;
+  };
+  storage_mode?: string;
+};
+
 type HistoryApiResponse = {
   ok: boolean;
   items?: BackendHistoryItem[];
+  history?: BackendHistoryItem[];
+  results?: BackendHistoryItem[];
   count?: number;
+  total?: number;
+  limit?: number;
+  offset?: number;
+  account_id?: string;
+  backend_history_available?: boolean;
+  fallback_mode?: boolean;
+  storage_mode?: string;
+  stats?: HistoryStats;
+  summary?: HistoryStats;
+  error?: string;
+  message?: string;
+  root_cause?: string;
+};
+
+type HistoryHealthResponse = {
+  ok?: boolean;
+  backend_history_available?: boolean;
+  storage_mode?: string;
+  table?: string;
   error?: string;
   message?: string;
   root_cause?: string;
@@ -79,24 +120,6 @@ type PageAlert = {
 
 type HistoryMode = "backend" | "local";
 
-function resolveApiBase(): string {
-  const envBase = (
-    process.env.NEXT_PUBLIC_API_BASE ||
-    process.env.NEXT_PUBLIC_API_URL ||
-    ""
-  ).trim();
-
-  if (envBase) {
-    return envBase.replace(/\/+$/, "");
-  }
-
-  if (typeof window !== "undefined") {
-    return window.location.origin.replace(/\/+$/, "");
-  }
-
-  return "";
-}
-
 function buildAuthHeaders(): Record<string, string> {
   const headers: Record<string, string> = {};
 
@@ -110,59 +133,101 @@ function buildAuthHeaders(): Record<string, string> {
   return headers;
 }
 
-async function fetchHistoryItems(params?: {
+function apiRoot(): string {
+  return String(CONFIG.apiBase || "").trim().replace(/\/+$/, "");
+}
+
+async function fetchHistoryHealth(): Promise<HistoryHealthResponse> {
+  try {
+    return await apiJson<HistoryHealthResponse>("/history/health", {
+      method: "GET",
+      timeoutMs: 15000,
+      useAuthToken: false,
+    });
+  } catch (err: unknown) {
+    if (isApiError(err)) {
+      return {
+        ok: false,
+        error: String(err.data?.error || "history_health_failed"),
+        message:
+          String(err.data?.message || err.data?.root_cause || err.message || "").trim() ||
+          "History health check failed.",
+        root_cause: String(err.data?.root_cause || "").trim() || undefined,
+      };
+    }
+
+    return {
+      ok: false,
+      error: "history_health_failed",
+      message: err instanceof Error ? err.message : "History health check failed.",
+    };
+  }
+}
+
+function extractBackendItems(data: HistoryApiResponse | null | undefined): BackendHistoryItem[] {
+  if (!data) return [];
+  if (Array.isArray(data.items)) return data.items;
+  if (Array.isArray(data.history)) return data.history;
+  if (Array.isArray(data.results)) return data.results;
+  return [];
+}
+
+async function fetchHistoryItems(params: {
+  accountId: string;
   source?: string;
   q?: string;
   limit?: number;
 }): Promise<HistoryApiResponse> {
-  const apiBase = resolveApiBase();
-  const url = new URL(`${apiBase}/api/history`);
-
-  if (params?.source && params.source !== "all") {
-    url.searchParams.set("source", params.source);
+  if (!String(params.accountId || "").trim()) {
+    return {
+      ok: false,
+      error: "missing_account_id",
+      message: "No account ID is available yet for backend history lookup.",
+    };
   }
-  if (params?.q) {
-    url.searchParams.set("q", params.q);
-  }
-  url.searchParams.set("limit", String(params?.limit || 50));
 
-  const res = await fetch(url.toString(), {
-    method: "GET",
-    headers: buildAuthHeaders(),
-    credentials: "include",
-  });
-
-  let data: HistoryApiResponse | null = null;
   try {
-    data = (await res.json()) as HistoryApiResponse;
-  } catch {
-    data = null;
-  }
-
-  if (!res.ok) {
-    return (
-      data || {
+    return await apiJson<HistoryApiResponse>("/history/items", {
+      method: "GET",
+      timeoutMs: 20000,
+      useAuthToken: false,
+      query: {
+        account_id: params.accountId,
+        source: params.source && params.source !== "all" ? params.source : undefined,
+        q: params.q?.trim() || undefined,
+        limit: params.limit || 50,
+      },
+    });
+  } catch (err: unknown) {
+    if (isApiError(err)) {
+      return {
         ok: false,
-        error: "history_fetch_failed",
-        message: `Failed with status ${res.status}`,
-      }
-    );
-  }
+        error: String(err.data?.error || "history_fetch_failed"),
+        message:
+          String(err.data?.message || err.data?.root_cause || err.message || "").trim() ||
+          "History fetch failed.",
+        root_cause: String(err.data?.root_cause || "").trim() || undefined,
+      };
+    }
 
-  return data || {
-    ok: false,
-    error: "invalid_response",
-    message: "Invalid history response.",
-  };
+    return {
+      ok: false,
+      error: "history_fetch_failed",
+      message: err instanceof Error ? err.message : "History fetch failed.",
+    };
+  }
 }
 
-async function deleteBackendHistoryItem(id: string): Promise<boolean> {
-  const apiBase = resolveApiBase();
+async function deleteBackendHistoryItem(id: string, accountId: string): Promise<boolean> {
   const headers = buildAuthHeaders();
+  const root = apiRoot();
+
+  if (!root) return false;
 
   const candidates = [
-    `${apiBase}/api/history/${encodeURIComponent(id)}`,
-    `${apiBase}/api/history?id=${encodeURIComponent(id)}`,
+    `${root}/history/${encodeURIComponent(id)}?account_id=${encodeURIComponent(accountId)}`,
+    `${root}/history/item/${encodeURIComponent(id)}?account_id=${encodeURIComponent(accountId)}`,
+    `${root}/history?id=${encodeURIComponent(id)}&account_id=${encodeURIComponent(accountId)}`,
   ];
 
   for (const candidate of candidates) {
@@ -173,24 +238,24 @@ async function deleteBackendHistoryItem(id: string): Promise<boolean> {
         credentials: "include",
       });
 
-      if (res.ok) {
-        return true;
-      }
+      if (res.ok) return true;
     } catch {
-      // keep trying fallbacks
+      // try next candidate
     }
   }
 
   return false;
 }
 
-async function clearBackendHistory(): Promise<boolean> {
-  const apiBase = resolveApiBase();
+async function clearBackendHistory(accountId: string): Promise<boolean> {
   const headers = buildAuthHeaders();
+  const root = apiRoot();
+
+  if (!root) return false;
 
   const candidates = [
-    `${apiBase}/api/history/clear`,
-    `${apiBase}/api/history?all=1`,
+    `${root}/history/clear?account_id=${encodeURIComponent(accountId)}`,
+    `${root}/history?all=1&account_id=${encodeURIComponent(accountId)}`,
   ];
 
   for (const candidate of candidates) {
@@ -201,11 +266,9 @@ async function clearBackendHistory(): Promise<boolean> {
         credentials: "include",
       });
 
-      if (res.ok) {
-        return true;
-      }
+      if (res.ok) return true;
     } catch {
-      // keep trying fallbacks
+      // try next candidate
     }
   }
 
@@ -342,7 +405,9 @@ function persistLocalHistoryItems(items: DisplayHistoryItem[]): boolean {
   }
 }
 
-function actionButtonStyle(tone: "default" | "primary" | "danger" = "default"): React.CSSProperties {
+function actionButtonStyle(
+  tone: "default" | "primary" | "danger" = "default"
+): React.CSSProperties {
   const tones: Record<string, React.CSSProperties> = {
     default: {
       border: "1px solid var(--border-strong)",
@@ -587,61 +652,124 @@ export default function HistoryPage() {
     loadingMessage: "Loading history workspace...",
   });
 
-  const loadHistoryWorkspace = async (message = "Loading history workspace...") => {
-    await load(message);
+  const fallbackToLocalHistory = useCallback(
+    (notice?: HistoryNotice) => {
+      const localItems = readLocalHistoryItems();
+      setHistoryItems(localItems);
+      setHistoryMode("local");
+      if (notice) {
+        setHistoryNotice(notice);
+      }
+    },
+    []
+  );
 
-    try {
+  const refreshHistoryFromBackend = useCallback(
+    async (
+      nextSearch?: string,
+      nextSource?: string,
+      suppressMissingAccountNotice = false
+    ) => {
       setLoadingHistory(true);
       setHistoryNotice(null);
 
-      const result = await fetchHistoryItems({
-        source: sourceFilter,
-        q: search.trim(),
-        limit: 50,
-      });
+      try {
+        const health = await fetchHistoryHealth();
 
-      if (result.ok && Array.isArray(result.items)) {
-        setHistoryItems(result.items.map(mapBackendItem));
-        setHistoryMode("backend");
-        return;
-      }
+        if (!health.ok || health.backend_history_available !== true) {
+          fallbackToLocalHistory({
+            title: "Backend history unavailable",
+            subtitle:
+              String(
+                health.message ||
+                  health.root_cause ||
+                  "Falling back to local history storage because backend history is not yet fully available."
+              ).trim(),
+            tone: "warn",
+          });
+          return;
+        }
 
-      const localItems = readLocalHistoryItems();
-      setHistoryItems(localItems);
-      setHistoryMode("local");
+        const effectiveAccountId = String(accountId || "").trim();
 
-      if (result.error) {
-        setHistoryNotice({
+        if (!effectiveAccountId) {
+          fallbackToLocalHistory(
+            suppressMissingAccountNotice
+              ? undefined
+              : {
+                  title: "History account not ready",
+                  subtitle:
+                    "The workspace account is still loading, so backend history cannot be read yet. Refresh again after account details are ready.",
+                  tone: "warn",
+                }
+          );
+          return;
+        }
+
+        const result = await fetchHistoryItems({
+          accountId: effectiveAccountId,
+          source: nextSource ?? sourceFilter,
+          q: nextSearch ?? search.trim(),
+          limit: 50,
+        });
+
+        const rows = extractBackendItems(result);
+        const backendStorage =
+          String(result.storage_mode || result.summary?.storage_mode || health.storage_mode || "")
+            .trim()
+            .toLowerCase() === "backend";
+
+        if (result.ok && backendStorage) {
+          setHistoryItems(rows.map(mapBackendItem));
+          setHistoryMode("backend");
+          return;
+        }
+
+        fallbackToLocalHistory({
           title: "Backend history unavailable",
           subtitle:
-            result.message ||
-            result.root_cause ||
-            "Falling back to local history storage because backend history is not yet fully available.",
+            String(
+              result.message ||
+                result.root_cause ||
+                "Falling back to local history storage because backend history is not yet fully available."
+            ).trim(),
           tone: "warn",
         });
+      } catch (err: unknown) {
+        fallbackToLocalHistory({
+          title: "History fallback in use",
+          subtitle:
+            err instanceof Error
+              ? err.message
+              : "A backend history error occurred, so local history storage is being shown instead.",
+          tone: "warn",
+        });
+      } finally {
+        setLoadingHistory(false);
       }
-    } catch (err: unknown) {
-      const localItems = readLocalHistoryItems();
-      setHistoryItems(localItems);
-      setHistoryMode("local");
+    },
+    [accountId, fallbackToLocalHistory, search, sourceFilter]
+  );
 
-      setHistoryNotice({
-        title: "History fallback in use",
-        subtitle:
-          err instanceof Error
-            ? err.message
-            : "A backend history error occurred, so local history storage is being shown instead.",
-        tone: "warn",
-      });
-    } finally {
-      setLoadingHistory(false);
-    }
-  };
+  const loadHistoryWorkspace = useCallback(
+    async (message = "Loading history workspace...") => {
+      await load(message);
+
+      if (String(accountId || "").trim()) {
+        await refreshHistoryFromBackend();
+      }
+    },
+    [load, accountId, refreshHistoryFromBackend]
+  );
 
   useEffect(() => {
     void loadHistoryWorkspace();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [loadHistoryWorkspace]);
+
+  useEffect(() => {
+    if (!String(accountId || "").trim()) return;
+    void refreshHistoryFromBackend(undefined, undefined, true);
+  }, [accountId, refreshHistoryFromBackend]);
 
   const alerts = useMemo<PageAlert[]>(() => {
     const items: PageAlert[] = [];
@@ -781,7 +909,19 @@ export default function HistoryPage() {
 
     try {
       if (historyMode === "backend") {
-        const ok = await deleteBackendHistoryItem(item.id);
+        const effectiveAccountId = String(accountId || "").trim();
+
+        if (!effectiveAccountId) {
+          setHistoryNotice({
+            title: "Account ID not ready",
+            subtitle:
+              "Backend delete could not continue because the workspace account ID is not available yet.",
+            tone: "warn",
+          });
+          return;
+        }
+
+        const ok = await deleteBackendHistoryItem(item.id, effectiveAccountId);
 
         if (!ok) {
           setHistoryNotice({
@@ -837,7 +977,19 @@ export default function HistoryPage() {
 
     try {
       if (historyMode === "backend") {
-        const ok = await clearBackendHistory();
+        const effectiveAccountId = String(accountId || "").trim();
+
+        if (!effectiveAccountId) {
+          setHistoryNotice({
+            title: "Account ID not ready",
+            subtitle:
+              "Backend clear-all could not continue because the workspace account ID is not available yet.",
+            tone: "warn",
+          });
+          return;
+        }
+
+        const ok = await clearBackendHistory(effectiveAccountId);
 
         if (!ok) {
           setHistoryNotice({
@@ -1011,11 +1163,17 @@ export default function HistoryPage() {
               <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
                 <button
                   onClick={() => {
-                    void loadHistoryWorkspace("Refreshing filtered history...");
+                    void refreshHistoryFromBackend(search.trim(), sourceFilter);
                   }}
                   disabled={loadingHistory || busy || deletingId !== null || clearingAll}
                   style={{
-                    ...actionButtonStyle("primary"),
+                    padding: "12px 16px",
+                    borderRadius: 14,
+                    fontWeight: 900,
+                    cursor: "pointer",
+                    border: "1px solid var(--brand-border)",
+                    background: "var(--button-bg)",
+                    color: "var(--text)",
                     opacity:
                       loadingHistory || busy || deletingId !== null || clearingAll ? 0.6 : 1,
                   }}
@@ -1047,7 +1205,9 @@ export default function HistoryPage() {
                   fontSize: 14,
                 }}
               >
-                History is part of user continuity. It should help users return to previous tax guidance, compare earlier answers, reopen a saved item back into Ask, and remove items that are no longer useful.
+                History is part of user continuity. It should help users return to previous tax
+                guidance, compare earlier answers, reopen a saved item back into Ask, and remove
+                items that are no longer useful.
               </div>
             </div>
           </WorkspaceSectionCard>
