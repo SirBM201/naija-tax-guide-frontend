@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { apiJson, isApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -133,11 +133,6 @@ function safeText(value: unknown, fallback = "—") {
   return text || fallback;
 }
 
-function safeNumber(value: unknown) {
-  const num = Number(value ?? 0);
-  return Number.isFinite(num) ? num : 0;
-}
-
 function truthyValue(value: unknown): boolean {
   if (typeof value === "boolean") return value;
   if (typeof value === "number") return value > 0;
@@ -233,20 +228,6 @@ function metricCardStyle(
     display: "grid",
     gap: 8,
     ...toneForMetric(tone),
-  };
-}
-
-function pillButtonStyle(active = false): React.CSSProperties {
-  return {
-    minHeight: 54,
-    padding: "0 22px",
-    borderRadius: 18,
-    border: active ? "1px solid var(--accent-border)" : "1px solid var(--border-strong)",
-    background: active ? "var(--button-bg-strong)" : "var(--button-bg)",
-    color: "var(--text)",
-    fontWeight: 900,
-    fontSize: 16,
-    cursor: "pointer",
   };
 }
 
@@ -387,9 +368,7 @@ function parseAnswer(rawAnswer: string): ParsedAnswer {
   }
 
   if (!lead) {
-    lead = sections.length
-      ? sections[0].lines[0]
-      : raw.replace(/\n+/g, " ").trim();
+    lead = sections.length ? sections[0].lines[0] : raw.replace(/\n+/g, " ").trim();
   }
 
   return {
@@ -441,9 +420,32 @@ function AttentionCard({
   );
 }
 
-export default function AskPage() {
+function AskPageFallback() {
+  return (
+    <AppShell
+      title="Ask Naija Tax Guide"
+      subtitle="Ask a practical Nigerian tax question and get a structured response inside your workspace."
+    >
+      <div style={{ display: "grid", gap: 20 }}>
+        <div style={pageCardStyle()}>
+          <div
+            style={{
+              fontSize: 18,
+              fontWeight: 900,
+              color: "var(--text)",
+            }}
+          >
+            Loading ask page...
+          </div>
+        </div>
+      </div>
+    </AppShell>
+  );
+}
+
+function AskPageContent() {
   const router = useRouter();
-  const sp = useSearchParams();
+  const searchParams = useSearchParams();
   const { refreshSession } = useAuth();
   const answerRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -479,12 +481,12 @@ export default function AskPage() {
   const busy = workspaceBusy || submitting;
 
   useEffect(() => {
-    const q = (sp?.get("q") || sp?.get("question") || "").trim();
-    const lang = (sp?.get("lang") || "").trim();
+    const q = (searchParams?.get("q") || searchParams?.get("question") || "").trim();
+    const lang = (searchParams?.get("lang") || "").trim();
 
     if (q) setQuestion(q);
     if (lang) setLanguage(normalizeLanguageLabel(lang));
-  }, [sp]);
+  }, [searchParams]);
 
   const parsed = useMemo(() => parseAnswer(answer), [answer]);
 
@@ -785,17 +787,11 @@ export default function AskPage() {
             Refresh
           </button>
 
-          <button
-            onClick={() => router.push("/plans")}
-            style={secondaryButtonStyle(false)}
-          >
+          <button onClick={() => router.push("/plans")} style={secondaryButtonStyle(false)}>
             Plans
           </button>
 
-          <button
-            onClick={() => router.push("/credits")}
-            style={secondaryButtonStyle(false)}
-          >
+          <button onClick={() => router.push("/credits")} style={secondaryButtonStyle(false)}>
             Credits
           </button>
         </div>
@@ -841,7 +837,7 @@ export default function AskPage() {
                         letterSpacing: 0.5,
                       }}
                     >
-                      Plan
+                      PLAN
                     </div>
                     <div
                       style={{
@@ -864,7 +860,7 @@ export default function AskPage() {
                         letterSpacing: 0.5,
                       }}
                     >
-                      Credits
+                      CREDITS
                     </div>
                     <div
                       style={{
@@ -887,7 +883,7 @@ export default function AskPage() {
                         letterSpacing: 0.5,
                       }}
                     >
-                      Daily left
+                      DAILY LEFT
                     </div>
                     <div
                       style={{
@@ -904,9 +900,7 @@ export default function AskPage() {
                 <div
                   style={{
                     maxWidth: 240,
-                    ...metricCardStyle(
-                      channelSummary === "No channel linked" ? "default" : "good"
-                    ),
+                    ...metricCardStyle(channelSummary === "No channel linked" ? "default" : "good"),
                   }}
                 >
                   <div
@@ -918,7 +912,7 @@ export default function AskPage() {
                       letterSpacing: 0.5,
                     }}
                   >
-                    Channels
+                    CHANNELS
                   </div>
                   <div
                     style={{
@@ -1004,11 +998,7 @@ export default function AskPage() {
                     {submitting ? "Asking..." : "Ask Question"}
                   </button>
 
-                  <button
-                    onClick={handleClear}
-                    style={secondaryButtonStyle(busy)}
-                    disabled={busy}
-                  >
+                  <button onClick={handleClear} style={secondaryButtonStyle(busy)} disabled={busy}>
                     Clear
                   </button>
                 </div>
@@ -1095,9 +1085,7 @@ export default function AskPage() {
                     }}
                   >
                     <div style={chipStyle()}>Latest answer</div>
-                    <div style={chipStyle()}>
-                      Question: {latestQuestionLabel}
-                    </div>
+                    <div style={chipStyle()}>Question: {latestQuestionLabel}</div>
                   </div>
 
                   <div
@@ -1179,8 +1167,7 @@ export default function AskPage() {
                           lineHeight: 1.8,
                         }}
                       >
-                        <strong style={{ color: "var(--text)" }}>Source:</strong>{" "}
-                        {parsed.source}
+                        <strong style={{ color: "var(--text)" }}>Source:</strong> {parsed.source}
                       </div>
                     ) : null}
 
@@ -1348,5 +1335,13 @@ export default function AskPage() {
         </div>
       </div>
     </AppShell>
+  );
+}
+
+export default function AskPage() {
+  return (
+    <Suspense fallback={<AskPageFallback />}>
+      <AskPageContent />
+    </Suspense>
   );
 }
