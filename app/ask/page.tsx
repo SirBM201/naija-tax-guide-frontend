@@ -1,20 +1,11 @@
 "use client";
 
-import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { apiJson, isApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import AppShell from "@/components/app-shell";
-import WorkspaceActionBar from "@/components/workspace-action-bar";
-import WorkspaceSectionCard from "@/components/workspace-section-card";
-import {
-  Banner,
-  appInputStyle,
-  appSelectStyle,
-  appTextareaStyle,
-} from "@/components/ui";
-import { SectionStack } from "@/components/page-layout";
-import { HistoryItem, saveHistoryItem } from "@/lib/history-storage";
+import { type HistoryItem, saveHistoryItem } from "@/lib/history-storage";
 import { useWorkspaceState } from "@/hooks/useWorkspaceState";
 
 type AskResp = {
@@ -35,9 +26,15 @@ type AskResp = {
   clarification_prompt?: string;
 };
 
+type StarterGroup = {
+  title: string;
+  questions: string[];
+};
+
 type AnswerSection = {
   title: string;
-  body: string;
+  lines: string[];
+  ordered?: boolean;
 };
 
 type ParsedAnswer = {
@@ -48,18 +45,12 @@ type ParsedAnswer = {
 
 const SHOW_ASK_DEBUG = process.env.NEXT_PUBLIC_SHOW_ASK_DEBUG === "true";
 
-const LANGUAGE_OPTIONS = [
-  { label: "English", value: "English" },
-  { label: "Pidgin", value: "Pidgin" },
-  { label: "Yoruba", value: "Yoruba" },
-  { label: "Igbo", value: "Igbo" },
-  { label: "Hausa", value: "Hausa" },
-];
+const LANGUAGE_OPTIONS = ["English", "Pidgin", "Yoruba", "Igbo", "Hausa"];
 
-const STARTER_GROUPS: Array<{ title: string; items: string[] }> = [
+const STARTER_GROUPS: StarterGroup[] = [
   {
-    title: "Personal Income Tax",
-    items: [
+    title: "PERSONAL INCOME TAX",
+    questions: [
       "what is personal income tax?",
       "what is the personal income tax rate?",
       "which tax authority handles personal income tax?",
@@ -67,7 +58,7 @@ const STARTER_GROUPS: Array<{ title: string; items: string[] }> = [
   },
   {
     title: "PAYE",
-    items: [
+    questions: [
       "what is paye?",
       "who must deduct paye?",
       "how do i remit paye?",
@@ -75,22 +66,22 @@ const STARTER_GROUPS: Array<{ title: string; items: string[] }> = [
   },
   {
     title: "VAT",
-    items: [
+    questions: [
       "how do i register for vat?",
       "how do i file vat?",
       "how do i pay vat?",
     ],
   },
   {
-    title: "Withholding Tax",
-    items: [
+    title: "WITHHOLDING TAX",
+    questions: [
       "what is the withholding tax rate?",
       "how do i remit withholding tax?",
     ],
   },
   {
-    title: "Company Income Tax",
-    items: [
+    title: "COMPANY INCOME TAX",
+    questions: [
       "what is the company income tax rate?",
       "how do i file company income tax?",
       "how do i pay company income tax?",
@@ -99,7 +90,7 @@ const STARTER_GROUPS: Array<{ title: string; items: string[] }> = [
 ];
 
 function languageToCode(label: string) {
-  const v = (label || "").trim().toLowerCase();
+  const v = String(label || "").trim().toLowerCase();
   if (v === "english") return "en";
   if (v === "pidgin") return "pcm";
   if (v === "yoruba") return "yo";
@@ -118,9 +109,33 @@ function normalizeLanguageLabel(value: string) {
   return "English";
 }
 
-function normalizeText(value: unknown): string {
-  if (typeof value !== "string") return "";
-  return value.trim();
+function normalizeText(value: unknown) {
+  return String(value || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\u00a0/g, " ")
+    .trim();
+}
+
+function sanitizeAnswerForDisplay(value: string) {
+  return normalizeText(value)
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function safeText(value: unknown, fallback = "—") {
+  const text =
+    typeof value === "string"
+      ? value.trim()
+      : value == null
+      ? ""
+      : String(value).trim();
+  return text || fallback;
+}
+
+function safeNumber(value: unknown) {
+  const num = Number(value ?? 0);
+  return Number.isFinite(num) ? num : 0;
 }
 
 function truthyValue(value: unknown): boolean {
@@ -128,119 +143,253 @@ function truthyValue(value: unknown): boolean {
   if (typeof value === "number") return value > 0;
   if (typeof value === "string") {
     const raw = value.trim().toLowerCase();
-    return [
-      "1",
-      "true",
-      "yes",
-      "active",
-      "linked",
-      "enabled",
-      "paid",
-      "verified",
-    ].includes(raw);
+    return ["1", "true", "yes", "linked", "active", "enabled", "paid"].includes(raw);
   }
   return false;
 }
 
-function prettifyPlanName(value: string | null | undefined): string {
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+}
+
+function readPath(root: unknown, path: string[]): unknown {
+  let cursor: unknown = root;
+  for (const key of path) {
+    const record = asRecord(cursor);
+    if (!record) return undefined;
+    cursor = record[key];
+  }
+  return cursor;
+}
+
+function titleFromCode(value: string, fallback = "Free") {
   const raw = String(value || "").trim();
-  if (!raw) return "Free";
+  if (!raw) return fallback;
   return raw
     .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
     .replace(/\b\w/g, (m) => m.toUpperCase());
 }
 
-function looksLikeBrokenAnswer(text: string): boolean {
-  const raw = String(text || "").toLowerCase();
-  if (!raw.trim()) return true;
+function toneForMetric(
+  tone: "default" | "good" | "warn" | "danger" = "default"
+): React.CSSProperties {
+  if (tone === "good") {
+    return {
+      border: "1px solid var(--success-border)",
+      background: "var(--success-bg)",
+    };
+  }
 
-  const badSignals = [
-    "candidate 1",
-    "candidate 2",
-    "candidate 3",
-    "grounded basis",
-    "grounding context",
-    "grounding summary",
-    "strict rules",
-    "question classification",
-    "trust_score",
-    "similarity",
-    "match_type",
-    "invalid_api_key",
-    "incorrect api key provided",
-    "sk-proj-",
-    "you are answering as",
-    "no evidence provided",
-  ];
+  if (tone === "warn") {
+    return {
+      border: "1px solid var(--warn-border)",
+      background: "var(--warn-bg)",
+    };
+  }
 
-  return badSignals.some((signal) => raw.includes(signal));
+  if (tone === "danger") {
+    return {
+      border: "1px solid var(--danger-border)",
+      background: "var(--danger-bg)",
+    };
+  }
+
+  return {
+    border: "1px solid var(--border)",
+    background: "var(--surface)",
+  };
 }
 
-function sanitizeAnswerForDisplay(text: string): string {
-  const raw = String(text || "").trim();
-  if (!raw) return "";
-  if (looksLikeBrokenAnswer(raw)) return "";
-  return raw;
+function pageCardStyle(extra?: React.CSSProperties): React.CSSProperties {
+  return {
+    borderRadius: 28,
+    border: "1px solid var(--border)",
+    background: "var(--panel-bg)",
+    padding: 28,
+    boxShadow: "0 10px 34px rgba(15, 23, 42, 0.04)",
+    ...extra,
+  };
 }
 
-function cleanLineEndings(value: string): string {
-  return String(value || "").replace(/\r\n/g, "\n").trim();
+function innerCardStyle(extra?: React.CSSProperties): React.CSSProperties {
+  return {
+    borderRadius: 22,
+    border: "1px solid var(--border)",
+    background: "var(--surface)",
+    padding: 22,
+    ...extra,
+  };
 }
 
-function parseStructuredAnswer(text: string): ParsedAnswer {
-  const raw = cleanLineEndings(text);
+function metricCardStyle(
+  tone: "default" | "good" | "warn" | "danger" = "default"
+): React.CSSProperties {
+  return {
+    borderRadius: 22,
+    padding: 18,
+    minHeight: 112,
+    display: "grid",
+    gap: 8,
+    ...toneForMetric(tone),
+  };
+}
+
+function pillButtonStyle(active = false): React.CSSProperties {
+  return {
+    minHeight: 54,
+    padding: "0 22px",
+    borderRadius: 18,
+    border: active ? "1px solid var(--accent-border)" : "1px solid var(--border-strong)",
+    background: active ? "var(--button-bg-strong)" : "var(--button-bg)",
+    color: "var(--text)",
+    fontWeight: 900,
+    fontSize: 16,
+    cursor: "pointer",
+  };
+}
+
+function secondaryButtonStyle(disabled = false): React.CSSProperties {
+  return {
+    minHeight: 56,
+    padding: "0 26px",
+    borderRadius: 18,
+    border: "1px solid var(--border-strong)",
+    background: disabled ? "var(--surface-soft)" : "var(--button-bg)",
+    color: disabled ? "var(--text-faint)" : "var(--text)",
+    fontWeight: 900,
+    fontSize: 16,
+    cursor: disabled ? "not-allowed" : "pointer",
+    opacity: disabled ? 0.7 : 1,
+  };
+}
+
+function primaryButtonStyle(disabled = false): React.CSSProperties {
+  return {
+    minHeight: 56,
+    padding: "0 26px",
+    borderRadius: 18,
+    border: "1px solid var(--accent-border)",
+    background: disabled ? "var(--surface-soft)" : "var(--button-bg-strong)",
+    color: disabled ? "var(--text-faint)" : "var(--text)",
+    fontWeight: 900,
+    fontSize: 16,
+    cursor: disabled ? "not-allowed" : "pointer",
+    opacity: disabled ? 0.7 : 1,
+  };
+}
+
+function textareaStyle(): React.CSSProperties {
+  return {
+    width: "100%",
+    minHeight: 230,
+    borderRadius: 24,
+    border: "1px solid var(--border-strong)",
+    background: "var(--surface)",
+    color: "var(--text)",
+    padding: "22px 20px",
+    resize: "vertical",
+    fontSize: 20,
+    lineHeight: 1.7,
+    fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+    outline: "none",
+  };
+}
+
+function selectStyle(): React.CSSProperties {
+  return {
+    width: "100%",
+    minHeight: 58,
+    borderRadius: 18,
+    border: "1px solid var(--border-strong)",
+    background: "var(--surface)",
+    color: "var(--text)",
+    padding: "0 18px",
+    fontSize: 17,
+    outline: "none",
+  };
+}
+
+function chipStyle(): React.CSSProperties {
+  return {
+    display: "inline-flex",
+    alignItems: "center",
+    minHeight: 40,
+    padding: "0 16px",
+    borderRadius: 999,
+    border: "1px solid var(--border)",
+    background: "var(--surface)",
+    color: "var(--text)",
+    fontWeight: 800,
+    fontSize: 14,
+  };
+}
+
+function parseAnswer(rawAnswer: string): ParsedAnswer {
+  const raw = sanitizeAnswerForDisplay(rawAnswer);
   if (!raw) {
     return { lead: "", sections: [], source: "" };
   }
 
-  let working = raw;
-  let source = "";
-
-  const sourceMatch = working.match(/(?:\n|^)\s*Source:\s*([\s\S]*)$/i);
-  if (sourceMatch && sourceMatch.index != null) {
-    source = String(sourceMatch[1] || "").trim();
-    working = working.slice(0, sourceMatch.index).trim();
-  }
-
-  const blocks = working
+  const blocks = raw
     .split(/\n\s*\n/)
     .map((block) => block.trim())
     .filter(Boolean);
 
   let lead = "";
+  let source = "";
   const sections: AnswerSection[] = [];
 
   for (const block of blocks) {
-    const lines = block
+    const rawLines = block
       .split("\n")
-      .map((line) => line.trimEnd())
-      .filter((line) => line.trim().length > 0);
+      .map((line) => line.trim())
+      .filter(Boolean);
 
-    if (!lines.length) continue;
+    if (!rawLines.length) continue;
 
-    const firstLine = lines[0].trim();
-    const looksLikeHeading =
-      firstLine.endsWith(":") &&
-      firstLine.length <= 80 &&
-      lines.length > 1;
-
-    if (looksLikeHeading) {
-      sections.push({
-        title: firstLine.replace(/:$/, ""),
-        body: lines.slice(1).join("\n"),
-      });
+    if (/^source\s*:/i.test(rawLines[0])) {
+      source = block.replace(/^source\s*:\s*/i, "").trim();
       continue;
     }
 
-    if (!lead) {
-      lead = lines.join("\n");
-      continue;
+    if (!lead && !/:$/.test(rawLines[0])) {
+      const containsBullets = rawLines.some((line) => /^[-•]\s+/.test(line));
+      const containsOrdered = rawLines.some((line) => /^\d+\.\s+/.test(line));
+
+      if (!containsBullets && !containsOrdered) {
+        lead = rawLines.join(" ");
+        continue;
+      }
     }
+
+    let title = "";
+    let bodyLines = rawLines.slice();
+
+    if (/:$/.test(rawLines[0])) {
+      title = rawLines[0].replace(/:$/, "").trim();
+      bodyLines = rawLines.slice(1);
+    }
+
+    const ordered = bodyLines.some((line) => /^\d+\.\s+/.test(line));
+    const cleanedLines = bodyLines
+      .map((line) => line.replace(/^[-•]\s*/, "").replace(/^\d+\.\s*/, "").trim())
+      .filter(Boolean);
+
+    if (!cleanedLines.length) continue;
 
     sections.push({
-      title: "More detail",
-      body: lines.join("\n"),
+      title: title || "More details",
+      lines: cleanedLines,
+      ordered,
     });
+  }
+
+  if (!lead) {
+    lead = sections.length
+      ? sections[0].lines[0]
+      : raw.replace(/\n+/g, " ").trim();
   }
 
   return {
@@ -250,117 +399,54 @@ function parseStructuredAnswer(text: string): ParsedAnswer {
   };
 }
 
-function statusTileStyle(
-  tone: "good" | "warn" | "default" = "default"
-): React.CSSProperties {
-  const toneMap = {
-    good: {
-      background: "rgba(16, 185, 129, 0.08)",
-      border: "1px solid rgba(16, 185, 129, 0.18)",
-    },
-    warn: {
-      background: "rgba(245, 158, 11, 0.08)",
-      border: "1px solid rgba(245, 158, 11, 0.18)",
-    },
-    default: {
-      background: "var(--surface)",
-      border: "1px solid var(--border)",
-    },
-  } as const;
+function AttentionCard({
+  title,
+  message,
+  tone = "warn",
+}: {
+  title: string;
+  message: string;
+  tone?: "warn" | "danger" | "good";
+}) {
+  return (
+    <div
+      style={{
+        ...pageCardStyle(),
+        ...toneForMetric(tone),
+        display: "grid",
+        gap: 10,
+        padding: 24,
+      }}
+    >
+      <div
+        style={{
+          fontSize: 19,
+          fontWeight: 950,
+          color: "var(--text)",
+        }}
+      >
+        {title}
+      </div>
 
-  return {
-    ...toneMap[tone],
-    borderRadius: 18,
-    padding: "12px 14px",
-    minWidth: 150,
-    display: "grid",
-    gap: 4,
-  };
+      <div
+        style={{
+          color: "var(--text-muted)",
+          fontSize: 15,
+          lineHeight: 1.8,
+        }}
+      >
+        {message}
+      </div>
+    </div>
+  );
 }
 
-function starterButtonStyle(isActive: boolean): React.CSSProperties {
-  return {
-    width: "100%",
-    textAlign: "left",
-    padding: "14px 16px",
-    borderRadius: 18,
-    border: isActive
-      ? "1px solid rgba(99, 102, 241, 0.35)"
-      : "1px solid var(--border)",
-    background: isActive
-      ? "rgba(99, 102, 241, 0.08)"
-      : "var(--surface)",
-    color: "var(--text)",
-    cursor: "pointer",
-    fontSize: 14,
-    fontWeight: 800,
-    lineHeight: 1.5,
-    boxShadow: "0 8px 24px rgba(15, 23, 42, 0.03)",
-  };
-}
-
-function answerSurfaceStyle(): React.CSSProperties {
-  return {
-    border: "1px solid rgba(16, 185, 129, 0.16)",
-    background: "rgba(16, 185, 129, 0.04)",
-    borderRadius: 26,
-    padding: 22,
-    display: "grid",
-    gap: 16,
-  };
-}
-
-function answerSectionStyle(): React.CSSProperties {
-  return {
-    border: "1px solid rgba(15, 23, 42, 0.08)",
-    background: "rgba(255,255,255,0.58)",
-    borderRadius: 20,
-    padding: 18,
-    display: "grid",
-    gap: 10,
-  };
-}
-
-function chipStyle(): React.CSSProperties {
-  return {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 8,
-    padding: "8px 12px",
-    borderRadius: 999,
-    border: "1px solid var(--border)",
-    background: "var(--surface)",
-    fontSize: 13,
-    fontWeight: 800,
-    color: "var(--text)",
-  };
-}
-
-function fieldLabelStyle(): React.CSSProperties {
-  return {
-    fontSize: 13,
-    fontWeight: 800,
-    color: "var(--text-muted)",
-    marginBottom: 8,
-  };
-}
-
-function helperCardStyle(): React.CSSProperties {
-  return {
-    borderRadius: 22,
-    border: "1px solid var(--border)",
-    background: "var(--surface)",
-    padding: 18,
-    display: "grid",
-    gap: 12,
-  };
-}
-
-function AskPageContent() {
+export default function AskPage() {
   const router = useRouter();
   const sp = useSearchParams();
   const { refreshSession } = useAuth();
   const answerRef = useRef<HTMLDivElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const {
     busy: workspaceBusy,
@@ -371,14 +457,12 @@ function AskPageContent() {
     creditBalance,
     dailyUsage,
     dailyLimit,
-    channelLinks,
   } = useWorkspaceState({
     refreshSession,
     autoLoad: true,
     includeAccount: false,
     includeBilling: true,
     includeDebug: true,
-    includeLinkStatus: true,
     loadingMessage: "Loading your assistant...",
   });
 
@@ -386,21 +470,114 @@ function AskPageContent() {
   const [question, setQuestion] = useState("");
   const [language, setLanguage] = useState("English");
   const [answer, setAnswer] = useState("");
-  const [resultOk, setResultOk] = useState<boolean | null>(null);
   const [friendlyError, setFriendlyError] = useState("");
-  const [lastAskDebug, setLastAskDebug] = useState<unknown>(null);
-  const [citations, setCitations] = useState<string[]>([]);
   const [clarificationPrompt, setClarificationPrompt] = useState("");
+  const [citations, setCitations] = useState<string[]>([]);
+  const [lastAskDebug, setLastAskDebug] = useState<unknown>(null);
+  const [resultOk, setResultOk] = useState<boolean | null>(null);
 
   const busy = workspaceBusy || submitting;
 
   useEffect(() => {
-    const q = (sp?.get("q") || "").trim();
+    const q = (sp?.get("q") || sp?.get("question") || "").trim();
     const lang = (sp?.get("lang") || "").trim();
 
     if (q) setQuestion(q);
     if (lang) setLanguage(normalizeLanguageLabel(lang));
   }, [sp]);
+
+  const parsed = useMemo(() => parseAnswer(answer), [answer]);
+
+  const channelSummary = useMemo(() => {
+    const whatsappLinked = truthyValue(
+      readPath(status, ["channel_links", "whatsapp_linked"]) ??
+        readPath(status, ["channel_links", "whatsapp", "linked"]) ??
+        readPath(status, ["workspace", "channel_links", "whatsapp_linked"]) ??
+        readPath(status, ["workspace", "channel_links", "whatsapp", "linked"]) ??
+        readPath(status, ["whatsapp_linked"]) ??
+        readPath(status, ["whatsapp", "linked"])
+    );
+
+    const telegramLinked = truthyValue(
+      readPath(status, ["channel_links", "telegram_linked"]) ??
+        readPath(status, ["channel_links", "telegram", "linked"]) ??
+        readPath(status, ["workspace", "channel_links", "telegram_linked"]) ??
+        readPath(status, ["workspace", "channel_links", "telegram", "linked"]) ??
+        readPath(status, ["telegram_linked"]) ??
+        readPath(status, ["telegram", "linked"])
+    );
+
+    if (telegramLinked && whatsappLinked) return "Telegram + WhatsApp linked";
+    if (telegramLinked) return "Telegram linked";
+    if (whatsappLinked) return "WhatsApp linked";
+    return "No channel linked";
+  }, [status]);
+
+  const planLabel = useMemo(() => {
+    if (safeText(planCode, "") === "") return "Free";
+    return titleFromCode(String(planCode || ""), "Free");
+  }, [planCode]);
+
+  const dailyLeft = useMemo(() => {
+    if (dailyLimit <= 0) return "—";
+    const left = Math.max(dailyLimit - dailyUsage, 0);
+    return String(left);
+  }, [dailyLimit, dailyUsage]);
+
+  const accountAttention = useMemo(() => {
+    if (!activeNow && creditBalance <= 0) {
+      return {
+        title: "Account attention needed",
+        message:
+          "Starter or already-covered questions may still work, but some live asks can be blocked until plan and credits are active.",
+        tone: "warn" as const,
+      };
+    }
+
+    if (!activeNow) {
+      return {
+        title: "Subscription attention needed",
+        message:
+          "The page is working, but your billing state may still block some fresh questions until the subscription shows active.",
+        tone: "warn" as const,
+      };
+    }
+
+    if (dailyLimit > 0 && dailyUsage >= dailyLimit) {
+      return {
+        title: "Daily limit reached",
+        message:
+          "You have reached your current visible daily question limit. You can still review starter questions, history, and existing answers.",
+        tone: "warn" as const,
+      };
+    }
+
+    return null;
+  }, [activeNow, creditBalance, dailyLimit, dailyUsage]);
+
+  const handleStarterClick = (starterQuestion: string) => {
+    setQuestion(starterQuestion);
+    setFriendlyError("");
+    setClarificationPrompt("");
+    requestAnimationFrame(() => {
+      textareaRef.current?.focus();
+      textareaRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    });
+  };
+
+  const handleClear = () => {
+    setQuestion("");
+    setAnswer("");
+    setFriendlyError("");
+    setClarificationPrompt("");
+    setCitations([]);
+    setLastAskDebug(null);
+    setResultOk(null);
+    textareaRef.current?.focus();
+  };
 
   const handleAsk = async () => {
     const q = question.trim();
@@ -409,8 +586,8 @@ function AskPageContent() {
       setResultOk(false);
       setFriendlyError("Please enter your question before continuing.");
       setAnswer("");
-      setCitations([]);
       setClarificationPrompt("");
+      setCitations([]);
       setLastAskDebug(null);
       return;
     }
@@ -419,8 +596,8 @@ function AskPageContent() {
       setResultOk(false);
       setFriendlyError("You have reached your daily question limit for today.");
       setAnswer("");
-      setCitations([]);
       setClarificationPrompt("");
+      setCitations([]);
       setLastAskDebug(null);
       return;
     }
@@ -429,8 +606,8 @@ function AskPageContent() {
     setResultOk(null);
     setFriendlyError("");
     setAnswer("");
-    setCitations([]);
     setClarificationPrompt("");
+    setCitations([]);
     setLastAskDebug(null);
 
     try {
@@ -447,29 +624,29 @@ function AskPageContent() {
 
       if (SHOW_ASK_DEBUG) {
         setLastAskDebug(data?.debug || null);
-      } else {
-        setLastAskDebug(null);
       }
 
       await load("Refreshing assistant state...");
 
       if (data?.ok && data?.answer) {
-        const answerText = sanitizeAnswerForDisplay(String(data.answer || "").trim());
+        const answerText = sanitizeAnswerForDisplay(String(data.answer || ""));
 
         if (!answerText) {
           setResultOk(false);
           setFriendlyError(
             "We could not prepare a clean final answer for that question yet. Please ask it again in a shorter, more direct way."
           );
-          setCitations([]);
-          setClarificationPrompt("");
           return;
         }
 
         setResultOk(true);
         setAnswer(answerText);
-        setCitations(Array.isArray(data?.citations) ? data.citations.filter(Boolean) : []);
         setClarificationPrompt(normalizeText(data?.clarification_prompt || ""));
+        setCitations(
+          Array.isArray(data?.citations)
+            ? data.citations.map((item) => safeText(item, "")).filter(Boolean)
+            : []
+        );
 
         const item: HistoryItem = {
           id: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
@@ -492,420 +669,423 @@ function AskPageContent() {
       }
 
       const code = String(data?.error || "").trim().toLowerCase();
+      const clarification = normalizeText(data?.clarification_prompt || "");
+
+      if (clarification) {
+        setClarificationPrompt(clarification);
+      }
 
       if (code === "insufficient_credits" || code === "insufficient_credits_uncached") {
         setResultOk(false);
         setFriendlyError(
-          "No fresh AI credits are available right now. Cached questions can still return answers, but new uncached questions need available credits."
+          "No fresh AI credits are available right now. Cached starter questions may still work, but new uncached questions need available credits."
         );
       } else if (code === "subscription_required") {
         setResultOk(false);
         setFriendlyError(
-          "Your subscription is not active yet. Please open Plans or Billing to restore full access."
+          "Starter or already-covered questions may still work, but this question needs active plan or credits before live AI can continue."
         );
       } else if (code === "daily_limit_reached") {
         setResultOk(false);
         setFriendlyError("You have reached your daily question limit for today.");
+      } else if (clarification) {
+        setResultOk(false);
+        setFriendlyError("This question needs a little more detail before the answer can continue.");
       } else {
         setResultOk(false);
-        setFriendlyError("We could not complete this request right now.");
+        setFriendlyError(
+          safeText(data?.fix, "") ||
+            safeText(data?.root_cause, "") ||
+            "We could not complete this request right now."
+        );
       }
     } catch (err: unknown) {
       await load("Refreshing assistant state...");
 
       if (isApiError(err)) {
-        const code = String(err?.data?.error || "").trim().toLowerCase();
+        const apiErr = err as {
+          data?: {
+            error?: string;
+            fix?: string;
+            root_cause?: string;
+            debug?: unknown;
+            clarification_prompt?: string;
+          };
+          message?: string;
+        };
 
         if (SHOW_ASK_DEBUG) {
-          setLastAskDebug(err?.data?.debug || err?.data || null);
-        } else {
-          setLastAskDebug(null);
+          setLastAskDebug(apiErr?.data?.debug || apiErr?.data || null);
+        }
+
+        const code = String(apiErr?.data?.error || "").trim().toLowerCase();
+        const clarification = normalizeText(apiErr?.data?.clarification_prompt || "");
+
+        if (clarification) {
+          setClarificationPrompt(clarification);
         }
 
         if (code === "insufficient_credits" || code === "insufficient_credits_uncached") {
-          setResultOk(false);
           setFriendlyError(
-            "No fresh AI credits are available right now. Cached questions can still return answers, but new uncached questions need available credits."
+            "No fresh AI credits are available right now. Cached starter questions may still work, but new uncached questions need available credits."
           );
         } else if (code === "subscription_required") {
-          setResultOk(false);
           setFriendlyError(
-            "Your subscription is not active yet. Please open Plans or Billing to restore full access."
+            "Starter or already-covered questions may still work, but this question needs active plan or credits before live AI can continue."
           );
         } else if (code === "daily_limit_reached") {
-          setResultOk(false);
           setFriendlyError("You have reached your daily question limit for today.");
-        } else if (code === "unauthorized" || err?.status === 401) {
-          setResultOk(false);
-          setFriendlyError("Your session is no longer valid. Please log in again.");
-          router.push(`/login?next=${encodeURIComponent("/ask")}`);
         } else {
-          setResultOk(false);
-          setFriendlyError("We could not complete your request right now.");
+          setFriendlyError(
+            safeText(apiErr?.data?.fix, "") ||
+              safeText(apiErr?.data?.root_cause, "") ||
+              safeText(apiErr?.message, "") ||
+              "We could not complete this request right now."
+          );
         }
       } else {
-        setResultOk(false);
-        setFriendlyError("We could not reach the service right now.");
-
-        if (SHOW_ASK_DEBUG) {
-          setLastAskDebug(err instanceof Error ? err.message : String(err));
-        } else {
-          setLastAskDebug(null);
-        }
+        setFriendlyError("We could not complete this request right now.");
       }
+
+      setResultOk(false);
+      setAnswer("");
     } finally {
       setSubmitting(false);
     }
   };
 
-  const clearAll = () => {
-    setQuestion("");
-    setAnswer("");
-    setResultOk(null);
-    setFriendlyError("");
-    setCitations([]);
-    setClarificationPrompt("");
-    setLastAskDebug(null);
-  };
-
-  const parsedAnswer = useMemo(() => parseStructuredAnswer(answer), [answer]);
-
-  const submitDisabled =
-    busy || !question.trim() || (dailyLimit > 0 && dailyUsage >= dailyLimit);
-
-  const hasAnswerState =
-    resultOk !== null || Boolean(answer) || Boolean(friendlyError);
-
-  const planName = prettifyPlanName(planCode);
-  const dailyRemaining =
-    dailyLimit > 0 ? Math.max(dailyLimit - dailyUsage, 0) : 0;
-
-  const whatsappLinked = truthyValue(
-    channelLinks?.whatsapp_linked || channelLinks?.whatsapp?.linked
-  );
-  const telegramLinked = truthyValue(
-    channelLinks?.telegram_linked || channelLinks?.telegram?.linked
-  );
-
-  const channelStatus = whatsappLinked && telegramLinked
-    ? "WhatsApp + Telegram linked"
-    : whatsappLinked
-    ? "WhatsApp linked"
-    : telegramLinked
-    ? "Telegram linked"
-    : "No channel linked";
-
-  const topTone =
-    dailyLimit > 0 && dailyUsage >= dailyLimit
-      ? "warn"
-      : !activeNow || creditBalance <= 0
-      ? "warn"
-      : "good";
-
-  const topTitle =
-    dailyLimit > 0 && dailyUsage >= dailyLimit
-      ? "Daily question limit reached"
-      : !activeNow || creditBalance <= 0
-      ? "Account attention needed"
-      : "Ask page is ready";
-
-  const topSubtitle =
-    dailyLimit > 0 && dailyUsage >= dailyLimit
-      ? "You can still review the starter questions below, but new submissions may stop until the daily limit resets."
-      : !activeNow || creditBalance <= 0
-      ? "Starter or already-covered questions may still work, but some live asks can be blocked until plan and credits are active."
-      : status || "Write one direct tax question or tap any starter question on the right.";
+  const latestQuestionLabel = question.trim() || "No question selected";
 
   return (
     <AppShell
       title="Ask Naija Tax Guide"
       subtitle="Ask a practical Nigerian tax question and get a structured response inside your workspace."
-      actions={
-        <WorkspaceActionBar
-          primaryLabel="Refresh"
-          onPrimary={() => load("Refreshing assistant state...")}
-          secondaryLabel="Plans"
-          onSecondary={() => router.push("/plans")}
-          dangerLabel="Credits"
-          onDanger={() => router.push("/credits")}
-        />
-      }
     >
-      <SectionStack>
-        <Banner tone={topTone} title={topTitle} subtitle={topSubtitle} />
-
-        <WorkspaceSectionCard
-          title="Ask your question"
-          subtitle="Starter questions stay on the right. Ask box stays on the left."
+      <div
+        style={{
+          display: "grid",
+          gap: 20,
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "flex-end",
+            gap: 12,
+            flexWrap: "wrap",
+          }}
         >
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "minmax(0, 1.28fr) minmax(320px, 0.86fr)",
-              gap: 18,
-              alignItems: "start",
+          <button
+            onClick={() => {
+              void load("Refreshing assistant state...");
             }}
+            style={secondaryButtonStyle(busy)}
+            disabled={busy}
           >
-            <div style={{ display: "grid", gap: 16, minWidth: 0 }}>
+            Refresh
+          </button>
+
+          <button
+            onClick={() => router.push("/plans")}
+            style={secondaryButtonStyle(false)}
+          >
+            Plans
+          </button>
+
+          <button
+            onClick={() => router.push("/credits")}
+            style={secondaryButtonStyle(false)}
+          >
+            Credits
+          </button>
+        </div>
+
+        {accountAttention ? (
+          <AttentionCard
+            title={accountAttention.title}
+            message={accountAttention.message}
+            tone={accountAttention.tone}
+          />
+        ) : null}
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "minmax(0, 1.6fr) minmax(320px, 0.95fr)",
+            gap: 22,
+            alignItems: "start",
+          }}
+        >
+          <div style={{ display: "grid", gap: 20 }}>
+            <div style={pageCardStyle()}>
               <div
                 style={{
-                  display: "flex",
-                  gap: 10,
-                  flexWrap: "wrap",
+                  display: "grid",
+                  gap: 16,
                 }}
               >
-                <div style={statusTileStyle(activeNow ? "good" : "warn")}>
-                  <div
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 900,
-                      color: "var(--text-muted)",
-                      textTransform: "uppercase",
-                      letterSpacing: 0.5,
-                    }}
-                  >
-                    Plan
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                    gap: 16,
+                  }}
+                >
+                  <div style={metricCardStyle("warn")}>
+                    <div
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 900,
+                        color: "var(--text-faint)",
+                        textTransform: "uppercase",
+                        letterSpacing: 0.5,
+                      }}
+                    >
+                      Plan
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 18,
+                        fontWeight: 950,
+                        color: "var(--text)",
+                      }}
+                    >
+                      {planLabel}
+                    </div>
                   </div>
-                  <div style={{ fontSize: 16, fontWeight: 900 }}>{planName}</div>
-                </div>
 
-                <div style={statusTileStyle(creditBalance > 0 ? "good" : "warn")}>
-                  <div
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 900,
-                      color: "var(--text-muted)",
-                      textTransform: "uppercase",
-                      letterSpacing: 0.5,
-                    }}
-                  >
-                    Credits
+                  <div style={metricCardStyle(creditBalance > 0 ? "good" : "warn")}>
+                    <div
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 900,
+                        color: "var(--text-faint)",
+                        textTransform: "uppercase",
+                        letterSpacing: 0.5,
+                      }}
+                    >
+                      Credits
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 18,
+                        fontWeight: 950,
+                        color: "var(--text)",
+                      }}
+                    >
+                      {String(creditBalance)}
+                    </div>
                   </div>
-                  <div style={{ fontSize: 16, fontWeight: 900 }}>{creditBalance}</div>
+
+                  <div style={metricCardStyle("default")}>
+                    <div
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 900,
+                        color: "var(--text-faint)",
+                        textTransform: "uppercase",
+                        letterSpacing: 0.5,
+                      }}
+                    >
+                      Daily left
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 18,
+                        fontWeight: 950,
+                        color: "var(--text)",
+                      }}
+                    >
+                      {dailyLeft}
+                    </div>
+                  </div>
                 </div>
 
                 <div
-                  style={statusTileStyle(
-                    dailyLimit > 0 && dailyRemaining === 0 ? "warn" : "default"
-                  )}
+                  style={{
+                    maxWidth: 240,
+                    ...metricCardStyle(
+                      channelSummary === "No channel linked" ? "default" : "good"
+                    ),
+                  }}
                 >
                   <div
                     style={{
-                      fontSize: 11,
+                      fontSize: 13,
                       fontWeight: 900,
-                      color: "var(--text-muted)",
-                      textTransform: "uppercase",
-                      letterSpacing: 0.5,
-                    }}
-                  >
-                    Daily Left
-                  </div>
-                  <div style={{ fontSize: 16, fontWeight: 900 }}>
-                    {dailyLimit > 0 ? dailyRemaining : "—"}
-                  </div>
-                </div>
-
-                <div
-                  style={statusTileStyle(
-                    whatsappLinked || telegramLinked ? "good" : "default"
-                  )}
-                >
-                  <div
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 900,
-                      color: "var(--text-muted)",
+                      color: "var(--text-faint)",
                       textTransform: "uppercase",
                       letterSpacing: 0.5,
                     }}
                   >
                     Channels
                   </div>
-                  <div style={{ fontSize: 16, fontWeight: 900 }}>{channelStatus}</div>
-                </div>
-              </div>
-
-              <div>
-                <div style={fieldLabelStyle()}>Question</div>
-                <textarea
-                  value={question}
-                  onChange={(event) => setQuestion(event.target.value)}
-                  onKeyDown={(event) => {
-                    if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
-                      event.preventDefault();
-                      if (!submitDisabled) {
-                        void handleAsk();
-                      }
-                    }
-                  }}
-                  placeholder="Example: how do i register for vat?"
-                  rows={7}
-                  style={{
-                    ...appTextareaStyle(),
-                    minHeight: 180,
-                    fontSize: 18,
-                    lineHeight: 1.8,
-                    borderRadius: 22,
-                  }}
-                />
-                <div
-                  style={{
-                    marginTop: 8,
-                    fontSize: 13,
-                    color: "var(--text-muted)",
-                    lineHeight: 1.6,
-                  }}
-                >
-                  Tip: use one clear question at a time. Press Ctrl + Enter to submit quickly.
-                </div>
-              </div>
-
-              <div
-                style={{
-                  display: "flex",
-                  gap: 12,
-                  flexWrap: "wrap",
-                  alignItems: "end",
-                }}
-              >
-                <div style={{ minWidth: 240, flex: "1 1 240px" }}>
-                  <div style={fieldLabelStyle()}>Reply language</div>
-                  <select
-                    value={language}
-                    onChange={(event) => setLanguage(event.target.value)}
-                    style={appSelectStyle()}
-                  >
-                    {LANGUAGE_OPTIONS.map((item) => (
-                      <option key={item.value} value={item.value}>
-                        {item.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <button
-                  onClick={() => {
-                    void handleAsk();
-                  }}
-                  disabled={submitDisabled}
-                  style={{
-                    ...appInputStyle("button"),
-                    minWidth: 190,
-                    opacity: submitDisabled ? 0.65 : 1,
-                    cursor: submitDisabled ? "not-allowed" : "pointer",
-                  }}
-                >
-                  {submitting ? "Submitting..." : "Ask Question"}
-                </button>
-
-                <button
-                  onClick={clearAll}
-                  disabled={submitting}
-                  style={{
-                    ...appInputStyle("buttonSecondary"),
-                    minWidth: 140,
-                    opacity: submitting ? 0.7 : 1,
-                    cursor: submitting ? "not-allowed" : "pointer",
-                  }}
-                >
-                  Clear
-                </button>
-              </div>
-            </div>
-
-            <div
-              style={{
-                position: "sticky",
-                top: 14,
-                display: "grid",
-                gap: 14,
-              }}
-            >
-              <div
-                style={{
-                  border: "1px solid var(--border)",
-                  borderRadius: 24,
-                  background: "var(--surface)",
-                  padding: 18,
-                  display: "grid",
-                  gap: 14,
-                  maxHeight: "calc(100vh - 180px)",
-                  overflowY: "auto",
-                }}
-              >
-                <div>
                   <div
                     style={{
-                      fontSize: 15,
-                      fontWeight: 900,
+                      fontSize: 18,
+                      fontWeight: 950,
                       color: "var(--text)",
-                      marginBottom: 4,
+                      lineHeight: 1.35,
                     }}
                   >
-                    Starter questions
+                    {channelSummary}
                   </div>
+                </div>
+
+                <div style={{ display: "grid", gap: 10 }}>
                   <div
                     style={{
-                      fontSize: 13,
+                      color: "var(--text)",
+                      fontSize: 16,
+                      fontWeight: 900,
+                    }}
+                  >
+                    Question
+                  </div>
+
+                  <textarea
+                    ref={textareaRef}
+                    value={question}
+                    onChange={(e) => setQuestion(e.target.value)}
+                    placeholder="Example: how do i register for vat?"
+                    style={textareaStyle()}
+                  />
+
+                  <div
+                    style={{
                       color: "var(--text-muted)",
+                      fontSize: 14,
                       lineHeight: 1.7,
                     }}
                   >
-                    Tap any question below to load it into the ask box.
+                    Tip: use one clear question at a time. Press Ctrl + Enter to submit quickly.
                   </div>
                 </div>
 
-                {STARTER_GROUPS.map((group) => (
-                  <div key={group.title} style={{ display: "grid", gap: 8 }}>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "minmax(220px, 1fr) auto auto",
+                    gap: 14,
+                    alignItems: "end",
+                  }}
+                >
+                  <div style={{ display: "grid", gap: 8 }}>
                     <div
                       style={{
-                        fontSize: 12,
+                        color: "var(--text)",
+                        fontSize: 15,
                         fontWeight: 900,
-                        color: "var(--text-muted)",
-                        textTransform: "uppercase",
-                        letterSpacing: 0.5,
                       }}
                     >
-                      {group.title}
+                      Reply language
                     </div>
 
-                    <div style={{ display: "grid", gap: 8 }}>
-                      {group.items.map((item) => {
-                        const isActive =
-                          question.trim().toLowerCase() === item.trim().toLowerCase();
-
-                        return (
-                          <button
-                            key={item}
-                            type="button"
-                            onClick={() => {
-                              setQuestion(item);
-                              setResultOk(null);
-                              setFriendlyError("");
-                              setClarificationPrompt("");
-                            }}
-                            style={starterButtonStyle(isActive)}
-                          >
-                            {item}
-                          </button>
-                        );
-                      })}
-                    </div>
+                    <select
+                      value={language}
+                      onChange={(e) => setLanguage(normalizeLanguageLabel(e.target.value))}
+                      style={selectStyle()}
+                    >
+                      {LANGUAGE_OPTIONS.map((item) => (
+                        <option key={item} value={item}>
+                          {item}
+                        </option>
+                      ))}
+                    </select>
                   </div>
-                ))}
+
+                  <button
+                    onClick={() => {
+                      void handleAsk();
+                    }}
+                    style={primaryButtonStyle(busy)}
+                    disabled={busy}
+                  >
+                    {submitting ? "Asking..." : "Ask Question"}
+                  </button>
+
+                  <button
+                    onClick={handleClear}
+                    style={secondaryButtonStyle(busy)}
+                    disabled={busy}
+                  >
+                    Clear
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-        </WorkspaceSectionCard>
 
-        {hasAnswerState ? (
-          <div ref={answerRef}>
-            <WorkspaceSectionCard
-              title="Latest answer"
-              subtitle="The answer below is the current result for your question."
-            >
-              {resultOk ? (
-                <div style={{ display: "grid", gap: 16 }}>
+            <div ref={answerRef} style={pageCardStyle()}>
+              {resultOk === null && !answer && !friendlyError ? (
+                <div
+                  style={{
+                    ...innerCardStyle(),
+                    display: "grid",
+                    gap: 10,
+                    minHeight: 120,
+                    alignContent: "center",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 18,
+                      fontWeight: 950,
+                      color: "var(--text)",
+                    }}
+                  >
+                    No response yet
+                  </div>
+
+                  <div
+                    style={{
+                      color: "var(--text-muted)",
+                      fontSize: 15,
+                      lineHeight: 1.8,
+                    }}
+                  >
+                    Ask a question above or tap any starter question to test this section.
+                  </div>
+                </div>
+              ) : null}
+
+              {(friendlyError || clarificationPrompt) && resultOk === false ? (
+                <div
+                  style={{
+                    ...innerCardStyle(),
+                    ...toneForMetric("warn"),
+                    display: "grid",
+                    gap: 12,
+                  }}
+                >
+                  {friendlyError ? (
+                    <div
+                      style={{
+                        color: "var(--text)",
+                        fontSize: 17,
+                        fontWeight: 900,
+                        lineHeight: 1.6,
+                      }}
+                    >
+                      {friendlyError}
+                    </div>
+                  ) : null}
+
+                  {clarificationPrompt ? (
+                    <div
+                      style={{
+                        color: "var(--text-muted)",
+                        fontSize: 15,
+                        lineHeight: 1.8,
+                      }}
+                    >
+                      {clarificationPrompt}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {resultOk && answer ? (
+                <div style={{ display: "grid", gap: 18 }}>
                   <div
                     style={{
                       display: "flex",
@@ -915,179 +1095,258 @@ function AskPageContent() {
                     }}
                   >
                     <div style={chipStyle()}>Latest answer</div>
-                    {question.trim() ? (
-                      <div style={chipStyle()}>
-                        Question: {question.trim()}
-                      </div>
-                    ) : null}
+                    <div style={chipStyle()}>
+                      Question: {latestQuestionLabel}
+                    </div>
                   </div>
 
-                  <div style={answerSurfaceStyle()}>
-                    {parsedAnswer.lead ? (
-                      <div
-                        style={{
-                          fontSize: 19,
-                          lineHeight: 1.85,
-                          color: "var(--text)",
-                          fontWeight: 700,
-                        }}
-                      >
-                        {parsedAnswer.lead}
-                      </div>
-                    ) : null}
+                  <div
+                    style={{
+                      borderRadius: 28,
+                      border: "1px solid var(--success-border)",
+                      background: "var(--success-bg)",
+                      padding: 28,
+                      display: "grid",
+                      gap: 18,
+                    }}
+                  >
+                    <div
+                      style={{
+                        color: "var(--text)",
+                        fontSize: 26,
+                        fontWeight: 950,
+                        lineHeight: 1.55,
+                        letterSpacing: -0.2,
+                      }}
+                    >
+                      {parsed.lead}
+                    </div>
 
-                    {parsedAnswer.sections.map((section, index) => (
-                      <div key={`${section.title}-${index}`} style={answerSectionStyle()}>
+                    {parsed.sections.map((section, index) => (
+                      <div key={`${section.title}-${index}`} style={innerCardStyle()}>
                         <div
                           style={{
-                            fontSize: 15,
-                            fontWeight: 900,
                             color: "var(--text)",
+                            fontSize: 18,
+                            fontWeight: 950,
+                            marginBottom: 14,
                           }}
                         >
                           {section.title}
                         </div>
-                        <div
-                          style={{
-                            whiteSpace: "pre-wrap",
-                            lineHeight: 1.85,
-                            fontSize: 16,
-                            color: "var(--text)",
-                          }}
-                        >
-                          {section.body}
-                        </div>
+
+                        {section.ordered ? (
+                          <ol
+                            style={{
+                              margin: 0,
+                              paddingLeft: 28,
+                              display: "grid",
+                              gap: 12,
+                              color: "var(--text)",
+                              fontSize: 17,
+                              lineHeight: 1.8,
+                            }}
+                          >
+                            {section.lines.map((line, lineIndex) => (
+                              <li key={`${section.title}-${lineIndex}`}>{line}</li>
+                            ))}
+                          </ol>
+                        ) : (
+                          <div
+                            style={{
+                              display: "grid",
+                              gap: 12,
+                              color: "var(--text)",
+                              fontSize: 17,
+                              lineHeight: 1.8,
+                            }}
+                          >
+                            {section.lines.map((line, lineIndex) => (
+                              <div key={`${section.title}-${lineIndex}`}>- {line}</div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     ))}
 
-                    {!parsedAnswer.lead && parsedAnswer.sections.length === 0 ? (
+                    {parsed.source ? (
                       <div
                         style={{
-                          whiteSpace: "pre-wrap",
-                          lineHeight: 1.85,
-                          fontSize: 16,
-                          color: "var(--text)",
+                          borderTop: "1px solid var(--border)",
+                          paddingTop: 16,
+                          color: "var(--text-muted)",
+                          fontSize: 14,
+                          lineHeight: 1.8,
                         }}
                       >
-                        {answer}
+                        <strong style={{ color: "var(--text)" }}>Source:</strong>{" "}
+                        {parsed.source}
                       </div>
                     ) : null}
 
-                    {parsedAnswer.source ? (
+                    {citations.length ? (
                       <div
                         style={{
-                          borderTop: "1px solid rgba(15, 23, 42, 0.08)",
-                          paddingTop: 12,
-                          fontSize: 13,
-                          color: "var(--text-muted)",
-                          lineHeight: 1.7,
+                          borderTop: "1px solid var(--border)",
+                          paddingTop: 16,
+                          display: "grid",
+                          gap: 10,
                         }}
                       >
-                        <strong>Source:</strong> {parsedAnswer.source}
+                        <div
+                          style={{
+                            color: "var(--text)",
+                            fontSize: 15,
+                            fontWeight: 900,
+                          }}
+                        >
+                          Visible citations
+                        </div>
+
+                        <div
+                          style={{
+                            display: "grid",
+                            gap: 8,
+                            color: "var(--text-muted)",
+                            fontSize: 14,
+                            lineHeight: 1.7,
+                          }}
+                        >
+                          {citations.map((citation, index) => (
+                            <div key={`${citation}-${index}`}>{citation}</div>
+                          ))}
+                        </div>
                       </div>
                     ) : null}
                   </div>
-
-                  {citations.length ? (
-                    <div style={helperCardStyle()}>
-                      <div style={{ fontWeight: 900, color: "var(--text)" }}>
-                        References
-                      </div>
-                      <ul
-                        style={{
-                          margin: 0,
-                          paddingLeft: 18,
-                          lineHeight: 1.8,
-                          color: "var(--text-muted)",
-                        }}
-                      >
-                        {citations.map((citation, index) => (
-                          <li key={`${citation}-${index}`}>{citation}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : null}
-
-                  {clarificationPrompt ? (
-                    <Banner
-                      tone="warn"
-                      title="Clarification may be needed"
-                      subtitle={clarificationPrompt}
-                    />
-                  ) : null}
                 </div>
-              ) : (
-                <Banner
-                  tone="danger"
-                  title="Question could not be completed"
-                  subtitle={
-                    friendlyError || "Something went wrong while processing your question."
-                  }
-                />
-              )}
-            </WorkspaceSectionCard>
-          </div>
-        ) : null}
+              ) : null}
 
-        {SHOW_ASK_DEBUG && lastAskDebug ? (
-          <WorkspaceSectionCard
-            title="Ask debug"
-            subtitle="Visible only when NEXT_PUBLIC_SHOW_ASK_DEBUG=true"
+              {SHOW_ASK_DEBUG && lastAskDebug ? (
+                <div style={{ marginTop: 18 }}>
+                  <div
+                    style={{
+                      color: "var(--text)",
+                      fontSize: 15,
+                      fontWeight: 900,
+                      marginBottom: 10,
+                    }}
+                  >
+                    Ask debug
+                  </div>
+
+                  <pre
+                    style={{
+                      margin: 0,
+                      padding: 16,
+                      borderRadius: 18,
+                      border: "1px solid var(--border)",
+                      background: "var(--surface-soft)",
+                      color: "var(--text-muted)",
+                      whiteSpace: "pre-wrap",
+                      overflowX: "auto",
+                      fontFamily:
+                        "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+                      fontSize: 12,
+                      lineHeight: 1.6,
+                    }}
+                  >
+                    {JSON.stringify(lastAskDebug, null, 2)}
+                  </pre>
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          <div
+            style={{
+              ...pageCardStyle(),
+              position: "sticky",
+              top: 16,
+              maxHeight: "calc(100vh - 120px)",
+              overflowY: "auto",
+            }}
           >
-            <pre
+            <div
               style={{
-                margin: 0,
-                whiteSpace: "pre-wrap",
-                wordBreak: "break-word",
-                fontSize: 12,
-                lineHeight: 1.6,
-                color: "var(--text-soft)",
+                display: "grid",
+                gap: 8,
+                marginBottom: 18,
               }}
             >
-              {typeof lastAskDebug === "string"
-                ? lastAskDebug
-                : JSON.stringify(lastAskDebug, null, 2)}
-            </pre>
-          </WorkspaceSectionCard>
-        ) : null}
-      </SectionStack>
-    </AppShell>
-  );
-}
+              <div
+                style={{
+                  fontSize: 18,
+                  fontWeight: 950,
+                  color: "var(--text)",
+                }}
+              >
+                Starter questions
+              </div>
 
-function AskPageFallback() {
-  return (
-    <div
-      style={{
-        minHeight: "100vh",
-        display: "grid",
-        placeItems: "center",
-        padding: 24,
-        background: "var(--app-bg)",
-        color: "var(--text)",
-      }}
-    >
-      <div
-        style={{
-          width: "100%",
-          maxWidth: 560,
-          borderRadius: 24,
-          border: "1px solid rgba(255,255,255,0.08)",
-          background: "rgba(255,255,255,0.03)",
-          padding: 24,
-          textAlign: "center",
-        }}
-      >
-        Loading ask page...
+              <div
+                style={{
+                  color: "var(--text-muted)",
+                  fontSize: 15,
+                  lineHeight: 1.7,
+                }}
+              >
+                Tap any question below to load it into the ask box.
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gap: 18 }}>
+              {STARTER_GROUPS.map((group) => (
+                <div key={group.title} style={{ display: "grid", gap: 10 }}>
+                  <div
+                    style={{
+                      color: "var(--text-faint)",
+                      fontSize: 13,
+                      fontWeight: 950,
+                      letterSpacing: 0.4,
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    {group.title}
+                  </div>
+
+                  <div style={{ display: "grid", gap: 10 }}>
+                    {group.questions.map((starterQuestion) => {
+                      const active =
+                        question.trim().toLowerCase() === starterQuestion.trim().toLowerCase();
+
+                      return (
+                        <button
+                          key={starterQuestion}
+                          onClick={() => handleStarterClick(starterQuestion)}
+                          style={{
+                            width: "100%",
+                            textAlign: "left",
+                            minHeight: 62,
+                            padding: "14px 16px",
+                            borderRadius: 20,
+                            border: active
+                              ? "1px solid var(--accent-border)"
+                              : "1px solid var(--border)",
+                            background: active ? "var(--accent-soft)" : "var(--surface)",
+                            color: "var(--text)",
+                            fontWeight: 900,
+                            fontSize: 16,
+                            lineHeight: 1.45,
+                            cursor: "pointer",
+                          }}
+                        >
+                          {starterQuestion}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
-    </div>
-  );
-}
-
-export default function AskPage() {
-  return (
-    <Suspense fallback={<AskPageFallback />}>
-      <AskPageContent />
-    </Suspense>
+    </AppShell>
   );
 }
