@@ -1,43 +1,65 @@
 "use client";
 
-import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from "react";
+import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { apiJson, isApiError } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
+import AppShell from "@/components/app-shell";
+import WorkspaceActionBar from "@/components/workspace-action-bar";
+import WorkspaceSectionCard from "@/components/workspace-section-card";
+import {
+  Banner,
+  appInputStyle,
+  appSelectStyle,
+  appTextareaStyle,
+} from "@/components/ui";
+import { SectionStack } from "@/components/page-layout";
+import { HistoryItem, saveHistoryItem } from "@/lib/history-storage";
+import { useWorkspaceState } from "@/hooks/useWorkspaceState";
 
-type UnknownRecord = Record<string, unknown>;
-
-type WorkspaceSummary = {
-  planLabel: string;
-  creditsLabel: string;
-  dailyLeftLabel: string;
-  channelsLabel: string;
-  companyName: string;
-  companyPhone: string;
-  whatsappLinked: boolean;
-  telegramLinked: boolean;
+type AskResp = {
+  ok?: boolean;
+  answer?: string;
+  error?: string;
+  fix?: string;
+  root_cause?: string;
+  details?: unknown;
+  debug?: unknown;
+  meta?: {
+    ai_used_month?: number;
+    monthly_ai_used?: number;
+    ai_used_this_month?: number;
+    used_this_month?: number;
+  } | null;
+  citations?: string[];
+  clarification_prompt?: string;
 };
 
 type AnswerSection = {
   title: string;
-  lines: string[];
-  ordered: boolean;
+  body: string;
 };
 
-type StructuredAnswer = {
-  question: string;
+type ParsedAnswer = {
   lead: string;
   sections: AnswerSection[];
-  source?: string;
+  source: string;
 };
 
-type StarterCategory = {
-  title: string;
-  questions: string[];
-};
+const SHOW_ASK_DEBUG = process.env.NEXT_PUBLIC_SHOW_ASK_DEBUG === "true";
 
-const STARTER_QUESTIONS: StarterCategory[] = [
+const LANGUAGE_OPTIONS = [
+  { label: "English", value: "English" },
+  { label: "Pidgin", value: "Pidgin" },
+  { label: "Yoruba", value: "Yoruba" },
+  { label: "Igbo", value: "Igbo" },
+  { label: "Hausa", value: "Hausa" },
+];
+
+const STARTER_GROUPS: Array<{ title: string; items: string[] }> = [
   {
-    title: "PERSONAL INCOME TAX",
-    questions: [
+    title: "Personal Income Tax",
+    items: [
       "what is personal income tax?",
       "what is the personal income tax rate?",
       "which tax authority handles personal income tax?",
@@ -45,7 +67,7 @@ const STARTER_QUESTIONS: StarterCategory[] = [
   },
   {
     title: "PAYE",
-    questions: [
+    items: [
       "what is paye?",
       "who must deduct paye?",
       "how do i remit paye?",
@@ -53,22 +75,22 @@ const STARTER_QUESTIONS: StarterCategory[] = [
   },
   {
     title: "VAT",
-    questions: [
+    items: [
       "how do i register for vat?",
       "how do i file vat?",
       "how do i pay vat?",
     ],
   },
   {
-    title: "WITHHOLDING TAX",
-    questions: [
+    title: "Withholding Tax",
+    items: [
       "what is the withholding tax rate?",
       "how do i remit withholding tax?",
     ],
   },
   {
-    title: "COMPANY INCOME TAX",
-    questions: [
+    title: "Company Income Tax",
+    items: [
       "what is the company income tax rate?",
       "how do i file company income tax?",
       "how do i pay company income tax?",
@@ -76,1456 +98,1020 @@ const STARTER_QUESTIONS: StarterCategory[] = [
   },
 ];
 
-const SUMMARY_ENDPOINTS = [
-  "/api/web/workspace/summary",
-  "/api/workspace/summary",
-  "/api/web/account/summary",
-  "/api/account/summary",
-];
+function languageToCode(label: string) {
+  const v = (label || "").trim().toLowerCase();
+  if (v === "english") return "en";
+  if (v === "pidgin") return "pcm";
+  if (v === "yoruba") return "yo";
+  if (v === "igbo") return "ig";
+  if (v === "hausa") return "ha";
+  return "en";
+}
 
-const ASK_ENDPOINTS = ["/api/web/ask", "/api/ask"];
+function normalizeLanguageLabel(value: string) {
+  const v = String(value || "").trim().toLowerCase();
+  if (v === "en" || v === "english") return "English";
+  if (v === "pcm" || v === "pidgin") return "Pidgin";
+  if (v === "yo" || v === "yoruba") return "Yoruba";
+  if (v === "ig" || v === "igbo") return "Igbo";
+  if (v === "ha" || v === "hausa") return "Hausa";
+  return "English";
+}
 
-function asRecord(value: unknown): UnknownRecord | null {
-  return typeof value === "object" && value !== null ? (value as UnknownRecord) : null;
+function normalizeText(value: unknown): string {
+  if (typeof value !== "string") return "";
+  return value.trim();
+}
+
+function safeNumber(value: unknown): number {
+  const num = Number(value ?? 0);
+  return Number.isFinite(num) ? num : 0;
 }
 
 function truthyValue(value: unknown): boolean {
   if (typeof value === "boolean") return value;
   if (typeof value === "number") return value > 0;
   if (typeof value === "string") {
-    const normalized = value.trim().toLowerCase();
-    return ["true", "1", "yes", "linked", "active"].includes(normalized);
+    const raw = value.trim().toLowerCase();
+    return ["1", "true", "yes", "active", "linked", "enabled", "paid", "verified"].includes(raw);
   }
   return false;
 }
 
-function firstString(...values: unknown[]): string | undefined {
-  for (const value of values) {
-    if (typeof value === "string" && value.trim()) return value.trim();
-  }
-  return undefined;
+function prettifyPlanName(value: string | null | undefined): string {
+  const raw = String(value || "").trim();
+  if (!raw) return "Free";
+  return raw
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (m) => m.toUpperCase());
 }
 
-function firstNumber(...values: unknown[]): number | undefined {
-  for (const value of values) {
-    if (typeof value === "number" && Number.isFinite(value)) return value;
-    if (typeof value === "string" && value.trim()) {
-      const parsed = Number(value);
-      if (Number.isFinite(parsed)) return parsed;
-    }
-  }
-  return undefined;
+function looksLikeBrokenAnswer(text: string): boolean {
+  const raw = String(text || "").toLowerCase();
+  if (!raw.trim()) return true;
+
+  const badSignals = [
+    "candidate 1",
+    "candidate 2",
+    "candidate 3",
+    "grounded basis",
+    "grounding context",
+    "grounding summary",
+    "strict rules",
+    "question classification",
+    "trust_score",
+    "similarity",
+    "match_type",
+    "invalid_api_key",
+    "incorrect api key provided",
+    "sk-proj-",
+    "you are answering as",
+    "no evidence provided",
+  ];
+
+  return badSignals.some((signal) => raw.includes(signal));
 }
 
-function cleanQuestion(value: string): string {
-  return value.trim().replace(/\s+/g, " ").toLowerCase();
+function sanitizeAnswerForDisplay(text: string): string {
+  const raw = String(text || "").trim();
+  if (!raw) return "";
+  if (looksLikeBrokenAnswer(raw)) return "";
+  return raw;
 }
 
-function normalizeSummary(payload: unknown): WorkspaceSummary {
-  const root = asRecord(payload) ?? {};
-  const data =
-    asRecord(root.data) ??
-    asRecord(root.summary) ??
-    asRecord(root.account) ??
-    root;
-
-  const channelLinks = asRecord(data.channel_links) ?? asRecord(data.channels);
-
-  const whatsappLinked = truthyValue(
-    channelLinks?.whatsapp_linked ?? asRecord(channelLinks?.whatsapp)?.linked
-  );
-
-  const telegramLinked = truthyValue(
-    channelLinks?.telegram_linked ?? asRecord(channelLinks?.telegram)?.linked
-  );
-
-  const planLabel =
-    firstString(
-      data.plan_label,
-      data.plan_name,
-      data.plan,
-      asRecord(data.subscription)?.plan_name,
-      asRecord(data.subscription)?.plan
-    ) ?? "Free";
-
-  const credits =
-    firstNumber(
-      data.credits_balance,
-      data.credit_balance,
-      data.credits,
-      asRecord(data.wallet)?.credits,
-      asRecord(data.limits)?.credits_left
-    ) ?? 0;
-
-  const dailyLeft =
-    firstNumber(
-      data.daily_left,
-      asRecord(data.limits)?.daily_left,
-      asRecord(data.ask_limits)?.daily_left
-    ) ?? null;
-
-  let channelsLabel = "No channel linked";
-  if (telegramLinked && whatsappLinked) channelsLabel = "Telegram + WhatsApp linked";
-  else if (telegramLinked) channelsLabel = "Telegram linked";
-  else if (whatsappLinked) channelsLabel = "WhatsApp linked";
-
-  return {
-    planLabel,
-    creditsLabel: String(credits),
-    dailyLeftLabel: dailyLeft === null ? "—" : String(dailyLeft),
-    channelsLabel,
-    companyName:
-      firstString(
-        data.company_name,
-        asRecord(data.company)?.name,
-        asRecord(data.workspace)?.company_name
-      ) ?? "BMS Creative Concept",
-    companyPhone:
-      firstString(
-        data.company_phone,
-        asRecord(data.company)?.phone,
-        asRecord(data.workspace)?.company_phone
-      ) ?? "+2347034941158",
-    whatsappLinked,
-    telegramLinked,
-  };
+function cleanLineEndings(value: string): string {
+  return String(value || "").replace(/\r\n/g, "\n").trim();
 }
 
-function normalizeSection(item: unknown): AnswerSection | null {
-  const record = asRecord(item);
-  if (!record) return null;
-
-  const title =
-    firstString(record.title, record.heading, record.label, record.name) ?? "Details";
-
-  const ordered = truthyValue(record.ordered);
-
-  const rawItems = Array.isArray(record.lines)
-    ? record.lines
-    : Array.isArray(record.items)
-      ? record.items
-      : Array.isArray(record.points)
-        ? record.points
-        : null;
-
-  let lines: string[] = [];
-
-  if (rawItems) {
-    lines = rawItems
-      .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
-      .filter(Boolean);
-  } else {
-    const body = firstString(record.body, record.text, record.content);
-    if (body) {
-      lines = body
-        .split("\n")
-        .map((line) => line.trim())
-        .filter(Boolean)
-        .map((line) => line.replace(/^[-*]\s*/, "").replace(/^\d+\.\s*/, ""));
-    }
+function parseStructuredAnswer(text: string): ParsedAnswer {
+  const raw = cleanLineEndings(text);
+  if (!raw) {
+    return { lead: "", sections: [], source: "" };
   }
 
-  if (!lines.length) return null;
+  let working = raw;
+  let source = "";
 
-  return { title, lines, ordered };
-}
-
-function parseStructuredText(question: string, text: string): StructuredAnswer {
-  const normalized = text.replace(/\r/g, "").trim();
-
-  let source: string | undefined;
-  let body = normalized;
-
-  const sourceMatch = normalized.match(/\n?Source:\s*(.+)$/is);
-  if (sourceMatch && typeof sourceMatch.index === "number") {
-    source = sourceMatch[1].trim();
-    body = normalized.slice(0, sourceMatch.index).trim();
+  const sourceMatch = working.match(/(?:\n|^)\s*Source:\s*([\s\S]*)$/i);
+  if (sourceMatch && sourceMatch.index != null) {
+    source = String(sourceMatch[1] || "").trim();
+    working = working.slice(0, sourceMatch.index).trim();
   }
 
-  const blocks = body
+  const blocks = working
     .split(/\n\s*\n/)
     .map((block) => block.trim())
     .filter(Boolean);
 
-  const lead = blocks.shift() ?? "";
-
+  let lead = "";
   const sections: AnswerSection[] = [];
 
   for (const block of blocks) {
     const lines = block
       .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean);
+      .map((line) => line.trimEnd())
+      .filter((line) => line.trim().length > 0);
 
     if (!lines.length) continue;
 
-    let title = "Details";
+    const firstLine = lines[0].trim();
+    const looksLikeHeading =
+      firstLine.endsWith(":") &&
+      firstLine.length <= 80 &&
+      lines.length > 1;
 
-    if (lines[0].endsWith(":")) {
-      title = lines[0].replace(/:$/, "").trim();
-      lines.shift();
-    } else if (
-      lines.length > 1 &&
-      /^[A-Z][A-Za-z0-9\s/()'-]+$/.test(lines[0]) &&
-      lines[0].length < 50
-    ) {
-      title = lines[0].trim();
-      lines.shift();
+    if (looksLikeHeading) {
+      sections.push({
+        title: firstLine.replace(/:$/, ""),
+        body: lines.slice(1).join("\n"),
+      });
+      continue;
     }
 
-    const ordered = lines.every((line) => /^\d+\.\s+/.test(line));
-    const cleanedLines = lines.map((line) =>
-      line.replace(/^[-*]\s*/, "").replace(/^\d+\.\s*/, "")
-    );
-
-    if (!cleanedLines.length) continue;
+    if (!lead) {
+      lead = lines.join("\n");
+      continue;
+    }
 
     sections.push({
-      title,
-      lines: cleanedLines,
-      ordered,
+      title: "More detail",
+      body: lines.join("\n"),
     });
   }
 
   return {
-    question,
     lead,
     sections,
     source,
   };
 }
 
-function normalizeAnswerPayload(question: string, payload: unknown): StructuredAnswer {
-  const root = asRecord(payload) ?? {};
-  const candidate =
-    asRecord(root.data) ??
-    asRecord(root.answer) ??
-    asRecord(root.response) ??
-    asRecord(root.result) ??
-    root;
-
-  const lead =
-    firstString(candidate.lead, candidate.summary, candidate.intro, candidate.headline) ??
-    undefined;
-
-  const source =
-    firstString(candidate.source, candidate.sources, candidate.reference) ?? undefined;
-
-  const questionText =
-    firstString(candidate.question, root.question, question) ?? question;
-
-  const sectionCandidates = [
-    candidate.sections,
-    candidate.blocks,
-    candidate.cards,
-    candidate.parts,
-  ];
-
-  for (const entry of sectionCandidates) {
-    if (Array.isArray(entry)) {
-      const sections = entry
-        .map((item) => normalizeSection(item))
-        .filter((item): item is AnswerSection => item !== null);
-
-      if (sections.length) {
-        return {
-          question: questionText,
-          lead:
-            lead ??
-            firstString(candidate.answer_text, candidate.text, candidate.body) ??
-            "",
-          sections,
-          source,
-        };
-      }
-    }
-  }
-
-  const fullText =
-    firstString(
-      candidate.answer_text,
-      candidate.answer,
-      candidate.text,
-      candidate.body,
-      root.answer,
-      root.text,
-      root.message
-    ) ?? "";
-
-  if (fullText) {
-    return parseStructuredText(questionText, fullText);
-  }
+function statusTileStyle(
+  tone: "good" | "warn" | "default" = "default"
+): React.CSSProperties {
+  const toneMap = {
+    good: {
+      background: "rgba(16, 185, 129, 0.08)",
+      border: "1px solid rgba(16, 185, 129, 0.18)",
+    },
+    warn: {
+      background: "rgba(245, 158, 11, 0.08)",
+      border: "1px solid rgba(245, 158, 11, 0.18)",
+    },
+    default: {
+      background: "var(--surface)",
+      border: "1px solid var(--border)",
+    },
+  } as const;
 
   return {
-    question: questionText,
-    lead: "No answer was returned for this question.",
-    sections: [],
-    source,
+    ...toneMap[tone],
+    borderRadius: 16,
+    padding: "12px 14px",
+    minWidth: 150,
+    display: "grid",
+    gap: 4,
   };
 }
 
-async function tryJson(url: string, init?: RequestInit): Promise<unknown> {
-  const response = await fetch(url, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {}),
-    },
-    credentials: "include",
-    cache: "no-store",
+function starterButtonStyle(isActive: boolean): React.CSSProperties {
+  return {
+    width: "100%",
+    textAlign: "left",
+    padding: "14px 16px",
+    borderRadius: 18,
+    border: isActive
+      ? "1px solid rgba(99, 102, 241, 0.35)"
+      : "1px solid var(--border)",
+    background: isActive
+      ? "rgba(99, 102, 241, 0.08)"
+      : "var(--surface)",
+    color: "var(--text)",
+    cursor: "pointer",
+    fontSize: 14,
+    fontWeight: 800,
+    lineHeight: 1.5,
+    boxShadow: "0 8px 24px rgba(15, 23, 42, 0.03)",
+  };
+}
+
+function answerSurfaceStyle(): React.CSSProperties {
+  return {
+    border: "1px solid rgba(16, 185, 129, 0.16)",
+    background: "rgba(16, 185, 129, 0.04)",
+    borderRadius: 26,
+    padding: 22,
+    display: "grid",
+    gap: 16,
+  };
+}
+
+function answerSectionStyle(): React.CSSProperties {
+  return {
+    border: "1px solid rgba(15, 23, 42, 0.08)",
+    background: "rgba(255,255,255,0.58)",
+    borderRadius: 20,
+    padding: 18,
+    display: "grid",
+    gap: 10,
+  };
+}
+
+function chipStyle(): React.CSSProperties {
+  return {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
+    padding: "8px 12px",
+    borderRadius: 999,
+    border: "1px solid var(--border)",
+    background: "var(--surface)",
+    fontSize: 13,
+    fontWeight: 800,
+    color: "var(--text)",
+  };
+}
+
+function fieldLabelStyle(): React.CSSProperties {
+  return {
+    fontSize: 13,
+    fontWeight: 800,
+    color: "var(--text-muted)",
+    marginBottom: 8,
+  };
+}
+
+function AskPageContent() {
+  const router = useRouter();
+  const sp = useSearchParams();
+  const { refreshSession } = useAuth();
+  const answerRef = useRef<HTMLDivElement | null>(null);
+
+  const {
+    busy: workspaceBusy,
+    status,
+    load,
+    activeNow,
+    planCode,
+    creditBalance,
+    dailyUsage,
+    dailyLimit,
+    expiresAt,
+    channelLinks,
+  } = useWorkspaceState({
+    refreshSession,
+    autoLoad: true,
+    includeAccount: false,
+    includeBilling: true,
+    includeDebug: true,
+    includeLinkStatus: true,
+    loadingMessage: "Loading your assistant...",
   });
 
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error(text || `Request failed with status ${response.status}`);
-  }
-
-  return response.json();
-}
-
-function SidebarLink({
-  href,
-  label,
-  active = false,
-  badge,
-}: {
-  href: string;
-  label: string;
-  active?: boolean;
-  badge?: string;
-}) {
-  return (
-    <Link href={href} className={`sidebarLink ${active ? "sidebarLinkActive" : ""}`}>
-      <span>{label}</span>
-      {badge ? <span className="sidebarBadge">{badge}</span> : null}
-    </Link>
-  );
-}
-
-function StatCard({
-  title,
-  value,
-  green = false,
-}: {
-  title: string;
-  value: string;
-  green?: boolean;
-}) {
-  return (
-    <div className={`statCard ${green ? "statCardGreen" : ""}`}>
-      <div className="statTitle">{title}</div>
-      <div className="statValue">{value}</div>
-    </div>
-  );
-}
-
-function StarterRail({
-  currentQuestion,
-  onSelect,
-}: {
-  currentQuestion: string;
-  onSelect: (question: string) => void;
-}) {
-  const normalizedCurrent = cleanQuestion(currentQuestion);
-
-  return (
-    <aside className="panel starterRail">
-      <div className="starterTitle">Starter questions</div>
-      <div className="starterSubtext">
-        Tap any question below to load it into the ask box.
-      </div>
-
-      <div className="starterGroups">
-        {STARTER_QUESTIONS.map((group) => (
-          <div key={group.title} className="starterGroup">
-            <div className="starterGroupTitle">{group.title}</div>
-
-            <div className="starterButtons">
-              {group.questions.map((starter) => {
-                const active = cleanQuestion(starter) === normalizedCurrent;
-
-                return (
-                  <button
-                    key={starter}
-                    type="button"
-                    onClick={() => onSelect(starter)}
-                    className={`starterButton ${active ? "starterButtonActive" : ""}`}
-                  >
-                    {starter}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        ))}
-      </div>
-    </aside>
-  );
-}
-
-function AnswerView({ answer }: { answer: StructuredAnswer | null }) {
-  if (!answer) {
-    return <div className="panel emptyAnswerPanel" />;
-  }
-
-  return (
-    <section className="panel answerOuterPanel">
-      <div className="answerMetaRow">
-        <span className="pill">Latest answer</span>
-        <span className="pill">Question: {answer.question}</span>
-      </div>
-
-      <div className="answerCard">
-        <h2 className="answerLead">{answer.lead}</h2>
-
-        <div className="answerSections">
-          {answer.sections.map((section) => (
-            <div
-              key={`${section.title}-${section.lines.join("|")}`}
-              className="answerSectionCard"
-            >
-              <div className="answerSectionTitle">{section.title}</div>
-
-              {section.ordered ? (
-                <ol className="answerOrderedList">
-                  {section.lines.map((line) => (
-                    <li key={line}>{line}</li>
-                  ))}
-                </ol>
-              ) : (
-                <ul className="answerBulletList">
-                  {section.lines.map((line) => (
-                    <li key={line}>
-                      <span className="bulletDot" />
-                      <span>{line}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          ))}
-        </div>
-
-        {answer.source ? (
-          <div className="answerSource">
-            <span className="answerSourceLabel">Source:</span> {answer.source}
-          </div>
-        ) : null}
-      </div>
-    </section>
-  );
-}
-
-export default function AskPage() {
-  const [summary, setSummary] = useState<WorkspaceSummary>({
-    planLabel: "Free",
-    creditsLabel: "0",
-    dailyLeftLabel: "—",
-    channelsLabel: "No channel linked",
-    companyName: "BMS Creative Concept",
-    companyPhone: "+2347034941158",
-    whatsappLinked: false,
-    telegramLinked: false,
-  });
-
+  const [submitting, setSubmitting] = useState(false);
   const [question, setQuestion] = useState("");
-  const [replyLanguage, setReplyLanguage] = useState("English");
-  const [answer, setAnswer] = useState<StructuredAnswer | null>(null);
-  const [isLoadingSummary, setIsLoadingSummary] = useState(true);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [errorText, setErrorText] = useState<string | null>(null);
+  const [language, setLanguage] = useState("English");
+  const [answer, setAnswer] = useState("");
+  const [resultOk, setResultOk] = useState<boolean | null>(null);
+  const [friendlyError, setFriendlyError] = useState("");
+  const [lastAskDebug, setLastAskDebug] = useState<unknown>(null);
+  const [citations, setCitations] = useState<string[]>([]);
+  const [clarificationPrompt, setClarificationPrompt] = useState("");
+  const [monthlyAiUsed, setMonthlyAiUsed] = useState(0);
 
-  const loadSummary = useCallback(async () => {
-    setIsLoadingSummary(true);
-
-    try {
-      for (const endpoint of SUMMARY_ENDPOINTS) {
-        try {
-          const payload = await tryJson(endpoint, { method: "GET" });
-          setSummary(normalizeSummary(payload));
-          return;
-        } catch {
-          // try next endpoint
-        }
-      }
-    } finally {
-      setIsLoadingSummary(false);
-    }
-  }, []);
+  const busy = workspaceBusy || submitting;
 
   useEffect(() => {
-    void loadSummary();
-  }, [loadSummary]);
+    const q = (sp?.get("q") || "").trim();
+    const lang = (sp?.get("lang") || "").trim();
 
-  const handleStarterSelect = useCallback((starter: string) => {
-    setQuestion(starter);
-    setErrorText(null);
-  }, []);
+    if (q) setQuestion(q);
+    if (lang) setLanguage(normalizeLanguageLabel(lang));
+  }, [sp]);
 
-  const handleClear = useCallback(() => {
-    setQuestion("");
-    setErrorText(null);
-  }, []);
+  const handleAsk = async () => {
+    const q = question.trim();
 
-  const handleAsk = useCallback(async () => {
-    const trimmed = question.trim();
-
-    if (!trimmed) {
-      setErrorText("Enter one clear question before submitting.");
+    if (!q) {
+      setResultOk(false);
+      setFriendlyError("Please enter your question before continuing.");
+      setAnswer("");
+      setCitations([]);
+      setClarificationPrompt("");
+      setLastAskDebug(null);
       return;
     }
 
-    setIsSubmitting(true);
-    setErrorText(null);
-    setNotice(null);
+    if (dailyLimit > 0 && dailyUsage >= dailyLimit) {
+      setResultOk(false);
+      setFriendlyError("You have reached your daily question limit for today.");
+      setAnswer("");
+      setCitations([]);
+      setClarificationPrompt("");
+      setLastAskDebug(null);
+      return;
+    }
+
+    setSubmitting(true);
+    setResultOk(null);
+    setFriendlyError("");
+    setAnswer("");
+    setCitations([]);
+    setClarificationPrompt("");
+    setLastAskDebug(null);
 
     try {
-      let lastError = "Unable to submit your question right now.";
+      const data = await apiJson<AskResp>("/ask", {
+        method: "POST",
+        timeoutMs: 45000,
+        useAuthToken: false,
+        body: {
+          question: q,
+          lang: languageToCode(language),
+          channel: "web",
+        },
+      });
 
-      for (const endpoint of ASK_ENDPOINTS) {
-        try {
-          const payload = await tryJson(endpoint, {
-            method: "POST",
-            body: JSON.stringify({
-              question: trimmed,
-              language: replyLanguage,
-            }),
-          });
+      if (SHOW_ASK_DEBUG) {
+        setLastAskDebug(data?.debug || null);
+      } else {
+        setLastAskDebug(null);
+      }
 
-          const normalized = normalizeAnswerPayload(trimmed, payload);
-          setAnswer(normalized);
-          setNotice(
-            "Starter or already-covered questions may still work. Some live asks can require an active plan or available credits."
+      await load("Refreshing assistant state...");
+
+      const returnedMonthlyAiUsed = safeNumber(
+        data?.meta?.ai_used_month ??
+          data?.meta?.monthly_ai_used ??
+          data?.meta?.ai_used_this_month ??
+          data?.meta?.used_this_month
+      );
+
+      if (returnedMonthlyAiUsed > 0 || data?.meta) {
+        setMonthlyAiUsed(returnedMonthlyAiUsed);
+      }
+
+      if (data?.ok && data?.answer) {
+        const answerText = sanitizeAnswerForDisplay(String(data.answer || "").trim());
+
+        if (!answerText) {
+          setResultOk(false);
+          setFriendlyError(
+            "We could not prepare a clean final answer for that question yet. Please ask it again in a shorter, more direct way."
           );
-          void loadSummary();
+          setCitations([]);
+          setClarificationPrompt("");
           return;
-        } catch (error) {
-          lastError =
-            error instanceof Error && error.message.trim()
-              ? error.message.trim()
-              : lastError;
+        }
+
+        setResultOk(true);
+        setAnswer(answerText);
+        setCitations(Array.isArray(data?.citations) ? data.citations.filter(Boolean) : []);
+        setClarificationPrompt(normalizeText(data?.clarification_prompt || ""));
+
+        const item: HistoryItem = {
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+          question: q,
+          answer: answerText,
+          language,
+          created_at: new Date().toISOString(),
+          source: "web",
+        };
+        saveHistoryItem(item);
+
+        requestAnimationFrame(() => {
+          answerRef.current?.scrollIntoView({
+            behavior: "smooth",
+            block: "start",
+          });
+        });
+
+        return;
+      }
+
+      const code = String(data?.error || "").trim().toLowerCase();
+
+      if (code === "insufficient_credits" || code === "insufficient_credits_uncached") {
+        setResultOk(false);
+        setFriendlyError(
+          "No fresh AI credits are available right now. Cached questions can still return answers, but new uncached questions need available credits."
+        );
+      } else if (code === "subscription_required") {
+        setResultOk(false);
+        setFriendlyError(
+          "Your subscription is not active yet. Please open Plans or Billing to restore full access."
+        );
+      } else if (code === "daily_limit_reached") {
+        setResultOk(false);
+        setFriendlyError("You have reached your daily question limit for today.");
+      } else {
+        setResultOk(false);
+        setFriendlyError("We could not complete this request right now.");
+      }
+    } catch (err: unknown) {
+      await load("Refreshing assistant state...");
+
+      if (isApiError(err)) {
+        const code = String(err?.data?.error || "").trim().toLowerCase();
+
+        if (SHOW_ASK_DEBUG) {
+          setLastAskDebug(err?.data?.debug || err?.data || null);
+        } else {
+          setLastAskDebug(null);
+        }
+
+        if (code === "insufficient_credits" || code === "insufficient_credits_uncached") {
+          setResultOk(false);
+          setFriendlyError(
+            "No fresh AI credits are available right now. Cached questions can still return answers, but new uncached questions need available credits."
+          );
+        } else if (code === "subscription_required") {
+          setResultOk(false);
+          setFriendlyError(
+            "Your subscription is not active yet. Please open Plans or Billing to restore full access."
+          );
+        } else if (code === "daily_limit_reached") {
+          setResultOk(false);
+          setFriendlyError("You have reached your daily question limit for today.");
+        } else if (code === "unauthorized" || err?.status === 401) {
+          setResultOk(false);
+          setFriendlyError("Your session is no longer valid. Please log in again.");
+          router.push(`/login?next=${encodeURIComponent("/ask")}`);
+        } else {
+          setResultOk(false);
+          setFriendlyError("We could not complete your request right now.");
+        }
+      } else {
+        setResultOk(false);
+        setFriendlyError("We could not reach the service right now.");
+
+        if (SHOW_ASK_DEBUG) {
+          setLastAskDebug(err instanceof Error ? err.message : String(err));
+        } else {
+          setLastAskDebug(null);
         }
       }
-
-      setErrorText(lastError);
     } finally {
-      setIsSubmitting(false);
+      setSubmitting(false);
     }
-  }, [loadSummary, question, replyLanguage]);
+  };
 
-  const onQuestionKeyDown = useCallback(
-    (event: KeyboardEvent<HTMLTextAreaElement>) => {
-      if (event.key === "Enter" && event.ctrlKey) {
-        event.preventDefault();
-        void handleAsk();
-      }
-    },
-    [handleAsk]
+  const clearAll = () => {
+    setQuestion("");
+    setAnswer("");
+    setResultOk(null);
+    setFriendlyError("");
+    setCitations([]);
+    setClarificationPrompt("");
+    setLastAskDebug(null);
+  };
+
+  const parsedAnswer = useMemo(() => parseStructuredAnswer(answer), [answer]);
+
+  const submitDisabled =
+    busy || !question.trim() || (dailyLimit > 0 && dailyUsage >= dailyLimit);
+
+  const planName = prettifyPlanName(planCode);
+  const dailyRemaining =
+    dailyLimit > 0 ? Math.max(dailyLimit - dailyUsage, 0) : 0;
+
+  const whatsappLinked = truthyValue(
+    channelLinks?.whatsapp_linked || channelLinks?.whatsapp?.linked
+  );
+  const telegramLinked = truthyValue(
+    channelLinks?.telegram_linked || channelLinks?.telegram?.linked
   );
 
-  const selectedStarterText = useMemo(() => cleanQuestion(question), [question]);
+  const channelStatus = whatsappLinked && telegramLinked
+    ? "WhatsApp + Telegram linked"
+    : whatsappLinked
+    ? "WhatsApp linked"
+    : telegramLinked
+    ? "Telegram linked"
+    : "No channel linked";
+
+  const topTone =
+    dailyLimit > 0 && dailyUsage >= dailyLimit
+      ? "warn"
+      : !activeNow || creditBalance <= 0
+      ? "warn"
+      : "good";
+
+  const topTitle =
+    dailyLimit > 0 && dailyUsage >= dailyLimit
+      ? "Daily question limit reached"
+      : !activeNow || creditBalance <= 0
+      ? "Account attention needed"
+      : "Ask page is ready";
+
+  const topSubtitle =
+    dailyLimit > 0 && dailyUsage >= dailyLimit
+      ? "You can still review the starter questions below, but new submissions may stop until the daily limit resets."
+      : !activeNow || creditBalance <= 0
+      ? "Starter or already-covered questions may still work, but some live asks can be blocked until plan and credits are active."
+      : status || "Write one direct tax question or tap any starter question on the right.";
 
   return (
-    <div className="askPage">
-      <div className="askGrid">
-        <div className="leftColumn">
-          <div className="panel">
-            <button type="button" className="collapseButton">
-              Collapse
-            </button>
-          </div>
+    <AppShell
+      title="Ask Naija Tax Guide"
+      subtitle="Ask a practical Nigerian tax question and get a structured response inside your workspace."
+      actions={
+        <WorkspaceActionBar
+          primaryLabel="Refresh"
+          onPrimary={() => load("Refreshing assistant state...")}
+          secondaryLabel="Plans"
+          onSecondary={() => router.push("/plans")}
+          dangerLabel="Credits"
+          onDanger={() => router.push("/credits")}
+        />
+      }
+    >
+      <SectionStack>
+        <Banner tone={topTone} title={topTitle} subtitle={topSubtitle} />
 
-          <div className="panel brandPanel">
-            <div className="brandRow">
-              <div className="brandLogo">NTG</div>
-              <div className="brandText">
-                <div className="brandName">Naija Tax Guide</div>
-                <div className="brandCompany">{summary.companyName}</div>
-                <div className="brandDesc">Structured tax guidance workspace</div>
+        <WorkspaceSectionCard
+          title="Ask your question"
+          subtitle="Starter questions stay on the right. Ask box stays on the left."
+        >
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "minmax(0, 1.35fr) minmax(320px, 0.92fr)",
+              gap: 18,
+              alignItems: "start",
+            }}
+          >
+            <div style={{ display: "grid", gap: 16 }}>
+              <div
+                style={{
+                  display: "flex",
+                  gap: 10,
+                  flexWrap: "wrap",
+                }}
+              >
+                <div style={statusTileStyle(activeNow ? "good" : "warn")}>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 900,
+                      color: "var(--text-muted)",
+                      textTransform: "uppercase",
+                      letterSpacing: 0.5,
+                    }}
+                  >
+                    Plan
+                  </div>
+                  <div style={{ fontSize: 16, fontWeight: 900 }}>{planName}</div>
+                </div>
+
+                <div style={statusTileStyle(creditBalance > 0 ? "good" : "warn")}>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 900,
+                      color: "var(--text-muted)",
+                      textTransform: "uppercase",
+                      letterSpacing: 0.5,
+                    }}
+                  >
+                    Credits
+                  </div>
+                  <div style={{ fontSize: 16, fontWeight: 900 }}>{creditBalance}</div>
+                </div>
+
+                <div
+                  style={statusTileStyle(
+                    dailyLimit > 0 && dailyRemaining === 0 ? "warn" : "default"
+                  )}
+                >
+                  <div
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 900,
+                      color: "var(--text-muted)",
+                      textTransform: "uppercase",
+                      letterSpacing: 0.5,
+                    }}
+                  >
+                    Daily Left
+                  </div>
+                  <div style={{ fontSize: 16, fontWeight: 900 }}>
+                    {dailyLimit > 0 ? dailyRemaining : "—"}
+                  </div>
+                </div>
+
+                <div
+                  style={statusTileStyle(
+                    whatsappLinked || telegramLinked ? "good" : "default"
+                  )}
+                >
+                  <div
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 900,
+                      color: "var(--text-muted)",
+                      textTransform: "uppercase",
+                      letterSpacing: 0.5,
+                    }}
+                  >
+                    Channels
+                  </div>
+                  <div style={{ fontSize: 16, fontWeight: 900 }}>{channelStatus}</div>
+                </div>
               </div>
-            </div>
-          </div>
 
-          <div className="panel">
-            <div className="sidebarHeading">WORKSPACE</div>
-            <div className="sidebarLinks">
-              <SidebarLink href="/dashboard" label="Dashboard" />
-              <SidebarLink href="/ask" label="Ask" active />
-              <SidebarLink href="/channels" label="Channels" badge="Full" />
-              <SidebarLink href="/workspace" label="Workspace" badge="Full" />
-              <SidebarLink href="/history" label="History" />
-            </div>
-          </div>
-
-          <div className="panel">
-            <div className="contactTitle">Company Contact</div>
-            <div className="contactLine">{summary.companyName}</div>
-            <div className="contactLine">{summary.companyPhone}</div>
-
-            <div className="contactLinks">
-              <Link href="/contact">Contact</Link>
-              <Link href="/support">Support</Link>
-              <Link href="/privacy">Privacy</Link>
-            </div>
-          </div>
-        </div>
-
-        <div className="centerColumn">
-          <div className="panel pageShell">
-            <div className="pageHeader">
               <div>
-                <h1 className="pageTitle">Ask Naija Tax Guide</h1>
-                <p className="pageSubtitle">
-                  Ask a practical Nigerian tax question and get a structured response
-                  inside your workspace.
-                </p>
-              </div>
-
-              <div className="headerActions">
-                <button
-                  type="button"
-                  className="topActionButton"
-                  onClick={() => {
-                    void loadSummary();
+                <div style={fieldLabelStyle()}>Question</div>
+                <textarea
+                  value={question}
+                  onChange={(event) => setQuestion(event.target.value)}
+                  onKeyDown={(event) => {
+                    if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+                      event.preventDefault();
+                      if (!submitDisabled) {
+                        void handleAsk();
+                      }
+                    }
+                  }}
+                  placeholder="Example: how do i register for vat?"
+                  rows={7}
+                  style={{
+                    ...appTextareaStyle(),
+                    minHeight: 180,
+                    fontSize: 18,
+                    lineHeight: 1.8,
+                    borderRadius: 22,
+                  }}
+                />
+                <div
+                  style={{
+                    marginTop: 8,
+                    fontSize: 13,
+                    color: "var(--text-muted)",
+                    lineHeight: 1.6,
                   }}
                 >
-                  Refresh
-                </button>
-
-                <Link href="/plans" className="topActionButton topActionButtonMuted">
-                  Plans
-                </Link>
-
-                <Link href="/credits" className="topActionButton topActionButtonSoft">
-                  Credits
-                </Link>
-              </div>
-            </div>
-
-            <div className="attentionBox">
-              <div className="attentionTitle">
-                {isLoadingSummary ? "Loading account status..." : "Account attention needed"}
-              </div>
-              <div className="attentionText">
-                {notice ??
-                  "Starter or already-covered questions may still work, but some live asks can be blocked until plan and credits are active."}
-              </div>
-            </div>
-
-            <div className="statsGrid">
-              <StatCard title="PLAN" value={summary.planLabel} />
-              <StatCard title="CREDITS" value={summary.creditsLabel} />
-              <StatCard title="DAILY LEFT" value={summary.dailyLeftLabel} />
-              <StatCard title="CHANNELS" value={summary.channelsLabel} green />
-            </div>
-
-            <div className="panel formPanel">
-              <label htmlFor="ask-question" className="fieldLabel">
-                Question
-              </label>
-
-              <textarea
-                id="ask-question"
-                value={question}
-                onChange={(event) => setQuestion(event.target.value)}
-                onKeyDown={onQuestionKeyDown}
-                placeholder="Ask one clear tax question at a time."
-                className="questionInput"
-              />
-
-              <div className="tipText">
-                Tip: use one clear question at a time. Press Ctrl + Enter to submit
-                quickly.
+                  Tip: use one clear question at a time. Press Ctrl + Enter to submit quickly.
+                </div>
               </div>
 
-              <div className="controlsRow">
-                <div className="languageBlock">
-                  <label className="fieldLabel">Reply language</label>
+              <div
+                style={{
+                  display: "flex",
+                  gap: 12,
+                  flexWrap: "wrap",
+                  alignItems: "end",
+                }}
+              >
+                <div style={{ minWidth: 240 }}>
+                  <div style={fieldLabelStyle()}>Reply language</div>
                   <select
-                    value={replyLanguage}
-                    onChange={(event) => setReplyLanguage(event.target.value)}
-                    className="languageSelect"
+                    value={language}
+                    onChange={(event) => setLanguage(event.target.value)}
+                    style={appSelectStyle()}
                   >
-                    <option value="English">English</option>
+                    {LANGUAGE_OPTIONS.map((item) => (
+                      <option key={item.value} value={item.value}>
+                        {item.label}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
                 <button
-                  type="button"
-                  className="primaryButton"
-                  disabled={isSubmitting}
                   onClick={() => {
                     void handleAsk();
                   }}
+                  disabled={submitDisabled}
+                  style={{
+                    ...appInputStyle("button"),
+                    minWidth: 190,
+                    opacity: submitDisabled ? 0.65 : 1,
+                    cursor: submitDisabled ? "not-allowed" : "pointer",
+                  }}
                 >
-                  {isSubmitting ? "Asking..." : "Ask Question"}
+                  {submitting ? "Submitting..." : "Ask Question"}
                 </button>
 
                 <button
-                  type="button"
-                  className="secondaryButton"
-                  disabled={isSubmitting}
-                  onClick={handleClear}
+                  onClick={clearAll}
+                  disabled={submitting}
+                  style={{
+                    ...appInputStyle("buttonSecondary"),
+                    minWidth: 140,
+                    opacity: submitting ? 0.7 : 1,
+                    cursor: submitting ? "not-allowed" : "pointer",
+                  }}
                 >
                   Clear
                 </button>
               </div>
+            </div>
 
-              {errorText ? <div className="errorBox">{errorText}</div> : null}
+            <div
+              style={{
+                position: "sticky",
+                top: 14,
+                display: "grid",
+                gap: 14,
+              }}
+            >
+              <div
+                style={{
+                  border: "1px solid var(--border)",
+                  borderRadius: 24,
+                  background: "var(--surface)",
+                  padding: 18,
+                  display: "grid",
+                  gap: 14,
+                }}
+              >
+                <div>
+                  <div
+                    style={{
+                      fontSize: 15,
+                      fontWeight: 900,
+                      color: "var(--text)",
+                      marginBottom: 4,
+                    }}
+                  >
+                    Starter questions
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 13,
+                      color: "var(--text-muted)",
+                      lineHeight: 1.7,
+                    }}
+                  >
+                    Tap any question below to load it into the ask box.
+                  </div>
+                </div>
+
+                {STARTER_GROUPS.map((group) => (
+                  <div key={group.title} style={{ display: "grid", gap: 8 }}>
+                    <div
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 900,
+                        color: "var(--text-muted)",
+                        textTransform: "uppercase",
+                        letterSpacing: 0.5,
+                      }}
+                    >
+                      {group.title}
+                    </div>
+
+                    <div style={{ display: "grid", gap: 8 }}>
+                      {group.items.map((item) => {
+                        const isActive =
+                          question.trim().toLowerCase() === item.trim().toLowerCase();
+
+                        return (
+                          <button
+                            key={item}
+                            type="button"
+                            onClick={() => {
+                              setQuestion(item);
+                              setResultOk(null);
+                              setFriendlyError("");
+                              setClarificationPrompt("");
+                            }}
+                            style={starterButtonStyle(isActive)}
+                          >
+                            {item}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
+        </WorkspaceSectionCard>
 
-          <AnswerView answer={answer} />
-
-          <footer className="panel footerPanel">
-            <div className="footerTop">
-              <div>
-                <div className="footerBrand">Naija Tax Guide</div>
-                <div className="footerText">Operated by {summary.companyName}.</div>
-                <div className="footerText">General contact: {summary.companyPhone}</div>
-                <div className="footerCopy">
-                  © 2026 Naija Tax Guide · {summary.companyName}. All rights reserved.
+        <div ref={answerRef}>
+          <WorkspaceSectionCard
+            title="Latest answer"
+            subtitle="The answer below should now feel like the final presentation style for the Ask page."
+          >
+            {resultOk === null && !answer && !friendlyError ? (
+              <div
+                style={{
+                  borderRadius: 22,
+                  border: "1px solid var(--border)",
+                  background: "var(--surface)",
+                  padding: 22,
+                  display: "grid",
+                  gap: 10,
+                }}
+              >
+                <div style={{ fontSize: 17, fontWeight: 900, color: "var(--text)" }}>
+                  No response yet
+                </div>
+                <div
+                  style={{
+                    color: "var(--text-muted)",
+                    lineHeight: 1.75,
+                    fontSize: 15,
+                  }}
+                >
+                  Ask a question above or tap any starter question to test this section.
                 </div>
               </div>
+            ) : resultOk ? (
+              <div style={{ display: "grid", gap: 16 }}>
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 10,
+                    flexWrap: "wrap",
+                    alignItems: "center",
+                  }}
+                >
+                  <div style={chipStyle()}>Latest answer</div>
+                  {question.trim() ? (
+                    <div style={chipStyle()}>
+                      Question: {question.trim()}
+                    </div>
+                  ) : null}
+                </div>
 
-              <div className="footerLinks">
-                <Link href="/contact">Contact</Link>
-                <Link href="/support">Support</Link>
-                <Link href="/privacy">Privacy</Link>
-                <Link href="/terms">Terms</Link>
-                <Link href="/refund">Refund</Link>
-                <Link href="/data-deletion">Data Deletion</Link>
+                <div style={answerSurfaceStyle()}>
+                  {parsedAnswer.lead ? (
+                    <div
+                      style={{
+                        fontSize: 19,
+                        lineHeight: 1.85,
+                        color: "var(--text)",
+                        fontWeight: 700,
+                      }}
+                    >
+                      {parsedAnswer.lead}
+                    </div>
+                  ) : null}
+
+                  {parsedAnswer.sections.map((section, index) => (
+                    <div key={`${section.title}-${index}`} style={answerSectionStyle()}>
+                      <div
+                        style={{
+                          fontSize: 15,
+                          fontWeight: 900,
+                          color: "var(--text)",
+                        }}
+                      >
+                        {section.title}
+                      </div>
+                      <div
+                        style={{
+                          whiteSpace: "pre-wrap",
+                          lineHeight: 1.85,
+                          fontSize: 16,
+                          color: "var(--text)",
+                        }}
+                      >
+                        {section.body}
+                      </div>
+                    </div>
+                  ))}
+
+                  {!parsedAnswer.lead && parsedAnswer.sections.length === 0 ? (
+                    <div
+                      style={{
+                        whiteSpace: "pre-wrap",
+                        lineHeight: 1.85,
+                        fontSize: 16,
+                        color: "var(--text)",
+                      }}
+                    >
+                      {answer}
+                    </div>
+                  ) : null}
+
+                  {parsedAnswer.source ? (
+                    <div
+                      style={{
+                        borderTop: "1px solid rgba(15, 23, 42, 0.08)",
+                        paddingTop: 12,
+                        fontSize: 13,
+                        color: "var(--text-muted)",
+                        lineHeight: 1.7,
+                      }}
+                    >
+                      <strong>Source:</strong> {parsedAnswer.source}
+                    </div>
+                  ) : null}
+                </div>
+
+                {citations.length ? (
+                  <div
+                    style={{
+                      border: "1px solid var(--border)",
+                      borderRadius: 20,
+                      background: "var(--surface)",
+                      padding: 16,
+                      display: "grid",
+                      gap: 8,
+                    }}
+                  >
+                    <div style={{ fontWeight: 900, color: "var(--text)" }}>
+                      References
+                    </div>
+                    <ul
+                      style={{
+                        margin: 0,
+                        paddingLeft: 18,
+                        lineHeight: 1.8,
+                        color: "var(--text-muted)",
+                      }}
+                    >
+                      {citations.map((citation, index) => (
+                        <li key={`${citation}-${index}`}>{citation}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+
+                {clarificationPrompt ? (
+                  <Banner
+                    tone="warn"
+                    title="Clarification may be needed"
+                    subtitle={clarificationPrompt}
+                  />
+                ) : null}
               </div>
-            </div>
-          </footer>
+            ) : (
+              <Banner
+                tone="danger"
+                title="Question could not be completed"
+                subtitle={
+                  friendlyError || "Something went wrong while processing your question."
+                }
+              />
+            )}
+          </WorkspaceSectionCard>
         </div>
 
-        <div className="rightColumn">
-          <StarterRail
-            currentQuestion={selectedStarterText}
-            onSelect={handleStarterSelect}
-          />
-        </div>
+        {SHOW_ASK_DEBUG && lastAskDebug ? (
+          <WorkspaceSectionCard
+            title="Ask debug"
+            subtitle="Visible only when NEXT_PUBLIC_SHOW_ASK_DEBUG=true"
+          >
+            <pre
+              style={{
+                margin: 0,
+                whiteSpace: "pre-wrap",
+                wordBreak: "break-word",
+                fontSize: 12,
+                lineHeight: 1.6,
+                color: "var(--text-soft)",
+              }}
+            >
+              {typeof lastAskDebug === "string"
+                ? lastAskDebug
+                : JSON.stringify(lastAskDebug, null, 2)}
+            </pre>
+          </WorkspaceSectionCard>
+        ) : null}
+      </SectionStack>
+    </AppShell>
+  );
+}
+
+function AskPageFallback() {
+  return (
+    <div
+      style={{
+        minHeight: "100vh",
+        display: "grid",
+        placeItems: "center",
+        padding: 24,
+        background: "var(--app-bg)",
+        color: "var(--text)",
+      }}
+    >
+      <div
+        style={{
+          width: "100%",
+          maxWidth: 560,
+          borderRadius: 24,
+          border: "1px solid rgba(255,255,255,0.08)",
+          background: "rgba(255,255,255,0.03)",
+          padding: 24,
+          textAlign: "center",
+        }}
+      >
+        Loading ask page...
       </div>
-
-      <style jsx global>{`
-        .askPage {
-          min-height: 100vh;
-          background: #f6f7fb;
-          color: #0f172a;
-          padding: 16px;
-          box-sizing: border-box;
-        }
-
-        .askPage * {
-          box-sizing: border-box;
-        }
-
-        .askPage .askGrid {
-          max-width: 1800px;
-          margin: 0 auto;
-          display: grid;
-          grid-template-columns: 360px minmax(0, 1fr) 420px;
-          gap: 24px;
-          align-items: start;
-        }
-
-        .askPage .leftColumn,
-        .askPage .centerColumn,
-        .askPage .rightColumn {
-          min-width: 0;
-        }
-
-        .askPage .leftColumn,
-        .askPage .centerColumn {
-          display: flex;
-          flex-direction: column;
-          gap: 20px;
-        }
-
-        .askPage .rightColumn {
-          position: sticky;
-          top: 16px;
-          align-self: start;
-        }
-
-        .askPage .panel {
-          background: #ffffff;
-          border: 1px solid #dbe1ea;
-          border-radius: 28px;
-          box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
-        }
-
-        .askPage .collapseButton {
-          width: 100%;
-          border: 1px solid #dbe1ea;
-          background: #f8fafc;
-          color: #0f172a;
-          border-radius: 22px;
-          padding: 18px 20px;
-          font-size: 18px;
-          font-weight: 700;
-          cursor: pointer;
-        }
-
-        .askPage .brandPanel {
-          padding: 20px;
-        }
-
-        .askPage .brandRow {
-          display: flex;
-          align-items: center;
-          gap: 16px;
-        }
-
-        .askPage .brandLogo {
-          width: 72px;
-          height: 72px;
-          border-radius: 20px;
-          background: #0f172a;
-          color: #fbbf24;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 22px;
-          font-weight: 800;
-          flex: 0 0 auto;
-        }
-
-        .askPage .brandText {
-          min-width: 0;
-        }
-
-        .askPage .brandName {
-          font-size: 20px;
-          font-weight: 800;
-          color: #0f172a;
-        }
-
-        .askPage .brandCompany {
-          font-size: 18px;
-          font-weight: 800;
-          color: #b45309;
-          margin-top: 4px;
-        }
-
-        .askPage .brandDesc {
-          margin-top: 6px;
-          font-size: 15px;
-          line-height: 1.6;
-          color: #475569;
-        }
-
-        .askPage .sidebarHeading {
-          padding: 20px 20px 0;
-          font-size: 14px;
-          font-weight: 800;
-          letter-spacing: 0.08em;
-          color: #64748b;
-        }
-
-        .askPage .sidebarLinks {
-          padding: 16px 16px 18px;
-          display: flex;
-          flex-direction: column;
-          gap: 10px;
-        }
-
-        .askPage .sidebarLink {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 12px;
-          padding: 16px 18px;
-          border-radius: 22px;
-          border: 1px solid transparent;
-          background: transparent;
-          color: #0f172a;
-          font-size: 18px;
-          font-weight: 800;
-          text-decoration: none;
-          transition: 0.2s ease;
-        }
-
-        .askPage .sidebarLink:hover {
-          background: #f8fafc;
-          border-color: #dbe1ea;
-        }
-
-        .askPage .sidebarLinkActive {
-          background: #eef2ff;
-          border-color: #c7d2fe;
-        }
-
-        .askPage .sidebarBadge {
-          padding: 6px 12px;
-          border-radius: 999px;
-          border: 1px solid #fde68a;
-          background: #fffbeb;
-          color: #b45309;
-          font-size: 13px;
-          font-weight: 800;
-          white-space: nowrap;
-          flex: 0 0 auto;
-        }
-
-        .askPage .contactTitle {
-          padding: 20px 20px 0;
-          font-size: 18px;
-          font-weight: 800;
-          color: #0f172a;
-        }
-
-        .askPage .contactLine {
-          padding: 0 20px;
-          margin-top: 14px;
-          font-size: 16px;
-          color: #475569;
-        }
-
-        .askPage .contactLinks {
-          padding: 20px;
-          display: flex;
-          flex-wrap: wrap;
-          gap: 16px;
-        }
-
-        .askPage .contactLinks a {
-          color: #0f172a;
-          text-decoration: none;
-          font-size: 16px;
-          font-weight: 700;
-        }
-
-        .askPage .pageShell {
-          overflow: hidden;
-        }
-
-        .askPage .pageHeader {
-          padding: 28px 30px 22px;
-          border-bottom: 1px solid #e2e8f0;
-          display: flex;
-          align-items: flex-start;
-          justify-content: space-between;
-          gap: 18px;
-          flex-wrap: wrap;
-        }
-
-        .askPage .pageTitle {
-          margin: 0;
-          font-size: 34px;
-          line-height: 1.15;
-          font-weight: 900;
-          letter-spacing: -0.02em;
-          color: #0f172a;
-        }
-
-        .askPage .pageSubtitle {
-          margin: 10px 0 0;
-          font-size: 18px;
-          line-height: 1.7;
-          color: #64748b;
-        }
-
-        .askPage .headerActions {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 12px;
-        }
-
-        .askPage .topActionButton {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          min-width: 120px;
-          padding: 15px 22px;
-          border-radius: 20px;
-          border: 1px solid #c7d2fe;
-          background: #ffffff;
-          color: #0f172a;
-          font-size: 18px;
-          font-weight: 800;
-          text-decoration: none;
-          cursor: pointer;
-        }
-
-        .askPage .topActionButtonMuted {
-          border-color: #cbd5e1;
-          background: #e9edf5;
-        }
-
-        .askPage .topActionButtonSoft {
-          border-color: #fecdd3;
-          background: #ffffff;
-        }
-
-        .askPage .attentionBox {
-          margin: 24px 30px 0;
-          padding: 22px 24px;
-          border: 1px solid #e2e8f0;
-          border-radius: 24px;
-          background: #f8fafc;
-        }
-
-        .askPage .attentionTitle {
-          font-size: 18px;
-          font-weight: 800;
-          color: #0f172a;
-        }
-
-        .askPage .attentionText {
-          margin-top: 10px;
-          font-size: 17px;
-          line-height: 1.8;
-          color: #64748b;
-        }
-
-        .askPage .statsGrid {
-          margin: 24px 30px 0;
-          display: grid;
-          grid-template-columns: repeat(4, minmax(0, 1fr));
-          gap: 16px;
-        }
-
-        .askPage .statCard {
-          padding: 20px;
-          border-radius: 22px;
-          border: 1px solid #fde7c7;
-          background: #fffaf0;
-        }
-
-        .askPage .statCardGreen {
-          border-color: #cce7dd;
-          background: #f0fbf6;
-        }
-
-        .askPage .statTitle {
-          font-size: 13px;
-          font-weight: 800;
-          letter-spacing: 0.08em;
-          color: #64748b;
-        }
-
-        .askPage .statValue {
-          margin-top: 10px;
-          font-size: 22px;
-          line-height: 1.4;
-          font-weight: 900;
-          color: #0f172a;
-        }
-
-        .askPage .formPanel {
-          margin: 24px 30px 30px;
-          padding: 24px;
-        }
-
-        .askPage .fieldLabel {
-          display: block;
-          margin-bottom: 10px;
-          font-size: 18px;
-          font-weight: 800;
-          color: #1e293b;
-        }
-
-        .askPage .questionInput {
-          width: 100%;
-          min-height: 240px;
-          resize: vertical;
-          border: 1px solid #cbd5e1;
-          border-radius: 24px;
-          background: #ffffff;
-          padding: 22px 24px;
-          font-size: 20px;
-          line-height: 1.8;
-          color: #0f172a;
-          outline: none;
-        }
-
-        .askPage .questionInput:focus {
-          border-color: #a5b4fc;
-          box-shadow: 0 0 0 4px rgba(165, 180, 252, 0.2);
-        }
-
-        .askPage .tipText {
-          margin-top: 14px;
-          font-size: 16px;
-          line-height: 1.7;
-          color: #64748b;
-        }
-
-        .askPage .controlsRow {
-          margin-top: 22px;
-          display: grid;
-          grid-template-columns: minmax(220px, 320px) minmax(180px, 220px) minmax(160px, 180px);
-          gap: 16px;
-          align-items: end;
-        }
-
-        .askPage .languageBlock {
-          min-width: 0;
-        }
-
-        .askPage .languageSelect {
-          width: 100%;
-          border: 1px solid #cbd5e1;
-          border-radius: 20px;
-          background: #ffffff;
-          padding: 15px 18px;
-          font-size: 18px;
-          color: #0f172a;
-          outline: none;
-        }
-
-        .askPage .languageSelect:focus {
-          border-color: #a5b4fc;
-          box-shadow: 0 0 0 4px rgba(165, 180, 252, 0.2);
-        }
-
-        .askPage .primaryButton,
-        .askPage .secondaryButton {
-          width: 100%;
-          border-radius: 20px;
-          padding: 15px 20px;
-          font-size: 18px;
-          font-weight: 800;
-          cursor: pointer;
-          white-space: nowrap;
-        }
-
-        .askPage .primaryButton {
-          border: 1px solid #c7d2fe;
-          background: #ffffff;
-          color: #0f172a;
-        }
-
-        .askPage .secondaryButton {
-          border: 1px solid #cbd5e1;
-          background: #e9edf5;
-          color: #0f172a;
-        }
-
-        .askPage .primaryButton:disabled,
-        .askPage .secondaryButton:disabled {
-          opacity: 0.6;
-          cursor: not-allowed;
-        }
-
-        .askPage .errorBox {
-          margin-top: 18px;
-          padding: 14px 16px;
-          border-radius: 18px;
-          border: 1px solid #fecdd3;
-          background: #fff1f2;
-          color: #be123c;
-          font-size: 16px;
-          line-height: 1.7;
-        }
-
-        .askPage .emptyAnswerPanel {
-          min-height: 420px;
-        }
-
-        .askPage .answerOuterPanel {
-          padding: 24px;
-        }
-
-        .askPage .answerMetaRow {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 12px;
-          margin-bottom: 18px;
-        }
-
-        .askPage .pill {
-          display: inline-flex;
-          align-items: center;
-          padding: 10px 16px;
-          border-radius: 999px;
-          border: 1px solid #dbe1ea;
-          background: #ffffff;
-          color: #0f172a;
-          font-size: 15px;
-          font-weight: 800;
-        }
-
-        .askPage .answerCard {
-          border: 1px solid #cfe6da;
-          border-radius: 28px;
-          background: #f5fbf7;
-          padding: 30px;
-        }
-
-        .askPage .answerLead {
-          margin: 0;
-          font-size: 28px;
-          line-height: 1.5;
-          font-weight: 900;
-          color: #0f172a;
-        }
-
-        .askPage .answerSections {
-          margin-top: 28px;
-          display: flex;
-          flex-direction: column;
-          gap: 22px;
-        }
-
-        .askPage .answerSectionCard {
-          border: 1px solid #dde4ea;
-          border-radius: 24px;
-          background: rgba(255, 255, 255, 0.85);
-          padding: 28px;
-        }
-
-        .askPage .answerSectionTitle {
-          font-size: 22px;
-          font-weight: 900;
-          color: #0f172a;
-        }
-
-        .askPage .answerOrderedList {
-          margin: 18px 0 0;
-          padding-left: 28px;
-          font-size: 18px;
-          line-height: 2;
-          color: #0f172a;
-        }
-
-        .askPage .answerOrderedList li + li {
-          margin-top: 6px;
-        }
-
-        .askPage .answerBulletList {
-          list-style: none;
-          margin: 18px 0 0;
-          padding: 0;
-        }
-
-        .askPage .answerBulletList li {
-          display: flex;
-          gap: 12px;
-          align-items: flex-start;
-          font-size: 18px;
-          line-height: 2;
-          color: #0f172a;
-        }
-
-        .askPage .answerBulletList li + li {
-          margin-top: 6px;
-        }
-
-        .askPage .bulletDot {
-          width: 7px;
-          height: 7px;
-          border-radius: 999px;
-          background: #334155;
-          margin-top: 14px;
-          flex: 0 0 auto;
-        }
-
-        .askPage .answerSource {
-          margin-top: 28px;
-          padding-top: 22px;
-          border-top: 1px solid #dde4ea;
-          font-size: 15px;
-          line-height: 1.9;
-          color: #64748b;
-        }
-
-        .askPage .answerSourceLabel {
-          font-weight: 800;
-          color: #334155;
-        }
-
-        .askPage .starterRail {
-          padding: 24px;
-          max-height: calc(100vh - 32px);
-          overflow: auto;
-        }
-
-        .askPage .starterTitle {
-          font-size: 18px;
-          font-weight: 900;
-          color: #0f172a;
-        }
-
-        .askPage .starterSubtext {
-          margin-top: 8px;
-          font-size: 15px;
-          line-height: 1.7;
-          color: #64748b;
-        }
-
-        .askPage .starterGroups {
-          margin-top: 24px;
-          display: flex;
-          flex-direction: column;
-          gap: 24px;
-        }
-
-        .askPage .starterGroupTitle {
-          margin-bottom: 12px;
-          font-size: 14px;
-          font-weight: 900;
-          letter-spacing: 0.04em;
-          color: #64748b;
-        }
-
-        .askPage .starterButtons {
-          display: flex;
-          flex-direction: column;
-          gap: 12px;
-        }
-
-        .askPage .starterButton {
-          width: 100%;
-          border-radius: 20px;
-          border: 1px solid #dbe1ea;
-          background: #ffffff;
-          color: #0f172a;
-          padding: 16px 18px;
-          text-align: left;
-          font-size: 18px;
-          font-weight: 800;
-          cursor: pointer;
-          transition: 0.2s ease;
-          line-height: 1.5;
-        }
-
-        .askPage .starterButton:hover {
-          background: #f8fafc;
-          border-color: #cbd5e1;
-        }
-
-        .askPage .starterButtonActive {
-          background: #eef2ff;
-          border-color: #c7d2fe;
-        }
-
-        .askPage .footerPanel {
-          padding: 24px 28px;
-        }
-
-        .askPage .footerTop {
-          display: flex;
-          justify-content: space-between;
-          gap: 24px;
-          flex-wrap: wrap;
-        }
-
-        .askPage .footerBrand {
-          font-size: 20px;
-          font-weight: 900;
-          color: #0f172a;
-        }
-
-        .askPage .footerText {
-          margin-top: 8px;
-          font-size: 17px;
-          line-height: 1.8;
-          color: #64748b;
-        }
-
-        .askPage .footerCopy {
-          margin-top: 16px;
-          font-size: 16px;
-          color: #94a3b8;
-        }
-
-        .askPage .footerLinks {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 18px;
-          align-content: flex-start;
-        }
-
-        .askPage .footerLinks a {
-          color: #0f172a;
-          text-decoration: none;
-          font-size: 17px;
-          font-weight: 700;
-        }
-
-        @media (max-width: 1400px) {
-          .askPage .askGrid {
-            grid-template-columns: 320px minmax(0, 1fr);
-          }
-
-          .askPage .rightColumn {
-            grid-column: 2;
-            position: static;
-          }
-
-          .askPage .starterRail {
-            max-height: none;
-            overflow: visible;
-          }
-        }
-
-        @media (max-width: 1100px) {
-          .askPage .askGrid {
-            grid-template-columns: 1fr;
-          }
-
-          .askPage .rightColumn {
-            grid-column: auto;
-          }
-
-          .askPage .controlsRow {
-            grid-template-columns: 1fr;
-          }
-
-          .askPage .statsGrid {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-          }
-        }
-
-        @media (max-width: 700px) {
-          .askPage {
-            padding: 10px;
-          }
-
-          .askPage .pageHeader,
-          .askPage .attentionBox,
-          .askPage .formPanel,
-          .askPage .statsGrid {
-            margin-left: 16px;
-            margin-right: 16px;
-          }
-
-          .askPage .formPanel {
-            margin-bottom: 20px;
-          }
-
-          .askPage .pageTitle {
-            font-size: 28px;
-          }
-
-          .askPage .pageSubtitle,
-          .askPage .attentionText,
-          .askPage .tipText,
-          .askPage .footerText {
-            font-size: 16px;
-          }
-
-          .askPage .statsGrid {
-            grid-template-columns: 1fr;
-          }
-
-          .askPage .answerCard,
-          .askPage .answerSectionCard,
-          .askPage .starterRail,
-          .askPage .footerPanel {
-            padding: 20px;
-          }
-
-          .askPage .questionInput {
-            min-height: 180px;
-            font-size: 18px;
-          }
-        }
-      `}</style>
     </div>
+  );
+}
+
+export default function AskPage() {
+  return (
+    <Suspense fallback={<AskPageFallback />}>
+      <AskPageContent />
+    </Suspense>
   );
 }
