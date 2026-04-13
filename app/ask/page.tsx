@@ -141,9 +141,7 @@ function truthyValue(value: unknown): boolean {
 function prettifyPlanName(value: string | null | undefined): string {
   const raw = String(value || "").trim();
   if (!raw) return "Free";
-  return raw
-    .replace(/[_-]+/g, " ")
-    .replace(/\b\w/g, (m) => m.toUpperCase());
+  return raw.replace(/[_-]+/g, " ").replace(/\b\w/g, (m) => m.toUpperCase());
 }
 
 function looksLikeBrokenAnswer(text: string): boolean {
@@ -185,9 +183,7 @@ function cleanLineEndings(value: string): string {
 
 function parseStructuredAnswer(text: string): ParsedAnswer {
   const raw = cleanLineEndings(text);
-  if (!raw) {
-    return { lead: "", sections: [], source: "" };
-  }
+  if (!raw) return { lead: "", sections: [], source: "" };
 
   let working = raw;
   let source = "";
@@ -239,11 +235,7 @@ function parseStructuredAnswer(text: string): ParsedAnswer {
     });
   }
 
-  return {
-    lead,
-    sections,
-    source,
-  };
+  return { lead, sections, source };
 }
 
 function statusTileStyle(
@@ -356,7 +348,6 @@ function AskPageContent() {
     creditBalance,
     dailyUsage,
     dailyLimit,
-    expiresAt,
     channelLinks,
   } = useWorkspaceState({
     refreshSession,
@@ -384,7 +375,6 @@ function AskPageContent() {
   useEffect(() => {
     const q = (sp?.get("q") || "").trim();
     const lang = (sp?.get("lang") || "").trim();
-
     if (q) setQuestion(q);
     if (lang) setLanguage(normalizeLanguageLabel(lang));
   }, [sp]);
@@ -576,19 +566,22 @@ function AskPageContent() {
     dailyLimit > 0 ? Math.max(dailyLimit - dailyUsage, 0) : 0;
 
   const whatsappLinked = truthyValue(
-    channelLinks?.whatsapp_linked || channelLinks?.whatsapp?.linked
+    (channelLinks as Record<string, unknown> | null | undefined)?.whatsapp_linked ||
+      (channelLinks as Record<string, { linked?: unknown }> | null | undefined)?.whatsapp?.linked
   );
   const telegramLinked = truthyValue(
-    channelLinks?.telegram_linked || channelLinks?.telegram?.linked
+    (channelLinks as Record<string, unknown> | null | undefined)?.telegram_linked ||
+      (channelLinks as Record<string, { linked?: unknown }> | null | undefined)?.telegram?.linked
   );
 
-  const channelStatus = whatsappLinked && telegramLinked
-    ? "WhatsApp + Telegram linked"
-    : whatsappLinked
-    ? "WhatsApp linked"
-    : telegramLinked
-    ? "Telegram linked"
-    : "No channel linked";
+  const channelStatus =
+    whatsappLinked && telegramLinked
+      ? "WhatsApp + Telegram linked"
+      : whatsappLinked
+      ? "WhatsApp linked"
+      : telegramLinked
+      ? "Telegram linked"
+      : "No channel linked";
 
   const topTone =
     dailyLimit > 0 && dailyUsage >= dailyLimit
@@ -629,428 +622,398 @@ function AskPageContent() {
       <SectionStack>
         <Banner tone={topTone} title={topTitle} subtitle={topSubtitle} />
 
-        <WorkspaceSectionCard
-          title="Ask your question"
-          subtitle="Starter questions stay on the right. Ask box stays on the left."
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "minmax(0, 1.3fr) minmax(320px, 0.82fr)",
+            gap: 18,
+            alignItems: "start",
+          }}
         >
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "minmax(0, 1.35fr) minmax(320px, 0.92fr)",
-              gap: 18,
-              alignItems: "start",
-            }}
-          >
-            <div style={{ display: "grid", gap: 16 }}>
-              <div
-                style={{
-                  display: "flex",
-                  gap: 10,
-                  flexWrap: "wrap",
-                }}
-              >
-                <div style={statusTileStyle(activeNow ? "good" : "warn")}>
-                  <div
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 900,
-                      color: "var(--text-muted)",
-                      textTransform: "uppercase",
-                      letterSpacing: 0.5,
-                    }}
-                  >
-                    Plan
-                  </div>
-                  <div style={{ fontSize: 16, fontWeight: 900 }}>{planName}</div>
-                </div>
-
-                <div style={statusTileStyle(creditBalance > 0 ? "good" : "warn")}>
-                  <div
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 900,
-                      color: "var(--text-muted)",
-                      textTransform: "uppercase",
-                      letterSpacing: 0.5,
-                    }}
-                  >
-                    Credits
-                  </div>
-                  <div style={{ fontSize: 16, fontWeight: 900 }}>{creditBalance}</div>
-                </div>
-
-                <div
-                  style={statusTileStyle(
-                    dailyLimit > 0 && dailyRemaining === 0 ? "warn" : "default"
-                  )}
-                >
-                  <div
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 900,
-                      color: "var(--text-muted)",
-                      textTransform: "uppercase",
-                      letterSpacing: 0.5,
-                    }}
-                  >
-                    Daily Left
-                  </div>
-                  <div style={{ fontSize: 16, fontWeight: 900 }}>
-                    {dailyLimit > 0 ? dailyRemaining : "—"}
-                  </div>
-                </div>
-
-                <div
-                  style={statusTileStyle(
-                    whatsappLinked || telegramLinked ? "good" : "default"
-                  )}
-                >
-                  <div
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 900,
-                      color: "var(--text-muted)",
-                      textTransform: "uppercase",
-                      letterSpacing: 0.5,
-                    }}
-                  >
-                    Channels
-                  </div>
-                  <div style={{ fontSize: 16, fontWeight: 900 }}>{channelStatus}</div>
-                </div>
-              </div>
-
-              <div>
-                <div style={fieldLabelStyle()}>Question</div>
-                <textarea
-                  value={question}
-                  onChange={(event) => setQuestion(event.target.value)}
-                  onKeyDown={(event) => {
-                    if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
-                      event.preventDefault();
-                      if (!submitDisabled) {
-                        void handleAsk();
-                      }
-                    }
-                  }}
-                  placeholder="Example: how do i register for vat?"
-                  rows={7}
-                  style={{
-                    ...appTextareaStyle(),
-                    minHeight: 180,
-                    fontSize: 18,
-                    lineHeight: 1.8,
-                    borderRadius: 22,
-                  }}
-                />
-                <div
-                  style={{
-                    marginTop: 8,
-                    fontSize: 13,
-                    color: "var(--text-muted)",
-                    lineHeight: 1.6,
-                  }}
-                >
-                  Tip: use one clear question at a time. Press Ctrl + Enter to submit quickly.
-                </div>
-              </div>
-
-              <div
-                style={{
-                  display: "flex",
-                  gap: 12,
-                  flexWrap: "wrap",
-                  alignItems: "end",
-                }}
-              >
-                <div style={{ minWidth: 240 }}>
-                  <div style={fieldLabelStyle()}>Reply language</div>
-                  <select
-                    value={language}
-                    onChange={(event) => setLanguage(event.target.value)}
-                    style={appSelectStyle()}
-                  >
-                    {LANGUAGE_OPTIONS.map((item) => (
-                      <option key={item.value} value={item.value}>
-                        {item.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <button
-                  onClick={() => {
-                    void handleAsk();
-                  }}
-                  disabled={submitDisabled}
-                  style={{
-                    ...appInputStyle("button"),
-                    minWidth: 190,
-                    opacity: submitDisabled ? 0.65 : 1,
-                    cursor: submitDisabled ? "not-allowed" : "pointer",
-                  }}
-                >
-                  {submitting ? "Submitting..." : "Ask Question"}
-                </button>
-
-                <button
-                  onClick={clearAll}
-                  disabled={submitting}
-                  style={{
-                    ...appInputStyle("buttonSecondary"),
-                    minWidth: 140,
-                    opacity: submitting ? 0.7 : 1,
-                    cursor: submitting ? "not-allowed" : "pointer",
-                  }}
-                >
-                  Clear
-                </button>
-              </div>
-            </div>
-
-            <div
-              style={{
-                position: "sticky",
-                top: 14,
-                display: "grid",
-                gap: 14,
-              }}
+          <div style={{ display: "grid", gap: 18, minWidth: 0 }}>
+            <WorkspaceSectionCard
+              title="Ask your question"
+              subtitle="Write one clear question here. The answer should now appear directly below this form."
             >
-              <div
-                style={{
-                  border: "1px solid var(--border)",
-                  borderRadius: 24,
-                  background: "var(--surface)",
-                  padding: 18,
-                  display: "grid",
-                  gap: 14,
-                }}
-              >
-                <div>
-                  <div
-                    style={{
-                      fontSize: 15,
-                      fontWeight: 900,
-                      color: "var(--text)",
-                      marginBottom: 4,
-                    }}
-                  >
-                    Starter questions
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 13,
-                      color: "var(--text-muted)",
-                      lineHeight: 1.7,
-                    }}
-                  >
-                    Tap any question below to load it into the ask box.
-                  </div>
-                </div>
-
-                {STARTER_GROUPS.map((group) => (
-                  <div key={group.title} style={{ display: "grid", gap: 8 }}>
-                    <div
-                      style={{
-                        fontSize: 12,
-                        fontWeight: 900,
-                        color: "var(--text-muted)",
-                        textTransform: "uppercase",
-                        letterSpacing: 0.5,
-                      }}
-                    >
-                      {group.title}
-                    </div>
-
-                    <div style={{ display: "grid", gap: 8 }}>
-                      {group.items.map((item) => {
-                        const isActive =
-                          question.trim().toLowerCase() === item.trim().toLowerCase();
-
-                        return (
-                          <button
-                            key={item}
-                            type="button"
-                            onClick={() => {
-                              setQuestion(item);
-                              setResultOk(null);
-                              setFriendlyError("");
-                              setClarificationPrompt("");
-                            }}
-                            style={starterButtonStyle(isActive)}
-                          >
-                            {item}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </WorkspaceSectionCard>
-
-        <div ref={answerRef}>
-          <WorkspaceSectionCard
-            title="Latest answer"
-            subtitle="The answer below should now feel like the final presentation style for the Ask page."
-          >
-            {resultOk === null && !answer && !friendlyError ? (
-              <div
-                style={{
-                  borderRadius: 22,
-                  border: "1px solid var(--border)",
-                  background: "var(--surface)",
-                  padding: 22,
-                  display: "grid",
-                  gap: 10,
-                }}
-              >
-                <div style={{ fontSize: 17, fontWeight: 900, color: "var(--text)" }}>
-                  No response yet
-                </div>
-                <div
-                  style={{
-                    color: "var(--text-muted)",
-                    lineHeight: 1.75,
-                    fontSize: 15,
-                  }}
-                >
-                  Ask a question above or tap any starter question to test this section.
-                </div>
-              </div>
-            ) : resultOk ? (
               <div style={{ display: "grid", gap: 16 }}>
                 <div
                   style={{
                     display: "flex",
                     gap: 10,
                     flexWrap: "wrap",
-                    alignItems: "center",
                   }}
                 >
-                  <div style={chipStyle()}>Latest answer</div>
-                  {question.trim() ? (
-                    <div style={chipStyle()}>
-                      Question: {question.trim()}
-                    </div>
-                  ) : null}
-                </div>
-
-                <div style={answerSurfaceStyle()}>
-                  {parsedAnswer.lead ? (
+                  <div style={statusTileStyle(activeNow ? "good" : "warn")}>
                     <div
                       style={{
-                        fontSize: 19,
-                        lineHeight: 1.85,
-                        color: "var(--text)",
-                        fontWeight: 700,
+                        fontSize: 11,
+                        fontWeight: 900,
+                        color: "var(--text-muted)",
+                        textTransform: "uppercase",
+                        letterSpacing: 0.5,
                       }}
                     >
-                      {parsedAnswer.lead}
+                      Plan
                     </div>
-                  ) : null}
+                    <div style={{ fontSize: 16, fontWeight: 900 }}>{planName}</div>
+                  </div>
 
-                  {parsedAnswer.sections.map((section, index) => (
-                    <div key={`${section.title}-${index}`} style={answerSectionStyle()}>
+                  <div style={statusTileStyle(creditBalance > 0 ? "good" : "warn")}>
+                    <div
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 900,
+                        color: "var(--text-muted)",
+                        textTransform: "uppercase",
+                        letterSpacing: 0.5,
+                      }}
+                    >
+                      Credits
+                    </div>
+                    <div style={{ fontSize: 16, fontWeight: 900 }}>{creditBalance}</div>
+                  </div>
+
+                  <div
+                    style={statusTileStyle(
+                      dailyLimit > 0 && dailyRemaining === 0 ? "warn" : "default"
+                    )}
+                  >
+                    <div
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 900,
+                        color: "var(--text-muted)",
+                        textTransform: "uppercase",
+                        letterSpacing: 0.5,
+                      }}
+                    >
+                      Daily Left
+                    </div>
+                    <div style={{ fontSize: 16, fontWeight: 900 }}>
+                      {dailyLimit > 0 ? dailyRemaining : "—"}
+                    </div>
+                  </div>
+
+                  <div
+                    style={statusTileStyle(
+                      whatsappLinked || telegramLinked ? "good" : "default"
+                    )}
+                  >
+                    <div
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 900,
+                        color: "var(--text-muted)",
+                        textTransform: "uppercase",
+                        letterSpacing: 0.5,
+                      }}
+                    >
+                      Channels
+                    </div>
+                    <div style={{ fontSize: 16, fontWeight: 900 }}>{channelStatus}</div>
+                  </div>
+                </div>
+
+                <div>
+                  <div style={fieldLabelStyle()}>Question</div>
+                  <textarea
+                    value={question}
+                    onChange={(event) => setQuestion(event.target.value)}
+                    onKeyDown={(event) => {
+                      if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+                        event.preventDefault();
+                        if (!submitDisabled) {
+                          void handleAsk();
+                        }
+                      }
+                    }}
+                    placeholder="Example: how do i register for vat?"
+                    rows={6}
+                    style={{
+                      ...appTextareaStyle(),
+                      minHeight: 150,
+                      fontSize: 18,
+                      lineHeight: 1.8,
+                      borderRadius: 22,
+                    }}
+                  />
+                  <div
+                    style={{
+                      marginTop: 8,
+                      fontSize: 13,
+                      color: "var(--text-muted)",
+                      lineHeight: 1.6,
+                    }}
+                  >
+                    Tip: use one clear question at a time. Press Ctrl + Enter to submit quickly.
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "minmax(220px, 240px) minmax(180px, 190px) minmax(140px, 150px)",
+                    gap: 12,
+                    alignItems: "end",
+                    maxWidth: 620,
+                  }}
+                >
+                  <div>
+                    <div style={fieldLabelStyle()}>Reply language</div>
+                    <select
+                      value={language}
+                      onChange={(event) => setLanguage(event.target.value)}
+                      style={appSelectStyle()}
+                    >
+                      {LANGUAGE_OPTIONS.map((item) => (
+                        <option key={item.value} value={item.value}>
+                          {item.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      void handleAsk();
+                    }}
+                    disabled={submitDisabled}
+                    style={{
+                      ...appInputStyle("button"),
+                      width: "100%",
+                      opacity: submitDisabled ? 0.65 : 1,
+                      cursor: submitDisabled ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    {submitting ? "Submitting..." : "Ask Question"}
+                  </button>
+
+                  <button
+                    onClick={clearAll}
+                    disabled={submitting}
+                    style={{
+                      ...appInputStyle("buttonSecondary"),
+                      width: "100%",
+                      opacity: submitting ? 0.7 : 1,
+                      cursor: submitting ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+            </WorkspaceSectionCard>
+
+            <div ref={answerRef}>
+              <WorkspaceSectionCard
+                title="Latest answer"
+                subtitle="Structured answers should now sit directly under the form without the large empty gap."
+              >
+                {resultOk === null && !answer && !friendlyError ? (
+                  <div
+                    style={{
+                      borderRadius: 22,
+                      border: "1px solid var(--border)",
+                      background: "var(--surface)",
+                      padding: 22,
+                      display: "grid",
+                      gap: 10,
+                    }}
+                  >
+                    <div style={{ fontSize: 17, fontWeight: 900, color: "var(--text)" }}>
+                      No response yet
+                    </div>
+                    <div
+                      style={{
+                        color: "var(--text-muted)",
+                        lineHeight: 1.75,
+                        fontSize: 15,
+                      }}
+                    >
+                      Ask a question above or tap any starter question to test this section.
+                    </div>
+                  </div>
+                ) : resultOk ? (
+                  <div style={{ display: "grid", gap: 16 }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: 10,
+                        flexWrap: "wrap",
+                        alignItems: "center",
+                      }}
+                    >
+                      <div style={chipStyle()}>Latest answer</div>
+                      {question.trim() ? (
+                        <div style={chipStyle()}>Question: {question.trim()}</div>
+                      ) : null}
+                    </div>
+
+                    <div style={answerSurfaceStyle()}>
+                      {parsedAnswer.lead ? (
+                        <div
+                          style={{
+                            fontSize: 19,
+                            lineHeight: 1.85,
+                            color: "var(--text)",
+                            fontWeight: 700,
+                          }}
+                        >
+                          {parsedAnswer.lead}
+                        </div>
+                      ) : null}
+
+                      {parsedAnswer.sections.map((section, index) => (
+                        <div key={`${section.title}-${index}`} style={answerSectionStyle()}>
+                          <div
+                            style={{
+                              fontSize: 15,
+                              fontWeight: 900,
+                              color: "var(--text)",
+                            }}
+                          >
+                            {section.title}
+                          </div>
+                          <div
+                            style={{
+                              whiteSpace: "pre-wrap",
+                              lineHeight: 1.85,
+                              fontSize: 16,
+                              color: "var(--text)",
+                            }}
+                          >
+                            {section.body}
+                          </div>
+                        </div>
+                      ))}
+
+                      {!parsedAnswer.lead && parsedAnswer.sections.length === 0 ? (
+                        <div
+                          style={{
+                            whiteSpace: "pre-wrap",
+                            lineHeight: 1.85,
+                            fontSize: 16,
+                            color: "var(--text)",
+                          }}
+                        >
+                          {answer}
+                        </div>
+                      ) : null}
+
+                      {parsedAnswer.source ? (
+                        <div
+                          style={{
+                            borderTop: "1px solid rgba(15, 23, 42, 0.08)",
+                            paddingTop: 12,
+                            fontSize: 13,
+                            color: "var(--text-muted)",
+                            lineHeight: 1.7,
+                          }}
+                        >
+                          <strong>Source:</strong> {parsedAnswer.source}
+                        </div>
+                      ) : null}
+                    </div>
+
+                    {citations.length ? (
                       <div
                         style={{
-                          fontSize: 15,
-                          fontWeight: 900,
-                          color: "var(--text)",
+                          border: "1px solid var(--border)",
+                          borderRadius: 20,
+                          background: "var(--surface)",
+                          padding: 16,
+                          display: "grid",
+                          gap: 8,
                         }}
                       >
-                        {section.title}
+                        <div style={{ fontWeight: 900, color: "var(--text)" }}>
+                          References
+                        </div>
+                        <ul
+                          style={{
+                            margin: 0,
+                            paddingLeft: 18,
+                            lineHeight: 1.8,
+                            color: "var(--text-muted)",
+                          }}
+                        >
+                          {citations.map((citation, index) => (
+                            <li key={`${citation}-${index}`}>{citation}</li>
+                          ))}
+                        </ul>
                       </div>
+                    ) : null}
+
+                    {clarificationPrompt ? (
+                      <Banner
+                        tone="warn"
+                        title="Clarification may be needed"
+                        subtitle={clarificationPrompt}
+                      />
+                    ) : null}
+                  </div>
+                ) : (
+                  <Banner
+                    tone="danger"
+                    title="Question could not be completed"
+                    subtitle={
+                      friendlyError || "Something went wrong while processing your question."
+                    }
+                  />
+                )}
+              </WorkspaceSectionCard>
+            </div>
+          </div>
+
+          <div style={{ minWidth: 0 }}>
+            <div style={{ position: "sticky", top: 14 }}>
+              <WorkspaceSectionCard
+                title="Starter questions"
+                subtitle="Tap any question below to load it into the ask box."
+              >
+                <div style={{ display: "grid", gap: 14 }}>
+                  {STARTER_GROUPS.map((group) => (
+                    <div key={group.title} style={{ display: "grid", gap: 8 }}>
                       <div
                         style={{
-                          whiteSpace: "pre-wrap",
-                          lineHeight: 1.85,
-                          fontSize: 16,
-                          color: "var(--text)",
+                          fontSize: 12,
+                          fontWeight: 900,
+                          color: "var(--text-muted)",
+                          textTransform: "uppercase",
+                          letterSpacing: 0.5,
                         }}
                       >
-                        {section.body}
+                        {group.title}
+                      </div>
+
+                      <div style={{ display: "grid", gap: 8 }}>
+                        {group.items.map((item) => {
+                          const isActive =
+                            question.trim().toLowerCase() === item.trim().toLowerCase();
+
+                          return (
+                            <button
+                              key={item}
+                              type="button"
+                              onClick={() => {
+                                setQuestion(item);
+                                setResultOk(null);
+                                setFriendlyError("");
+                                setClarificationPrompt("");
+                              }}
+                              style={starterButtonStyle(isActive)}
+                            >
+                              {item}
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
                   ))}
-
-                  {!parsedAnswer.lead && parsedAnswer.sections.length === 0 ? (
-                    <div
-                      style={{
-                        whiteSpace: "pre-wrap",
-                        lineHeight: 1.85,
-                        fontSize: 16,
-                        color: "var(--text)",
-                      }}
-                    >
-                      {answer}
-                    </div>
-                  ) : null}
-
-                  {parsedAnswer.source ? (
-                    <div
-                      style={{
-                        borderTop: "1px solid rgba(15, 23, 42, 0.08)",
-                        paddingTop: 12,
-                        fontSize: 13,
-                        color: "var(--text-muted)",
-                        lineHeight: 1.7,
-                      }}
-                    >
-                      <strong>Source:</strong> {parsedAnswer.source}
-                    </div>
-                  ) : null}
                 </div>
-
-                {citations.length ? (
-                  <div
-                    style={{
-                      border: "1px solid var(--border)",
-                      borderRadius: 20,
-                      background: "var(--surface)",
-                      padding: 16,
-                      display: "grid",
-                      gap: 8,
-                    }}
-                  >
-                    <div style={{ fontWeight: 900, color: "var(--text)" }}>
-                      References
-                    </div>
-                    <ul
-                      style={{
-                        margin: 0,
-                        paddingLeft: 18,
-                        lineHeight: 1.8,
-                        color: "var(--text-muted)",
-                      }}
-                    >
-                      {citations.map((citation, index) => (
-                        <li key={`${citation}-${index}`}>{citation}</li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : null}
-
-                {clarificationPrompt ? (
-                  <Banner
-                    tone="warn"
-                    title="Clarification may be needed"
-                    subtitle={clarificationPrompt}
-                  />
-                ) : null}
-              </div>
-            ) : (
-              <Banner
-                tone="danger"
-                title="Question could not be completed"
-                subtitle={
-                  friendlyError || "Something went wrong while processing your question."
-                }
-              />
-            )}
-          </WorkspaceSectionCard>
+              </WorkspaceSectionCard>
+            </div>
+          </div>
         </div>
 
         {SHOW_ASK_DEBUG && lastAskDebug ? (
