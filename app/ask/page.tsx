@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
@@ -333,6 +334,21 @@ function fieldLabelStyle(): React.CSSProperties {
   };
 }
 
+function getNestedLinkedFlag(source: unknown, channelName: "whatsapp" | "telegram"): boolean {
+  if (typeof source !== "object" || source === null) return false;
+
+  const root = source as Record<string, unknown>;
+  const flatValue = root[`${channelName}_linked`];
+
+  let nestedValue: unknown = undefined;
+  const nestedChannel = root[channelName];
+  if (typeof nestedChannel === "object" && nestedChannel !== null) {
+    nestedValue = (nestedChannel as Record<string, unknown>).linked;
+  }
+
+  return truthyValue(flatValue) || truthyValue(nestedValue);
+}
+
 function AskPageContent() {
   const router = useRouter();
   const sp = useSearchParams();
@@ -565,14 +581,8 @@ function AskPageContent() {
   const dailyRemaining =
     dailyLimit > 0 ? Math.max(dailyLimit - dailyUsage, 0) : 0;
 
-  const whatsappLinked = truthyValue(
-    (channelLinks as Record<string, unknown> | null | undefined)?.whatsapp_linked ||
-      (channelLinks as Record<string, { linked?: unknown }> | null | undefined)?.whatsapp?.linked
-  );
-  const telegramLinked = truthyValue(
-    (channelLinks as Record<string, unknown> | null | undefined)?.telegram_linked ||
-      (channelLinks as Record<string, { linked?: unknown }> | null | undefined)?.telegram?.linked
-  );
+  const whatsappLinked = getNestedLinkedFlag(channelLinks, "whatsapp");
+  const telegramLinked = getNestedLinkedFlag(channelLinks, "telegram");
 
   const channelStatus =
     whatsappLinked && telegramLinked
