@@ -123,11 +123,6 @@ function normalizeText(value: unknown): string {
   return value.trim();
 }
 
-function safeNumber(value: unknown): number {
-  const num = Number(value ?? 0);
-  return Number.isFinite(num) ? num : 0;
-}
-
 function truthyValue(value: unknown): boolean {
   if (typeof value === "boolean") return value;
   if (typeof value === "number") return value > 0;
@@ -150,7 +145,9 @@ function truthyValue(value: unknown): boolean {
 function prettifyPlanName(value: string | null | undefined): string {
   const raw = String(value || "").trim();
   if (!raw) return "Free";
-  return raw.replace(/[_-]+/g, " ").replace(/\b\w/g, (m) => m.toUpperCase());
+  return raw
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (m) => m.toUpperCase());
 }
 
 function looksLikeBrokenAnswer(text: string): boolean {
@@ -223,7 +220,9 @@ function parseStructuredAnswer(text: string): ParsedAnswer {
 
     const firstLine = lines[0].trim();
     const looksLikeHeading =
-      firstLine.endsWith(":") && firstLine.length <= 80 && lines.length > 1;
+      firstLine.endsWith(":") &&
+      firstLine.length <= 80 &&
+      lines.length > 1;
 
     if (looksLikeHeading) {
       sections.push({
@@ -288,7 +287,9 @@ function starterButtonStyle(isActive: boolean): React.CSSProperties {
     border: isActive
       ? "1px solid rgba(99, 102, 241, 0.35)"
       : "1px solid var(--border)",
-    background: isActive ? "rgba(99, 102, 241, 0.08)" : "var(--surface)",
+    background: isActive
+      ? "rgba(99, 102, 241, 0.08)"
+      : "var(--surface)",
     color: "var(--text)",
     cursor: "pointer",
     fontSize: 14,
@@ -355,20 +356,6 @@ function helperCardStyle(): React.CSSProperties {
   };
 }
 
-function formatExpiryLabel(value: unknown): string {
-  const raw = normalizeText(value);
-  if (!raw) return "Not shown";
-
-  const dt = new Date(raw);
-  if (Number.isNaN(dt.getTime())) return raw;
-
-  return dt.toLocaleDateString("en-NG", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-}
-
 function AskPageContent() {
   const router = useRouter();
   const sp = useSearchParams();
@@ -384,7 +371,6 @@ function AskPageContent() {
     creditBalance,
     dailyUsage,
     dailyLimit,
-    expiresAt,
     channelLinks,
   } = useWorkspaceState({
     refreshSession,
@@ -405,7 +391,6 @@ function AskPageContent() {
   const [lastAskDebug, setLastAskDebug] = useState<unknown>(null);
   const [citations, setCitations] = useState<string[]>([]);
   const [clarificationPrompt, setClarificationPrompt] = useState("");
-  const [monthlyAiUsed, setMonthlyAiUsed] = useState(0);
 
   const busy = workspaceBusy || submitting;
 
@@ -467,17 +452,6 @@ function AskPageContent() {
       }
 
       await load("Refreshing assistant state...");
-
-      const returnedMonthlyAiUsed = safeNumber(
-        data?.meta?.ai_used_month ??
-          data?.meta?.monthly_ai_used ??
-          data?.meta?.ai_used_this_month ??
-          data?.meta?.used_this_month
-      );
-
-      if (returnedMonthlyAiUsed > 0 || data?.meta) {
-        setMonthlyAiUsed(returnedMonthlyAiUsed);
-      }
 
       if (data?.ok && data?.answer) {
         const answerText = sanitizeAnswerForDisplay(String(data.answer || "").trim());
@@ -599,8 +573,12 @@ function AskPageContent() {
   const submitDisabled =
     busy || !question.trim() || (dailyLimit > 0 && dailyUsage >= dailyLimit);
 
+  const hasAnswerState =
+    resultOk !== null || Boolean(answer) || Boolean(friendlyError);
+
   const planName = prettifyPlanName(planCode);
-  const dailyRemaining = dailyLimit > 0 ? Math.max(dailyLimit - dailyUsage, 0) : 0;
+  const dailyRemaining =
+    dailyLimit > 0 ? Math.max(dailyLimit - dailyUsage, 0) : 0;
 
   const whatsappLinked = truthyValue(
     channelLinks?.whatsapp_linked || channelLinks?.whatsapp?.linked
@@ -609,14 +587,13 @@ function AskPageContent() {
     channelLinks?.telegram_linked || channelLinks?.telegram?.linked
   );
 
-  const channelStatus =
-    whatsappLinked && telegramLinked
-      ? "WhatsApp + Telegram linked"
-      : whatsappLinked
-      ? "WhatsApp linked"
-      : telegramLinked
-      ? "Telegram linked"
-      : "No channel linked";
+  const channelStatus = whatsappLinked && telegramLinked
+    ? "WhatsApp + Telegram linked"
+    : whatsappLinked
+    ? "WhatsApp linked"
+    : telegramLinked
+    ? "Telegram linked"
+    : "No channel linked";
 
   const topTone =
     dailyLimit > 0 && dailyUsage >= dailyLimit
@@ -638,13 +615,6 @@ function AskPageContent() {
       : !activeNow || creditBalance <= 0
       ? "Starter or already-covered questions may still work, but some live asks can be blocked until plan and credits are active."
       : status || "Write one direct tax question or tap any starter question on the right.";
-
-  const helperItems = [
-    `Status: ${activeNow ? "Plan looks active" : "Plan may still need attention"}`,
-    `Daily usage: ${dailyLimit > 0 ? `${dailyUsage} used / ${dailyLimit} total` : "not shown"}`,
-    `AI used this month: ${monthlyAiUsed}`,
-    `Expires: ${formatExpiryLabel(expiresAt)}`,
-  ];
 
   return (
     <AppShell
@@ -841,49 +811,6 @@ function AskPageContent() {
                   Clear
                 </button>
               </div>
-
-              {friendlyError && resultOk === false ? (
-                <Banner
-                  tone="danger"
-                  title="Question could not be completed"
-                  subtitle={friendlyError}
-                />
-              ) : null}
-
-              <div style={helperCardStyle()}>
-                <div
-                  style={{
-                    fontSize: 15,
-                    fontWeight: 900,
-                    color: "var(--text)",
-                  }}
-                >
-                  Current ask-page target
-                </div>
-                <div
-                  style={{
-                    fontSize: 14,
-                    color: "var(--text-muted)",
-                    lineHeight: 1.75,
-                  }}
-                >
-                  Clean ask form, clean starter questions, and clean structured answers.
-                  That is the section we are finishing now.
-                </div>
-                <div
-                  style={{
-                    display: "grid",
-                    gap: 6,
-                    color: "var(--text-muted)",
-                    fontSize: 13,
-                    lineHeight: 1.7,
-                  }}
-                >
-                  {helperItems.map((item) => (
-                    <div key={item}>{item}</div>
-                  ))}
-                </div>
-              </div>
             </div>
 
             <div
@@ -971,76 +898,69 @@ function AskPageContent() {
           </div>
         </WorkspaceSectionCard>
 
-        <div ref={answerRef}>
-          <WorkspaceSectionCard
-            title="Latest answer"
-            subtitle="The answer below should now feel like the final presentation style for the Ask page."
-          >
-            {resultOk === null && !answer && !friendlyError ? (
-              <div
-                style={{
-                  borderRadius: 22,
-                  border: "1px solid var(--border)",
-                  background: "var(--surface)",
-                  padding: 22,
-                  display: "grid",
-                  gap: 10,
-                }}
-              >
-                <div style={{ fontSize: 17, fontWeight: 900, color: "var(--text)" }}>
-                  No response yet
-                </div>
-                <div
-                  style={{
-                    color: "var(--text-muted)",
-                    lineHeight: 1.75,
-                    fontSize: 15,
-                  }}
-                >
-                  Ask a question above or tap any starter question to test this section.
-                </div>
-              </div>
-            ) : resultOk ? (
-              <div style={{ display: "grid", gap: 16 }}>
-                <div
-                  style={{
-                    display: "flex",
-                    gap: 10,
-                    flexWrap: "wrap",
-                    alignItems: "center",
-                  }}
-                >
-                  <div style={chipStyle()}>Latest answer</div>
-                  {question.trim() ? (
-                    <div style={chipStyle()}>Question: {question.trim()}</div>
-                  ) : null}
-                </div>
+        {hasAnswerState ? (
+          <div ref={answerRef}>
+            <WorkspaceSectionCard
+              title="Latest answer"
+              subtitle="The answer below is the current result for your question."
+            >
+              {resultOk ? (
+                <div style={{ display: "grid", gap: 16 }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 10,
+                      flexWrap: "wrap",
+                      alignItems: "center",
+                    }}
+                  >
+                    <div style={chipStyle()}>Latest answer</div>
+                    {question.trim() ? (
+                      <div style={chipStyle()}>
+                        Question: {question.trim()}
+                      </div>
+                    ) : null}
+                  </div>
 
-                <div style={answerSurfaceStyle()}>
-                  {parsedAnswer.lead ? (
-                    <div
-                      style={{
-                        fontSize: 19,
-                        lineHeight: 1.85,
-                        color: "var(--text)",
-                        fontWeight: 700,
-                      }}
-                    >
-                      {parsedAnswer.lead}
-                    </div>
-                  ) : null}
-
-                  {parsedAnswer.sections.map((section, index) => (
-                    <div key={`${section.title}-${index}`} style={answerSectionStyle()}>
+                  <div style={answerSurfaceStyle()}>
+                    {parsedAnswer.lead ? (
                       <div
                         style={{
-                          fontSize: 15,
-                          fontWeight: 900,
+                          fontSize: 19,
+                          lineHeight: 1.85,
                           color: "var(--text)",
+                          fontWeight: 700,
                         }}
                       >
-                        {section.title}
+                        {parsedAnswer.lead}
                       </div>
+                    ) : null}
+
+                    {parsedAnswer.sections.map((section, index) => (
+                      <div key={`${section.title}-${index}`} style={answerSectionStyle()}>
+                        <div
+                          style={{
+                            fontSize: 15,
+                            fontWeight: 900,
+                            color: "var(--text)",
+                          }}
+                        >
+                          {section.title}
+                        </div>
+                        <div
+                          style={{
+                            whiteSpace: "pre-wrap",
+                            lineHeight: 1.85,
+                            fontSize: 16,
+                            color: "var(--text)",
+                          }}
+                        >
+                          {section.body}
+                        </div>
+                      </div>
+                    ))}
+
+                    {!parsedAnswer.lead && parsedAnswer.sections.length === 0 ? (
                       <div
                         style={{
                           whiteSpace: "pre-wrap",
@@ -1049,76 +969,65 @@ function AskPageContent() {
                           color: "var(--text)",
                         }}
                       >
-                        {section.body}
+                        {answer}
                       </div>
-                    </div>
-                  ))}
+                    ) : null}
 
-                  {!parsedAnswer.lead && parsedAnswer.sections.length === 0 ? (
-                    <div
-                      style={{
-                        whiteSpace: "pre-wrap",
-                        lineHeight: 1.85,
-                        fontSize: 16,
-                        color: "var(--text)",
-                      }}
-                    >
-                      {answer}
+                    {parsedAnswer.source ? (
+                      <div
+                        style={{
+                          borderTop: "1px solid rgba(15, 23, 42, 0.08)",
+                          paddingTop: 12,
+                          fontSize: 13,
+                          color: "var(--text-muted)",
+                          lineHeight: 1.7,
+                        }}
+                      >
+                        <strong>Source:</strong> {parsedAnswer.source}
+                      </div>
+                    ) : null}
+                  </div>
+
+                  {citations.length ? (
+                    <div style={helperCardStyle()}>
+                      <div style={{ fontWeight: 900, color: "var(--text)" }}>
+                        References
+                      </div>
+                      <ul
+                        style={{
+                          margin: 0,
+                          paddingLeft: 18,
+                          lineHeight: 1.8,
+                          color: "var(--text-muted)",
+                        }}
+                      >
+                        {citations.map((citation, index) => (
+                          <li key={`${citation}-${index}`}>{citation}</li>
+                        ))}
+                      </ul>
                     </div>
                   ) : null}
 
-                  {parsedAnswer.source ? (
-                    <div
-                      style={{
-                        borderTop: "1px solid rgba(15, 23, 42, 0.08)",
-                        paddingTop: 12,
-                        fontSize: 13,
-                        color: "var(--text-muted)",
-                        lineHeight: 1.7,
-                      }}
-                    >
-                      <strong>Source:</strong> {parsedAnswer.source}
-                    </div>
+                  {clarificationPrompt ? (
+                    <Banner
+                      tone="warn"
+                      title="Clarification may be needed"
+                      subtitle={clarificationPrompt}
+                    />
                   ) : null}
                 </div>
-
-                {citations.length ? (
-                  <div style={helperCardStyle()}>
-                    <div style={{ fontWeight: 900, color: "var(--text)" }}>References</div>
-                    <ul
-                      style={{
-                        margin: 0,
-                        paddingLeft: 18,
-                        lineHeight: 1.8,
-                        color: "var(--text-muted)",
-                      }}
-                    >
-                      {citations.map((citation, index) => (
-                        <li key={`${citation}-${index}`}>{citation}</li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : null}
-
-                {clarificationPrompt ? (
-                  <Banner
-                    tone="warn"
-                    title="Clarification may be needed"
-                    subtitle={clarificationPrompt}
-                  />
-                ) : null}
-              </div>
-            ) : (
-              <Banner
-                tone="danger"
-                title="Question could not be completed"
-                subtitle={
-                  friendlyError || "Something went wrong while processing your question."
-                }
-              />
-            )}
-          </WorkspaceSectionCard>
-        </div>
+              ) : (
+                <Banner
+                  tone="danger"
+                  title="Question could not be completed"
+                  subtitle={
+                    friendlyError || "Something went wrong while processing your question."
+                  }
+                />
+              )}
+            </WorkspaceSectionCard>
+          </div>
+        ) : null}
 
         {SHOW_ASK_DEBUG && lastAskDebug ? (
           <WorkspaceSectionCard
