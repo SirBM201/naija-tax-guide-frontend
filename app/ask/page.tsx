@@ -26,7 +26,7 @@ type WorkspaceSummary = {
 type AnswerSection = {
   title: string;
   lines: string[];
-  ordered?: boolean;
+  ordered: boolean;
 };
 
 type StructuredAnswer = {
@@ -229,10 +229,10 @@ function normalizeSection(item: unknown): AnswerSection | null {
   const rawItems = Array.isArray(record.lines)
     ? record.lines
     : Array.isArray(record.items)
-    ? record.items
-    : Array.isArray(record.points)
-    ? record.points
-    : null;
+      ? record.items
+      : Array.isArray(record.points)
+        ? record.points
+        : null;
 
   let lines: string[] = [];
 
@@ -305,7 +305,7 @@ function parseStructuredText(question: string, text: string): StructuredAnswer {
 
       return { title, lines: cleanedLines, ordered };
     })
-    .filter((section): section is AnswerSection => Boolean(section));
+    .filter((section): section is AnswerSection => section !== null);
 
   return {
     question,
@@ -345,7 +345,7 @@ function normalizeAnswerPayload(question: string, payload: unknown): StructuredA
     if (Array.isArray(entry)) {
       const sections = entry
         .map((item) => normalizeSection(item))
-        .filter((item): item is AnswerSection => Boolean(item));
+        .filter((item): item is AnswerSection => item !== null);
 
       if (sections.length) {
         return {
@@ -804,11 +804,11 @@ export default function AskPage() {
             <div className="px-6 py-6 md:px-8">
               <div className="rounded-[24px] border border-slate-200 bg-slate-50 px-6 py-5">
                 <div className="text-[18px] font-extrabold text-slate-900">
-                  Starter questions available
+                  {isLoadingSummary ? "Loading account status..." : "Account attention needed"}
                 </div>
                 <div className="mt-2 text-[17px] leading-8 text-slate-600">
                   {notice ??
-                    "Starter questions and already-covered topics can still work. Custom live questions may require an active plan or available credits."}
+                    "Starter or already-covered questions may still work, but some live asks can be blocked until plan and credits are active."}
                 </div>
               </div>
 
