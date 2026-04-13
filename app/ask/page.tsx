@@ -1,6 +1,6 @@
 "use client";
 
-import React, { Suspense, useEffect, useMemo, useState } from "react";
+import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { apiJson, isApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -146,24 +146,6 @@ function prettifyPlanName(value: string | null | undefined): string {
     .replace(/\b\w/g, (m) => m.toUpperCase());
 }
 
-function fieldLabelStyle(): React.CSSProperties {
-  return {
-    fontSize: 13,
-    fontWeight: 800,
-    color: "var(--text-muted)",
-    marginBottom: 8,
-  };
-}
-
-function actionRowStyle(): React.CSSProperties {
-  return {
-    display: "flex",
-    gap: 12,
-    flexWrap: "wrap",
-    alignItems: "center",
-  };
-}
-
 function looksLikeBrokenAnswer(text: string): boolean {
   const raw = String(text || "").toLowerCase();
   if (!raw.trim()) return true;
@@ -264,39 +246,31 @@ function parseStructuredAnswer(text: string): ParsedAnswer {
   };
 }
 
-function statusPillStyle(
-  tone: "good" | "warn" | "danger" | "default" = "default"
+function statusTileStyle(
+  tone: "good" | "warn" | "default" = "default"
 ): React.CSSProperties {
-  const map = {
+  const toneMap = {
     good: {
       background: "rgba(16, 185, 129, 0.08)",
-      border: "1px solid rgba(16, 185, 129, 0.22)",
-      color: "var(--text)",
+      border: "1px solid rgba(16, 185, 129, 0.18)",
     },
     warn: {
       background: "rgba(245, 158, 11, 0.08)",
-      border: "1px solid rgba(245, 158, 11, 0.22)",
-      color: "var(--text)",
-    },
-    danger: {
-      background: "rgba(239, 68, 68, 0.08)",
-      border: "1px solid rgba(239, 68, 68, 0.22)",
-      color: "var(--text)",
+      border: "1px solid rgba(245, 158, 11, 0.18)",
     },
     default: {
       background: "var(--surface)",
       border: "1px solid var(--border)",
-      color: "var(--text)",
     },
   } as const;
 
   return {
+    ...toneMap[tone],
+    borderRadius: 16,
+    padding: "12px 14px",
+    minWidth: 150,
     display: "grid",
     gap: 4,
-    minWidth: 150,
-    padding: "12px 14px",
-    borderRadius: 16,
-    ...map[tone],
   };
 }
 
@@ -304,18 +278,18 @@ function starterButtonStyle(isActive: boolean): React.CSSProperties {
   return {
     width: "100%",
     textAlign: "left",
-    padding: "12px 14px",
-    borderRadius: 16,
+    padding: "14px 16px",
+    borderRadius: 18,
     border: isActive
-      ? "1px solid rgba(79, 70, 229, 0.32)"
+      ? "1px solid rgba(99, 102, 241, 0.35)"
       : "1px solid var(--border)",
     background: isActive
-      ? "rgba(79, 70, 229, 0.08)"
+      ? "rgba(99, 102, 241, 0.08)"
       : "var(--surface)",
     color: "var(--text)",
     cursor: "pointer",
     fontSize: 14,
-    fontWeight: 700,
+    fontWeight: 800,
     lineHeight: 1.5,
     boxShadow: "0 8px 24px rgba(15, 23, 42, 0.03)",
   };
@@ -323,33 +297,47 @@ function starterButtonStyle(isActive: boolean): React.CSSProperties {
 
 function answerSurfaceStyle(): React.CSSProperties {
   return {
-    border: "1px solid rgba(16, 185, 129, 0.18)",
-    background: "rgba(16, 185, 129, 0.05)",
-    borderRadius: 24,
+    border: "1px solid rgba(16, 185, 129, 0.16)",
+    background: "rgba(16, 185, 129, 0.04)",
+    borderRadius: 26,
     padding: 22,
     display: "grid",
     gap: 16,
   };
 }
 
-function sectionSurfaceStyle(): React.CSSProperties {
+function answerSectionStyle(): React.CSSProperties {
   return {
     border: "1px solid rgba(15, 23, 42, 0.08)",
-    background: "rgba(255,255,255,0.52)",
-    borderRadius: 18,
+    background: "rgba(255,255,255,0.58)",
+    borderRadius: 20,
     padding: 18,
     display: "grid",
     gap: 10,
   };
 }
 
-function mutedFooterStyle(): React.CSSProperties {
+function chipStyle(): React.CSSProperties {
   return {
-    borderTop: "1px solid rgba(15, 23, 42, 0.08)",
-    paddingTop: 12,
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
+    padding: "8px 12px",
+    borderRadius: 999,
+    border: "1px solid var(--border)",
+    background: "var(--surface)",
     fontSize: 13,
+    fontWeight: 800,
+    color: "var(--text)",
+  };
+}
+
+function fieldLabelStyle(): React.CSSProperties {
+  return {
+    fontSize: 13,
+    fontWeight: 800,
     color: "var(--text-muted)",
-    lineHeight: 1.7,
+    marginBottom: 8,
   };
 }
 
@@ -357,6 +345,7 @@ function AskPageContent() {
   const router = useRouter();
   const sp = useSearchParams();
   const { refreshSession } = useAuth();
+  const answerRef = useRef<HTMLDivElement | null>(null);
 
   const {
     busy: workspaceBusy,
@@ -463,9 +452,7 @@ function AskPageContent() {
       }
 
       if (data?.ok && data?.answer) {
-        const answerText = sanitizeAnswerForDisplay(
-          String(data.answer || "").trim()
-        );
+        const answerText = sanitizeAnswerForDisplay(String(data.answer || "").trim());
 
         if (!answerText) {
           setResultOk(false);
@@ -479,12 +466,8 @@ function AskPageContent() {
 
         setResultOk(true);
         setAnswer(answerText);
-        setCitations(
-          Array.isArray(data?.citations) ? data.citations.filter(Boolean) : []
-        );
-        setClarificationPrompt(
-          normalizeText(data?.clarification_prompt || "")
-        );
+        setCitations(Array.isArray(data?.citations) ? data.citations.filter(Boolean) : []);
+        setClarificationPrompt(normalizeText(data?.clarification_prompt || ""));
 
         const item: HistoryItem = {
           id: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
@@ -495,15 +478,20 @@ function AskPageContent() {
           source: "web",
         };
         saveHistoryItem(item);
+
+        requestAnimationFrame(() => {
+          answerRef.current?.scrollIntoView({
+            behavior: "smooth",
+            block: "start",
+          });
+        });
+
         return;
       }
 
       const code = String(data?.error || "").trim().toLowerCase();
 
-      if (
-        code === "insufficient_credits" ||
-        code === "insufficient_credits_uncached"
-      ) {
+      if (code === "insufficient_credits" || code === "insufficient_credits_uncached") {
         setResultOk(false);
         setFriendlyError(
           "No fresh AI credits are available right now. Cached questions can still return answers, but new uncached questions need available credits."
@@ -532,10 +520,7 @@ function AskPageContent() {
           setLastAskDebug(null);
         }
 
-        if (
-          code === "insufficient_credits" ||
-          code === "insufficient_credits_uncached"
-        ) {
+        if (code === "insufficient_credits" || code === "insufficient_credits_uncached") {
           setResultOk(false);
           setFriendlyError(
             "No fresh AI credits are available right now. Cached questions can still return answers, but new uncached questions need available credits."
@@ -608,29 +593,23 @@ function AskPageContent() {
   const topTone =
     dailyLimit > 0 && dailyUsage >= dailyLimit
       ? "warn"
-      : !activeNow
-      ? "warn"
-      : creditBalance <= 0
+      : !activeNow || creditBalance <= 0
       ? "warn"
       : "good";
 
   const topTitle =
     dailyLimit > 0 && dailyUsage >= dailyLimit
       ? "Daily question limit reached"
-      : !activeNow
-      ? "Subscription attention needed"
-      : creditBalance <= 0
-      ? "Credits are empty"
+      : !activeNow || creditBalance <= 0
+      ? "Account attention needed"
       : "Ask page is ready";
 
   const topSubtitle =
     dailyLimit > 0 && dailyUsage >= dailyLimit
       ? "You can still review the starter questions below, but new submissions may stop until the daily limit resets."
-      : !activeNow
-      ? "The page is working, but your billing state may still block live asks until the subscription shows active."
-      : creditBalance <= 0
-      ? "Curated questions may still answer, but uncached questions can fail when fresh AI credits are not available."
-      : status || "Write a direct question or tap any starter question to test the page quickly.";
+      : !activeNow || creditBalance <= 0
+      ? "Starter or already-covered questions may still work, but some live asks can be blocked until plan and credits are active."
+      : status || "Write one direct tax question or tap any starter question on the right.";
 
   return (
     <AppShell
@@ -652,12 +631,12 @@ function AskPageContent() {
 
         <WorkspaceSectionCard
           title="Ask your question"
-          subtitle="This page should now feel like a real ask-and-answer workspace, not an admin dashboard."
+          subtitle="Starter questions stay on the right. Ask box stays on the left."
         >
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "minmax(0, 1.45fr) minmax(320px, 0.95fr)",
+              gridTemplateColumns: "minmax(0, 1.35fr) minmax(320px, 0.92fr)",
               gap: 18,
               alignItems: "start",
             }}
@@ -668,12 +647,9 @@ function AskPageContent() {
                   display: "flex",
                   gap: 10,
                   flexWrap: "wrap",
-                  alignItems: "stretch",
                 }}
               >
-                <div
-                  style={statusPillStyle(activeNow ? "good" : "warn")}
-                >
+                <div style={statusTileStyle(activeNow ? "good" : "warn")}>
                   <div
                     style={{
                       fontSize: 11,
@@ -685,14 +661,10 @@ function AskPageContent() {
                   >
                     Plan
                   </div>
-                  <div style={{ fontSize: 16, fontWeight: 900 }}>
-                    {planName}
-                  </div>
+                  <div style={{ fontSize: 16, fontWeight: 900 }}>{planName}</div>
                 </div>
 
-                <div
-                  style={statusPillStyle(creditBalance > 0 ? "good" : "warn")}
-                >
+                <div style={statusTileStyle(creditBalance > 0 ? "good" : "warn")}>
                   <div
                     style={{
                       fontSize: 11,
@@ -704,13 +676,11 @@ function AskPageContent() {
                   >
                     Credits
                   </div>
-                  <div style={{ fontSize: 16, fontWeight: 900 }}>
-                    {creditBalance}
-                  </div>
+                  <div style={{ fontSize: 16, fontWeight: 900 }}>{creditBalance}</div>
                 </div>
 
                 <div
-                  style={statusPillStyle(
+                  style={statusTileStyle(
                     dailyLimit > 0 && dailyRemaining === 0 ? "warn" : "default"
                   )}
                 >
@@ -731,7 +701,7 @@ function AskPageContent() {
                 </div>
 
                 <div
-                  style={statusPillStyle(
+                  style={statusTileStyle(
                     whatsappLinked || telegramLinked ? "good" : "default"
                   )}
                 >
@@ -746,9 +716,7 @@ function AskPageContent() {
                   >
                     Channels
                   </div>
-                  <div style={{ fontSize: 16, fontWeight: 900 }}>
-                    {channelStatus}
-                  </div>
+                  <div style={{ fontSize: 16, fontWeight: 900 }}>{channelStatus}</div>
                 </div>
               </div>
 
@@ -765,12 +733,12 @@ function AskPageContent() {
                       }
                     }
                   }}
-                  placeholder="Example: How do I register for VAT in Nigeria?"
-                  rows={8}
+                  placeholder="Example: how do i register for vat?"
+                  rows={7}
                   style={{
                     ...appTextareaStyle(),
-                    minHeight: 240,
-                    fontSize: 17,
+                    minHeight: 180,
+                    fontSize: 18,
                     lineHeight: 1.8,
                     borderRadius: 22,
                   }}
@@ -783,19 +751,19 @@ function AskPageContent() {
                     lineHeight: 1.6,
                   }}
                 >
-                  Tip: use one clear question at a time. You can press Ctrl + Enter to submit.
+                  Tip: use one clear question at a time. Press Ctrl + Enter to submit quickly.
                 </div>
               </div>
 
               <div
                 style={{
-                  display: "grid",
-                  gridTemplateColumns: "minmax(180px, 220px) auto",
-                  gap: 14,
+                  display: "flex",
+                  gap: 12,
+                  flexWrap: "wrap",
                   alignItems: "end",
                 }}
               >
-                <div>
+                <div style={{ minWidth: 240 }}>
                   <div style={fieldLabelStyle()}>Reply language</div>
                   <select
                     value={language}
@@ -810,43 +778,48 @@ function AskPageContent() {
                   </select>
                 </div>
 
-                <div style={actionRowStyle()}>
-                  <button
-                    onClick={() => {
-                      void handleAsk();
-                    }}
-                    disabled={submitDisabled}
-                    style={{
-                      ...appInputStyle("button"),
-                      minWidth: 180,
-                      opacity: submitDisabled ? 0.65 : 1,
-                      cursor: submitDisabled ? "not-allowed" : "pointer",
-                    }}
-                  >
-                    {submitting ? "Submitting..." : "Ask Question"}
-                  </button>
+                <button
+                  onClick={() => {
+                    void handleAsk();
+                  }}
+                  disabled={submitDisabled}
+                  style={{
+                    ...appInputStyle("button"),
+                    minWidth: 190,
+                    opacity: submitDisabled ? 0.65 : 1,
+                    cursor: submitDisabled ? "not-allowed" : "pointer",
+                  }}
+                >
+                  {submitting ? "Submitting..." : "Ask Question"}
+                </button>
 
-                  <button
-                    onClick={clearAll}
-                    disabled={submitting}
-                    style={{
-                      ...appInputStyle("buttonSecondary"),
-                      minWidth: 140,
-                      opacity: submitting ? 0.7 : 1,
-                      cursor: submitting ? "not-allowed" : "pointer",
-                    }}
-                  >
-                    Clear
-                  </button>
-                </div>
+                <button
+                  onClick={clearAll}
+                  disabled={submitting}
+                  style={{
+                    ...appInputStyle("buttonSecondary"),
+                    minWidth: 140,
+                    opacity: submitting ? 0.7 : 1,
+                    cursor: submitting ? "not-allowed" : "pointer",
+                  }}
+                >
+                  Clear
+                </button>
               </div>
             </div>
 
-            <div style={{ display: "grid", gap: 14 }}>
+            <div
+              style={{
+                position: "sticky",
+                top: 14,
+                display: "grid",
+                gap: 14,
+              }}
+            >
               <div
                 style={{
                   border: "1px solid var(--border)",
-                  borderRadius: 22,
+                  borderRadius: 24,
                   background: "var(--surface)",
                   padding: 18,
                   display: "grid",
@@ -856,7 +829,7 @@ function AskPageContent() {
                 <div>
                   <div
                     style={{
-                      fontSize: 14,
+                      fontSize: 15,
                       fontWeight: 900,
                       color: "var(--text)",
                       marginBottom: 4,
@@ -868,10 +841,10 @@ function AskPageContent() {
                     style={{
                       fontSize: 13,
                       color: "var(--text-muted)",
-                      lineHeight: 1.6,
+                      lineHeight: 1.7,
                     }}
                   >
-                    Tap any question below to load it into the ask box quickly.
+                    Tap any question below to load it into the ask box.
                   </div>
                 </div>
 
@@ -914,99 +887,96 @@ function AskPageContent() {
                   </div>
                 ))}
               </div>
-
-              <div
-                style={{
-                  border: "1px dashed var(--border)",
-                  borderRadius: 18,
-                  padding: 16,
-                  background: "rgba(15, 23, 42, 0.02)",
-                  display: "grid",
-                  gap: 6,
-                }}
-              >
-                <div style={{ fontSize: 13, fontWeight: 900, color: "var(--text)" }}>
-                  Current ask-page target
-                </div>
-                <div
-                  style={{
-                    fontSize: 13,
-                    color: "var(--text-muted)",
-                    lineHeight: 1.7,
-                  }}
-                >
-                  Clean ask form, clean starter questions, and clean structured answers.
-                  That is the section we are finishing now.
-                </div>
-                <div
-                  style={{
-                    fontSize: 13,
-                    color: "var(--text-muted)",
-                    lineHeight: 1.7,
-                  }}
-                >
-                  Expires: {expiresAt ? new Date(expiresAt).toLocaleDateString() : "Not shown"}
-                </div>
-              </div>
             </div>
           </div>
         </WorkspaceSectionCard>
 
-        <WorkspaceSectionCard
-          title="Answer"
-          subtitle="The result should now read like a polished tax guidance response, not a raw text dump."
-        >
-          {resultOk === null && !answer && !friendlyError ? (
-            <div
-              style={{
-                borderRadius: 22,
-                border: "1px solid var(--border)",
-                background: "var(--surface)",
-                padding: 22,
-                display: "grid",
-                gap: 10,
-              }}
-            >
-              <div style={{ fontSize: 17, fontWeight: 900, color: "var(--text)" }}>
-                No response yet
-              </div>
+        <div ref={answerRef}>
+          <WorkspaceSectionCard
+            title="Latest answer"
+            subtitle="The answer below should now feel like the final presentation style for the Ask page."
+          >
+            {resultOk === null && !answer && !friendlyError ? (
               <div
                 style={{
-                  color: "var(--text-muted)",
-                  lineHeight: 1.75,
-                  fontSize: 15,
+                  borderRadius: 22,
+                  border: "1px solid var(--border)",
+                  background: "var(--surface)",
+                  padding: 22,
+                  display: "grid",
+                  gap: 10,
                 }}
               >
-                Ask a question above or tap any starter question to test the page quickly.
+                <div style={{ fontSize: 17, fontWeight: 900, color: "var(--text)" }}>
+                  No response yet
+                </div>
+                <div
+                  style={{
+                    color: "var(--text-muted)",
+                    lineHeight: 1.75,
+                    fontSize: 15,
+                  }}
+                >
+                  Ask a question above or tap any starter question to test this section.
+                </div>
               </div>
-            </div>
-          ) : resultOk ? (
-            <div style={{ display: "grid", gap: 16 }}>
-              <div style={answerSurfaceStyle()}>
-                {parsedAnswer.lead ? (
-                  <div
-                    style={{
-                      fontSize: 18,
-                      lineHeight: 1.85,
-                      color: "var(--text)",
-                      fontWeight: 500,
-                    }}
-                  >
-                    {parsedAnswer.lead}
-                  </div>
-                ) : null}
+            ) : resultOk ? (
+              <div style={{ display: "grid", gap: 16 }}>
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 10,
+                    flexWrap: "wrap",
+                    alignItems: "center",
+                  }}
+                >
+                  <div style={chipStyle()}>Latest answer</div>
+                  {question.trim() ? (
+                    <div style={chipStyle()}>
+                      Question: {question.trim()}
+                    </div>
+                  ) : null}
+                </div>
 
-                {parsedAnswer.sections.map((section, index) => (
-                  <div key={`${section.title}-${index}`} style={sectionSurfaceStyle()}>
+                <div style={answerSurfaceStyle()}>
+                  {parsedAnswer.lead ? (
                     <div
                       style={{
-                        fontSize: 15,
-                        fontWeight: 900,
+                        fontSize: 19,
+                        lineHeight: 1.85,
                         color: "var(--text)",
+                        fontWeight: 700,
                       }}
                     >
-                      {section.title}
+                      {parsedAnswer.lead}
                     </div>
+                  ) : null}
+
+                  {parsedAnswer.sections.map((section, index) => (
+                    <div key={`${section.title}-${index}`} style={answerSectionStyle()}>
+                      <div
+                        style={{
+                          fontSize: 15,
+                          fontWeight: 900,
+                          color: "var(--text)",
+                        }}
+                      >
+                        {section.title}
+                      </div>
+                      <div
+                        style={{
+                          whiteSpace: "pre-wrap",
+                          lineHeight: 1.85,
+                          fontSize: 16,
+                          color: "var(--text)",
+                        }}
+                      >
+                        {section.body}
+                      </div>
+                    </div>
+                  ))}
+
+                  {!parsedAnswer.lead && parsedAnswer.sections.length === 0 ? (
                     <div
                       style={{
                         whiteSpace: "pre-wrap",
@@ -1015,76 +985,73 @@ function AskPageContent() {
                         color: "var(--text)",
                       }}
                     >
-                      {section.body}
+                      {answer}
                     </div>
-                  </div>
-                ))}
+                  ) : null}
 
-                {!parsedAnswer.lead && parsedAnswer.sections.length === 0 ? (
+                  {parsedAnswer.source ? (
+                    <div
+                      style={{
+                        borderTop: "1px solid rgba(15, 23, 42, 0.08)",
+                        paddingTop: 12,
+                        fontSize: 13,
+                        color: "var(--text-muted)",
+                        lineHeight: 1.7,
+                      }}
+                    >
+                      <strong>Source:</strong> {parsedAnswer.source}
+                    </div>
+                  ) : null}
+                </div>
+
+                {citations.length ? (
                   <div
                     style={{
-                      whiteSpace: "pre-wrap",
-                      lineHeight: 1.85,
-                      fontSize: 16,
-                      color: "var(--text)",
+                      border: "1px solid var(--border)",
+                      borderRadius: 20,
+                      background: "var(--surface)",
+                      padding: 16,
+                      display: "grid",
+                      gap: 8,
                     }}
                   >
-                    {answer}
+                    <div style={{ fontWeight: 900, color: "var(--text)" }}>
+                      References
+                    </div>
+                    <ul
+                      style={{
+                        margin: 0,
+                        paddingLeft: 18,
+                        lineHeight: 1.8,
+                        color: "var(--text-muted)",
+                      }}
+                    >
+                      {citations.map((citation, index) => (
+                        <li key={`${citation}-${index}`}>{citation}</li>
+                      ))}
+                    </ul>
                   </div>
                 ) : null}
 
-                {parsedAnswer.source ? (
-                  <div style={mutedFooterStyle()}>
-                    <strong>Source:</strong> {parsedAnswer.source}
-                  </div>
+                {clarificationPrompt ? (
+                  <Banner
+                    tone="warn"
+                    title="Clarification may be needed"
+                    subtitle={clarificationPrompt}
+                  />
                 ) : null}
               </div>
-
-              {citations.length ? (
-                <div
-                  style={{
-                    border: "1px solid var(--border)",
-                    borderRadius: 18,
-                    background: "var(--surface)",
-                    padding: 16,
-                    display: "grid",
-                    gap: 8,
-                  }}
-                >
-                  <div style={{ fontWeight: 900, color: "var(--text)" }}>References</div>
-                  <ul
-                    style={{
-                      margin: 0,
-                      paddingLeft: 18,
-                      lineHeight: 1.8,
-                      color: "var(--text-muted)",
-                    }}
-                  >
-                    {citations.map((citation, index) => (
-                      <li key={`${citation}-${index}`}>{citation}</li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-
-              {clarificationPrompt ? (
-                <Banner
-                  tone="warn"
-                  title="Clarification may be needed"
-                  subtitle={clarificationPrompt}
-                />
-              ) : null}
-            </div>
-          ) : (
-            <Banner
-              tone="danger"
-              title="Question could not be completed"
-              subtitle={
-                friendlyError || "Something went wrong while processing your question."
-              }
-            />
-          )}
-        </WorkspaceSectionCard>
+            ) : (
+              <Banner
+                tone="danger"
+                title="Question could not be completed"
+                subtitle={
+                  friendlyError || "Something went wrong while processing your question."
+                }
+              />
+            )}
+          </WorkspaceSectionCard>
+        </div>
 
         {SHOW_ASK_DEBUG && lastAskDebug ? (
           <WorkspaceSectionCard
