@@ -9,14 +9,11 @@ import WorkspaceActionBar from "@/components/workspace-action-bar";
 import WorkspaceSectionCard from "@/components/workspace-section-card";
 import {
   Banner,
-  MetricCard,
   appInputStyle,
   appSelectStyle,
   appTextareaStyle,
-  formatDate,
-  toneSurface,
 } from "@/components/ui";
-import { CardsGrid, SectionStack } from "@/components/page-layout";
+import { SectionStack } from "@/components/page-layout";
 import { HistoryItem, saveHistoryItem } from "@/lib/history-storage";
 import { useWorkspaceState } from "@/hooks/useWorkspaceState";
 
@@ -38,32 +35,15 @@ type AskResp = {
   clarification_prompt?: string;
 };
 
-type WorkspaceLimitsResponse = {
-  ok?: boolean;
-  counts?: {
-    active_members_only?: number;
-    owner_included_total?: number;
-  };
-  entitlements?: {
-    ok?: boolean;
-    plan?: {
-      name?: string;
-      code?: string;
-      plan_family?: string;
-      active?: boolean;
-    };
-    plan_code?: string | null;
-    plan_family?: string | null;
-    workspace_limits?: {
-      max_workspace_users?: number;
-      max_linked_web_accounts?: number;
-    };
-    channel_limits?: {
-      max_total_channels?: number;
-      max_whatsapp_channels?: number;
-      max_telegram_channels?: number;
-    };
-  };
+type AnswerSection = {
+  title: string;
+  body: string;
+};
+
+type ParsedAnswer = {
+  lead: string;
+  sections: AnswerSection[];
+  source: string;
 };
 
 const SHOW_ASK_DEBUG = process.env.NEXT_PUBLIC_SHOW_ASK_DEBUG === "true";
@@ -74,6 +54,48 @@ const LANGUAGE_OPTIONS = [
   { label: "Yoruba", value: "Yoruba" },
   { label: "Igbo", value: "Igbo" },
   { label: "Hausa", value: "Hausa" },
+];
+
+const STARTER_GROUPS: Array<{ title: string; items: string[] }> = [
+  {
+    title: "Personal Income Tax",
+    items: [
+      "what is personal income tax?",
+      "what is the personal income tax rate?",
+      "which tax authority handles personal income tax?",
+    ],
+  },
+  {
+    title: "PAYE",
+    items: [
+      "what is paye?",
+      "who must deduct paye?",
+      "how do i remit paye?",
+    ],
+  },
+  {
+    title: "VAT",
+    items: [
+      "how do i register for vat?",
+      "how do i file vat?",
+      "how do i pay vat?",
+    ],
+  },
+  {
+    title: "Withholding Tax",
+    items: [
+      "what is the withholding tax rate?",
+      "how do i remit withholding tax?",
+    ],
+  },
+  {
+    title: "Company Income Tax",
+    items: [
+      "what is the company income tax rate?",
+      "how do i file company income tax?",
+      "how do i pay company income tax?",
+    ],
+  },
 ];
 
 function languageToCode(label: string) {
@@ -116,14 +138,12 @@ function truthyValue(value: unknown): boolean {
   return false;
 }
 
-function safeText(value: unknown, fallback = "—"): string {
-  const text =
-    typeof value === "string"
-      ? value.trim()
-      : value == null
-      ? ""
-      : String(value).trim();
-  return text || fallback;
+function prettifyPlanName(value: string | null | undefined): string {
+  const raw = String(value || "").trim();
+  if (!raw) return "Free";
+  return raw
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (m) => m.toUpperCase());
 }
 
 function fieldLabelStyle(): React.CSSProperties {
@@ -177,50 +197,159 @@ function sanitizeAnswerForDisplay(text: string): string {
   return raw;
 }
 
-function summaryGridStyle(): React.CSSProperties {
+function cleanLineEndings(value: string): string {
+  return String(value || "").replace(/\r\n/g, "\n").trim();
+}
+
+function parseStructuredAnswer(text: string): ParsedAnswer {
+  const raw = cleanLineEndings(text);
+  if (!raw) {
+    return { lead: "", sections: [], source: "" };
+  }
+
+  let working = raw;
+  let source = "";
+
+  const sourceMatch = working.match(/(?:\n|^)\s*Source:\s*([\s\S]*)$/i);
+  if (sourceMatch && sourceMatch.index != null) {
+    source = String(sourceMatch[1] || "").trim();
+    working = working.slice(0, sourceMatch.index).trim();
+  }
+
+  const blocks = working
+    .split(/\n\s*\n/)
+    .map((block) => block.trim())
+    .filter(Boolean);
+
+  let lead = "";
+  const sections: AnswerSection[] = [];
+
+  for (const block of blocks) {
+    const lines = block
+      .split("\n")
+      .map((line) => line.trimEnd())
+      .filter((line) => line.trim().length > 0);
+
+    if (!lines.length) continue;
+
+    const firstLine = lines[0].trim();
+    const looksLikeHeading =
+      firstLine.endsWith(":") &&
+      firstLine.length <= 80 &&
+      lines.length > 1;
+
+    if (looksLikeHeading) {
+      sections.push({
+        title: firstLine.replace(/:$/, ""),
+        body: lines.slice(1).join("\n"),
+      });
+      continue;
+    }
+
+    if (!lead) {
+      lead = lines.join("\n");
+      continue;
+    }
+
+    sections.push({
+      title: "More detail",
+      body: lines.join("\n"),
+    });
+  }
+
+  return {
+    lead,
+    sections,
+    source,
+  };
+}
+
+function statusPillStyle(
+  tone: "good" | "warn" | "danger" | "default" = "default"
+): React.CSSProperties {
+  const map = {
+    good: {
+      background: "rgba(16, 185, 129, 0.08)",
+      border: "1px solid rgba(16, 185, 129, 0.22)",
+      color: "var(--text)",
+    },
+    warn: {
+      background: "rgba(245, 158, 11, 0.08)",
+      border: "1px solid rgba(245, 158, 11, 0.22)",
+      color: "var(--text)",
+    },
+    danger: {
+      background: "rgba(239, 68, 68, 0.08)",
+      border: "1px solid rgba(239, 68, 68, 0.22)",
+      color: "var(--text)",
+    },
+    default: {
+      background: "var(--surface)",
+      border: "1px solid var(--border)",
+      color: "var(--text)",
+    },
+  } as const;
+
   return {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+    gap: 4,
+    minWidth: 150,
+    padding: "12px 14px",
+    borderRadius: 16,
+    ...map[tone],
+  };
+}
+
+function starterButtonStyle(isActive: boolean): React.CSSProperties {
+  return {
+    width: "100%",
+    textAlign: "left",
+    padding: "12px 14px",
+    borderRadius: 16,
+    border: isActive
+      ? "1px solid rgba(79, 70, 229, 0.32)"
+      : "1px solid var(--border)",
+    background: isActive
+      ? "rgba(79, 70, 229, 0.08)"
+      : "var(--surface)",
+    color: "var(--text)",
+    cursor: "pointer",
+    fontSize: 14,
+    fontWeight: 700,
+    lineHeight: 1.5,
+    boxShadow: "0 8px 24px rgba(15, 23, 42, 0.03)",
+  };
+}
+
+function answerSurfaceStyle(): React.CSSProperties {
+  return {
+    border: "1px solid rgba(16, 185, 129, 0.18)",
+    background: "rgba(16, 185, 129, 0.05)",
+    borderRadius: 24,
+    padding: 22,
+    display: "grid",
     gap: 16,
   };
 }
 
-function summaryCardStyle(): React.CSSProperties {
+function sectionSurfaceStyle(): React.CSSProperties {
   return {
-    border: "1px solid var(--border)",
-    borderRadius: 22,
-    background: "var(--surface)",
+    border: "1px solid rgba(15, 23, 42, 0.08)",
+    background: "rgba(255,255,255,0.52)",
+    borderRadius: 18,
     padding: 18,
-    boxShadow: "0 8px 24px rgba(15, 23, 42, 0.04)",
     display: "grid",
-    gap: 8,
+    gap: 10,
   };
 }
 
-function summaryLabelStyle(): React.CSSProperties {
+function mutedFooterStyle(): React.CSSProperties {
   return {
-    fontSize: 12,
-    fontWeight: 900,
-    color: "var(--text-faint)",
-    letterSpacing: 0.6,
-    textTransform: "uppercase",
-  };
-}
-
-function summaryValueStyle(): React.CSSProperties {
-  return {
-    fontSize: 22,
-    fontWeight: 900,
-    color: "var(--text)",
-    lineHeight: 1.2,
-  };
-}
-
-function summarySubStyle(): React.CSSProperties {
-  return {
+    borderTop: "1px solid rgba(15, 23, 42, 0.08)",
+    paddingTop: 12,
     fontSize: 13,
     color: "var(--text-muted)",
-    lineHeight: 1.6,
+    lineHeight: 1.7,
   };
 }
 
@@ -260,8 +389,6 @@ function AskPageContent() {
   const [citations, setCitations] = useState<string[]>([]);
   const [clarificationPrompt, setClarificationPrompt] = useState("");
   const [monthlyAiUsed, setMonthlyAiUsed] = useState(0);
-  const [limitsData, setLimitsData] = useState<WorkspaceLimitsResponse | null>(null);
-  const [limitsError, setLimitsError] = useState("");
 
   const busy = workspaceBusy || submitting;
 
@@ -272,35 +399,6 @@ function AskPageContent() {
     if (q) setQuestion(q);
     if (lang) setLanguage(normalizeLanguageLabel(lang));
   }, [sp]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadLimits() {
-      try {
-        setLimitsError("");
-        const res = await apiJson<WorkspaceLimitsResponse>("/workspace/limits", {
-          method: "GET",
-          timeoutMs: 20000,
-          useAuthToken: false,
-        });
-        if (!cancelled) setLimitsData(res);
-      } catch (error) {
-        if (cancelled) return;
-        const message = isApiError(error)
-          ? error.message || "Unable to load ask-page readiness state."
-          : error instanceof Error
-          ? error.message || "Unable to load ask-page readiness state."
-          : "Unable to load ask-page readiness state.";
-        setLimitsError(message);
-      }
-    }
-
-    void loadLimits();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const handleAsk = async () => {
     const q = question.trim();
@@ -365,7 +463,9 @@ function AskPageContent() {
       }
 
       if (data?.ok && data?.answer) {
-        const answerText = sanitizeAnswerForDisplay(String(data.answer || "").trim());
+        const answerText = sanitizeAnswerForDisplay(
+          String(data.answer || "").trim()
+        );
 
         if (!answerText) {
           setResultOk(false);
@@ -379,8 +479,12 @@ function AskPageContent() {
 
         setResultOk(true);
         setAnswer(answerText);
-        setCitations(Array.isArray(data?.citations) ? data.citations.filter(Boolean) : []);
-        setClarificationPrompt(normalizeText(data?.clarification_prompt || ""));
+        setCitations(
+          Array.isArray(data?.citations) ? data.citations.filter(Boolean) : []
+        );
+        setClarificationPrompt(
+          normalizeText(data?.clarification_prompt || "")
+        );
 
         const item: HistoryItem = {
           id: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
@@ -396,7 +500,10 @@ function AskPageContent() {
 
       const code = String(data?.error || "").trim().toLowerCase();
 
-      if (code === "insufficient_credits" || code === "insufficient_credits_uncached") {
+      if (
+        code === "insufficient_credits" ||
+        code === "insufficient_credits_uncached"
+      ) {
         setResultOk(false);
         setFriendlyError(
           "No fresh AI credits are available right now. Cached questions can still return answers, but new uncached questions need available credits."
@@ -425,7 +532,10 @@ function AskPageContent() {
           setLastAskDebug(null);
         }
 
-        if (code === "insufficient_credits" || code === "insufficient_credits_uncached") {
+        if (
+          code === "insufficient_credits" ||
+          code === "insufficient_credits_uncached"
+        ) {
           setResultOk(false);
           setFriendlyError(
             "No fresh AI credits are available right now. Cached questions can still return answers, but new uncached questions need available credits."
@@ -471,63 +581,56 @@ function AskPageContent() {
     setLastAskDebug(null);
   };
 
+  const parsedAnswer = useMemo(() => parseStructuredAnswer(answer), [answer]);
+
   const submitDisabled =
     busy || !question.trim() || (dailyLimit > 0 && dailyUsage >= dailyLimit);
 
-  const topTone =
-    dailyLimit > 0 && dailyUsage >= dailyLimit
-      ? "warn"
-      : creditBalance <= 0
-      ? "warn"
-      : !activeNow
-      ? "warn"
-      : "good";
+  const planName = prettifyPlanName(planCode);
+  const dailyRemaining =
+    dailyLimit > 0 ? Math.max(dailyLimit - dailyUsage, 0) : 0;
 
-  const topTitle =
-    dailyLimit > 0 && dailyUsage >= dailyLimit
-      ? "Daily question limit reached"
-      : creditBalance <= 0
-      ? "Credit balance is empty"
-      : !activeNow
-      ? "Subscription attention needed"
-      : "Assistant is ready";
-
-  const topSubtitle =
-    dailyLimit > 0 && dailyUsage >= dailyLimit
-      ? "You have used all visible daily question capacity for today. Wait for reset or review your plan."
-      : creditBalance <= 0
-      ? "New uncached questions may fail until credits are available, even if the account still appears active."
-      : !activeNow
-      ? "Your workspace does not currently show an active subscription. You can still submit a question now to test the live flow, but the backend may still reject it until billing is active."
-      : status || "Write your question clearly and choose the reply language before submitting.";
-
-  const planName =
-    limitsData?.entitlements?.plan?.name ||
-    safeText(planCode || "", "Free");
-
-  const workspaceMaxUsers = safeNumber(
-    limitsData?.entitlements?.workspace_limits?.max_workspace_users
-  );
-  const workspaceUsed = safeNumber(limitsData?.counts?.owner_included_total);
-  const workspaceAvailable =
-    workspaceMaxUsers > 0 ? Math.max(workspaceMaxUsers - workspaceUsed, 0) : 0;
-
-  const maxTotalChannels = safeNumber(
-    limitsData?.entitlements?.channel_limits?.max_total_channels
-  );
   const whatsappLinked = truthyValue(
     channelLinks?.whatsapp_linked || channelLinks?.whatsapp?.linked
   );
   const telegramLinked = truthyValue(
     channelLinks?.telegram_linked || channelLinks?.telegram?.linked
   );
-  const linkedChannelsUsed = (whatsappLinked ? 1 : 0) + (telegramLinked ? 1 : 0);
-  const channelStatusLabel =
-    whatsappLinked && telegramLinked
-      ? "All linked"
-      : whatsappLinked || telegramLinked
-      ? "Partially linked"
-      : "Not linked";
+
+  const channelStatus = whatsappLinked && telegramLinked
+    ? "WhatsApp + Telegram linked"
+    : whatsappLinked
+    ? "WhatsApp linked"
+    : telegramLinked
+    ? "Telegram linked"
+    : "No channel linked";
+
+  const topTone =
+    dailyLimit > 0 && dailyUsage >= dailyLimit
+      ? "warn"
+      : !activeNow
+      ? "warn"
+      : creditBalance <= 0
+      ? "warn"
+      : "good";
+
+  const topTitle =
+    dailyLimit > 0 && dailyUsage >= dailyLimit
+      ? "Daily question limit reached"
+      : !activeNow
+      ? "Subscription attention needed"
+      : creditBalance <= 0
+      ? "Credits are empty"
+      : "Ask page is ready";
+
+  const topSubtitle =
+    dailyLimit > 0 && dailyUsage >= dailyLimit
+      ? "You can still review the starter questions below, but new submissions may stop until the daily limit resets."
+      : !activeNow
+      ? "The page is working, but your billing state may still block live asks until the subscription shows active."
+      : creditBalance <= 0
+      ? "Curated questions may still answer, but uncached questions can fail when fresh AI credits are not available."
+      : status || "Write a direct question or tap any starter question to test the page quickly.";
 
   return (
     <AppShell
@@ -547,221 +650,416 @@ function AskPageContent() {
       <SectionStack>
         <Banner tone={topTone} title={topTitle} subtitle={topSubtitle} />
 
-        {limitsError ? (
-          <Banner
-            tone="warn"
-            title="Ask-page readiness could not be fully loaded"
-            subtitle={limitsError}
-          />
-        ) : null}
-
-        <div style={summaryGridStyle()}>
-          <div style={summaryCardStyle()}>
-            <div style={summaryLabelStyle()}>Plan</div>
-            <div style={summaryValueStyle()}>{planName}</div>
-            <div style={summarySubStyle()}>
-              Status: {activeNow ? "Active" : "Attention needed"}
-            </div>
-          </div>
-
-          <div style={summaryCardStyle()}>
-            <div style={summaryLabelStyle()}>Credits</div>
-            <div style={summaryValueStyle()}>{creditBalance}</div>
-            <div style={summarySubStyle()}>
-              AI used this month: {monthlyAiUsed}
-            </div>
-          </div>
-
-          <div style={summaryCardStyle()}>
-            <div style={summaryLabelStyle()}>Workspace</div>
-            <div style={summaryValueStyle()}>
-              {workspaceUsed} / {workspaceMaxUsers || 0}
-            </div>
-            <div style={summarySubStyle()}>
-              Available slots: {workspaceAvailable}
-            </div>
-          </div>
-
-          <div style={summaryCardStyle()}>
-            <div style={summaryLabelStyle()}>Channels</div>
-            <div style={summaryValueStyle()}>
-              {linkedChannelsUsed} / {maxTotalChannels}
-            </div>
-            <div style={summarySubStyle()}>
-              {channelStatusLabel} · WhatsApp: {whatsappLinked ? "Linked" : "Not linked"} · Telegram:{" "}
-              {telegramLinked ? "Linked" : "Not linked"}
-            </div>
-          </div>
-        </div>
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "minmax(0, 1.8fr) minmax(280px, 0.95fr)",
-            gap: 18,
-            alignItems: "start",
-          }}
+        <WorkspaceSectionCard
+          title="Ask your question"
+          subtitle="This page should now feel like a real ask-and-answer workspace, not an admin dashboard."
         >
-          <WorkspaceSectionCard
-            title="Ask your question"
-            subtitle="Keep the question direct and specific for the best result."
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "minmax(0, 1.45fr) minmax(320px, 0.95fr)",
+              gap: 18,
+              alignItems: "start",
+            }}
           >
             <div style={{ display: "grid", gap: 16 }}>
+              <div
+                style={{
+                  display: "flex",
+                  gap: 10,
+                  flexWrap: "wrap",
+                  alignItems: "stretch",
+                }}
+              >
+                <div
+                  style={statusPillStyle(activeNow ? "good" : "warn")}
+                >
+                  <div
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 900,
+                      color: "var(--text-muted)",
+                      textTransform: "uppercase",
+                      letterSpacing: 0.5,
+                    }}
+                  >
+                    Plan
+                  </div>
+                  <div style={{ fontSize: 16, fontWeight: 900 }}>
+                    {planName}
+                  </div>
+                </div>
+
+                <div
+                  style={statusPillStyle(creditBalance > 0 ? "good" : "warn")}
+                >
+                  <div
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 900,
+                      color: "var(--text-muted)",
+                      textTransform: "uppercase",
+                      letterSpacing: 0.5,
+                    }}
+                  >
+                    Credits
+                  </div>
+                  <div style={{ fontSize: 16, fontWeight: 900 }}>
+                    {creditBalance}
+                  </div>
+                </div>
+
+                <div
+                  style={statusPillStyle(
+                    dailyLimit > 0 && dailyRemaining === 0 ? "warn" : "default"
+                  )}
+                >
+                  <div
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 900,
+                      color: "var(--text-muted)",
+                      textTransform: "uppercase",
+                      letterSpacing: 0.5,
+                    }}
+                  >
+                    Daily Left
+                  </div>
+                  <div style={{ fontSize: 16, fontWeight: 900 }}>
+                    {dailyLimit > 0 ? dailyRemaining : "—"}
+                  </div>
+                </div>
+
+                <div
+                  style={statusPillStyle(
+                    whatsappLinked || telegramLinked ? "good" : "default"
+                  )}
+                >
+                  <div
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 900,
+                      color: "var(--text-muted)",
+                      textTransform: "uppercase",
+                      letterSpacing: 0.5,
+                    }}
+                  >
+                    Channels
+                  </div>
+                  <div style={{ fontSize: 16, fontWeight: 900 }}>
+                    {channelStatus}
+                  </div>
+                </div>
+              </div>
+
               <div>
                 <div style={fieldLabelStyle()}>Question</div>
                 <textarea
                   value={question}
                   onChange={(event) => setQuestion(event.target.value)}
-                  placeholder="Example: How do I register for TIN as a freelancer in Nigeria?"
+                  onKeyDown={(event) => {
+                    if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+                      event.preventDefault();
+                      if (!submitDisabled) {
+                        void handleAsk();
+                      }
+                    }
+                  }}
+                  placeholder="Example: How do I register for VAT in Nigeria?"
                   rows={8}
                   style={{
                     ...appTextareaStyle(),
-                    minHeight: 220,
+                    minHeight: 240,
                     fontSize: 17,
-                    lineHeight: 1.7,
+                    lineHeight: 1.8,
+                    borderRadius: 22,
                   }}
                 />
+                <div
+                  style={{
+                    marginTop: 8,
+                    fontSize: 13,
+                    color: "var(--text-muted)",
+                    lineHeight: 1.6,
+                  }}
+                >
+                  Tip: use one clear question at a time. You can press Ctrl + Enter to submit.
+                </div>
               </div>
 
-              <div style={{ maxWidth: 280 }}>
-                <div style={fieldLabelStyle()}>Reply language</div>
-                <select
-                  value={language}
-                  onChange={(event) => setLanguage(event.target.value)}
-                  style={appSelectStyle()}
-                >
-                  {LANGUAGE_OPTIONS.map((item) => (
-                    <option key={item.value} value={item.value}>
-                      {item.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "minmax(180px, 220px) auto",
+                  gap: 14,
+                  alignItems: "end",
+                }}
+              >
+                <div>
+                  <div style={fieldLabelStyle()}>Reply language</div>
+                  <select
+                    value={language}
+                    onChange={(event) => setLanguage(event.target.value)}
+                    style={appSelectStyle()}
+                  >
+                    {LANGUAGE_OPTIONS.map((item) => (
+                      <option key={item.value} value={item.value}>
+                        {item.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-              <div style={actionRowStyle()}>
-                <button
-                  onClick={() => {
-                    void handleAsk();
-                  }}
-                  disabled={submitDisabled}
-                  style={{
-                    ...appInputStyle("button"),
-                    minWidth: 180,
-                    opacity: submitDisabled ? 0.65 : 1,
-                    cursor: submitDisabled ? "not-allowed" : "pointer",
-                  }}
-                >
-                  {submitting ? "Submitting..." : "Ask Question"}
-                </button>
+                <div style={actionRowStyle()}>
+                  <button
+                    onClick={() => {
+                      void handleAsk();
+                    }}
+                    disabled={submitDisabled}
+                    style={{
+                      ...appInputStyle("button"),
+                      minWidth: 180,
+                      opacity: submitDisabled ? 0.65 : 1,
+                      cursor: submitDisabled ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    {submitting ? "Submitting..." : "Ask Question"}
+                  </button>
 
-                <button
-                  onClick={clearAll}
-                  disabled={submitting}
-                  style={{
-                    ...appInputStyle("buttonSecondary"),
-                    minWidth: 140,
-                    opacity: submitting ? 0.7 : 1,
-                    cursor: submitting ? "not-allowed" : "pointer",
-                  }}
-                >
-                  Clear
-                </button>
+                  <button
+                    onClick={clearAll}
+                    disabled={submitting}
+                    style={{
+                      ...appInputStyle("buttonSecondary"),
+                      minWidth: 140,
+                      opacity: submitting ? 0.7 : 1,
+                      cursor: submitting ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    Clear
+                  </button>
+                </div>
               </div>
             </div>
-          </WorkspaceSectionCard>
 
-          <WorkspaceSectionCard
-            title="Current access"
-            subtitle="The small readiness summary that matters before asking."
-          >
-            <CardsGrid min={180}>
-              <MetricCard
-                label="Plan"
-                value={planName}
-                tone={activeNow ? "good" : "warn"}
-                helper="Visible active plan in your workspace."
-              />
-              <MetricCard
-                label="Credits"
-                value={String(creditBalance)}
-                tone={creditBalance > 0 ? "good" : "danger"}
-                helper="Visible AI credits currently available."
-              />
-              <MetricCard
-                label="Workspace"
-                value={`${workspaceUsed}/${workspaceMaxUsers || 0}`}
-                tone={workspaceAvailable > 0 ? "good" : "warn"}
-                helper={`Available slots: ${workspaceAvailable}`}
-              />
-              <MetricCard
-                label="Channels"
-                value={`${linkedChannelsUsed}/${maxTotalChannels}`}
-                tone={linkedChannelsUsed > 0 ? "good" : "warn"}
-                helper={channelStatusLabel}
-              />
-              <MetricCard
-                label="AI Used This Month"
-                value={String(monthlyAiUsed)}
-                helper="Total AI usage recorded for the current month if provided by the backend."
-              />
-              <MetricCard
-                label="Expires"
-                value={expiresAt ? formatDate(expiresAt) : "Not shown"}
-                helper="Current visible expiry date if available."
-              />
-            </CardsGrid>
-          </WorkspaceSectionCard>
-        </div>
+            <div style={{ display: "grid", gap: 14 }}>
+              <div
+                style={{
+                  border: "1px solid var(--border)",
+                  borderRadius: 22,
+                  background: "var(--surface)",
+                  padding: 18,
+                  display: "grid",
+                  gap: 14,
+                }}
+              >
+                <div>
+                  <div
+                    style={{
+                      fontSize: 14,
+                      fontWeight: 900,
+                      color: "var(--text)",
+                      marginBottom: 4,
+                    }}
+                  >
+                    Starter questions
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 13,
+                      color: "var(--text-muted)",
+                      lineHeight: 1.6,
+                    }}
+                  >
+                    Tap any question below to load it into the ask box quickly.
+                  </div>
+                </div>
+
+                {STARTER_GROUPS.map((group) => (
+                  <div key={group.title} style={{ display: "grid", gap: 8 }}>
+                    <div
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 900,
+                        color: "var(--text-muted)",
+                        textTransform: "uppercase",
+                        letterSpacing: 0.5,
+                      }}
+                    >
+                      {group.title}
+                    </div>
+
+                    <div style={{ display: "grid", gap: 8 }}>
+                      {group.items.map((item) => {
+                        const isActive =
+                          question.trim().toLowerCase() === item.trim().toLowerCase();
+
+                        return (
+                          <button
+                            key={item}
+                            type="button"
+                            onClick={() => {
+                              setQuestion(item);
+                              setResultOk(null);
+                              setFriendlyError("");
+                              setClarificationPrompt("");
+                            }}
+                            style={starterButtonStyle(isActive)}
+                          >
+                            {item}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div
+                style={{
+                  border: "1px dashed var(--border)",
+                  borderRadius: 18,
+                  padding: 16,
+                  background: "rgba(15, 23, 42, 0.02)",
+                  display: "grid",
+                  gap: 6,
+                }}
+              >
+                <div style={{ fontSize: 13, fontWeight: 900, color: "var(--text)" }}>
+                  Current ask-page target
+                </div>
+                <div
+                  style={{
+                    fontSize: 13,
+                    color: "var(--text-muted)",
+                    lineHeight: 1.7,
+                  }}
+                >
+                  Clean ask form, clean starter questions, and clean structured answers.
+                  That is the section we are finishing now.
+                </div>
+                <div
+                  style={{
+                    fontSize: 13,
+                    color: "var(--text-muted)",
+                    lineHeight: 1.7,
+                  }}
+                >
+                  Expires: {expiresAt ? new Date(expiresAt).toLocaleDateString() : "Not shown"}
+                </div>
+              </div>
+            </div>
+          </div>
+        </WorkspaceSectionCard>
 
         <WorkspaceSectionCard
           title="Answer"
-          subtitle="Your latest response will appear here after submission."
+          subtitle="The result should now read like a polished tax guidance response, not a raw text dump."
         >
           {resultOk === null && !answer && !friendlyError ? (
             <div
               style={{
-                borderRadius: 18,
+                borderRadius: 22,
                 border: "1px solid var(--border)",
                 background: "var(--surface)",
-                padding: 18,
+                padding: 22,
                 display: "grid",
                 gap: 10,
               }}
             >
-              <div style={{ fontSize: 16, fontWeight: 800, color: "var(--text)" }}>
+              <div style={{ fontSize: 17, fontWeight: 900, color: "var(--text)" }}>
                 No response yet
               </div>
               <div
                 style={{
                   color: "var(--text-muted)",
-                  lineHeight: 1.7,
+                  lineHeight: 1.75,
                   fontSize: 15,
                 }}
               >
-                Submit a question above to generate an answer.
+                Ask a question above or tap any starter question to test the page quickly.
               </div>
             </div>
           ) : resultOk ? (
             <div style={{ display: "grid", gap: 16 }}>
-              <div style={toneSurface("good")}>
-                <div style={{ fontWeight: 900, marginBottom: 10, fontSize: 16 }}>
-                  Answer
-                </div>
-                <div
-                  style={{
-                    whiteSpace: "pre-wrap",
-                    lineHeight: 1.8,
-                    fontSize: 16,
-                  }}
-                >
-                  {answer || "No answer returned."}
-                </div>
+              <div style={answerSurfaceStyle()}>
+                {parsedAnswer.lead ? (
+                  <div
+                    style={{
+                      fontSize: 18,
+                      lineHeight: 1.85,
+                      color: "var(--text)",
+                      fontWeight: 500,
+                    }}
+                  >
+                    {parsedAnswer.lead}
+                  </div>
+                ) : null}
+
+                {parsedAnswer.sections.map((section, index) => (
+                  <div key={`${section.title}-${index}`} style={sectionSurfaceStyle()}>
+                    <div
+                      style={{
+                        fontSize: 15,
+                        fontWeight: 900,
+                        color: "var(--text)",
+                      }}
+                    >
+                      {section.title}
+                    </div>
+                    <div
+                      style={{
+                        whiteSpace: "pre-wrap",
+                        lineHeight: 1.85,
+                        fontSize: 16,
+                        color: "var(--text)",
+                      }}
+                    >
+                      {section.body}
+                    </div>
+                  </div>
+                ))}
+
+                {!parsedAnswer.lead && parsedAnswer.sections.length === 0 ? (
+                  <div
+                    style={{
+                      whiteSpace: "pre-wrap",
+                      lineHeight: 1.85,
+                      fontSize: 16,
+                      color: "var(--text)",
+                    }}
+                  >
+                    {answer}
+                  </div>
+                ) : null}
+
+                {parsedAnswer.source ? (
+                  <div style={mutedFooterStyle()}>
+                    <strong>Source:</strong> {parsedAnswer.source}
+                  </div>
+                ) : null}
               </div>
 
               {citations.length ? (
-                <div style={toneSurface("default")}>
-                  <div style={{ fontWeight: 900, marginBottom: 10 }}>References</div>
-                  <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.8 }}>
+                <div
+                  style={{
+                    border: "1px solid var(--border)",
+                    borderRadius: 18,
+                    background: "var(--surface)",
+                    padding: 16,
+                    display: "grid",
+                    gap: 8,
+                  }}
+                >
+                  <div style={{ fontWeight: 900, color: "var(--text)" }}>References</div>
+                  <ul
+                    style={{
+                      margin: 0,
+                      paddingLeft: 18,
+                      lineHeight: 1.8,
+                      color: "var(--text-muted)",
+                    }}
+                  >
                     {citations.map((citation, index) => (
                       <li key={`${citation}-${index}`}>{citation}</li>
                     ))}
@@ -781,7 +1079,9 @@ function AskPageContent() {
             <Banner
               tone="danger"
               title="Question could not be completed"
-              subtitle={friendlyError || "Something went wrong while processing your question."}
+              subtitle={
+                friendlyError || "Something went wrong while processing your question."
+              }
             />
           )}
         </WorkspaceSectionCard>
