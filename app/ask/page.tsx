@@ -2,11 +2,11 @@
 
 import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import AppShell from "@/components/app-shell";
 import { apiJson, isApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import AppShell from "@/components/app-shell";
-import { type HistoryItem, saveHistoryItem } from "@/lib/history-storage";
 import { useWorkspaceState } from "@/hooks/useWorkspaceState";
+import { type HistoryItem, saveHistoryItem } from "@/lib/history-storage";
 
 type AskResp = {
   ok?: boolean;
@@ -16,12 +16,6 @@ type AskResp = {
   root_cause?: string;
   details?: unknown;
   debug?: unknown;
-  meta?: {
-    ai_used_month?: number;
-    monthly_ai_used?: number;
-    ai_used_this_month?: number;
-    used_this_month?: number;
-  } | null;
   citations?: string[];
   clarification_prompt?: string;
 };
@@ -58,26 +52,15 @@ const STARTER_GROUPS: StarterGroup[] = [
   },
   {
     title: "PAYE",
-    questions: [
-      "what is paye?",
-      "who must deduct paye?",
-      "how do i remit paye?",
-    ],
+    questions: ["what is paye?", "who must deduct paye?", "how do i remit paye?"],
   },
   {
     title: "VAT",
-    questions: [
-      "how do i register for vat?",
-      "how do i file vat?",
-      "how do i pay vat?",
-    ],
+    questions: ["how do i register for vat?", "how do i file vat?", "how do i pay vat?"],
   },
   {
     title: "WITHHOLDING TAX",
-    questions: [
-      "what is the withholding tax rate?",
-      "how do i remit withholding tax?",
-    ],
+    questions: ["what is the withholding tax rate?", "how do i remit withholding tax?"],
   },
   {
     title: "COMPANY INCOME TAX",
@@ -130,6 +113,7 @@ function safeText(value: unknown, fallback = "—") {
       : value == null
       ? ""
       : String(value).trim();
+
   return text || fallback;
 }
 
@@ -150,9 +134,9 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 function readPath(root: unknown, path: string[]): unknown {
   let cursor: unknown = root;
   for (const key of path) {
-    const record = asRecord(cursor);
-    if (!record) return undefined;
-    cursor = record[key];
+    const rec = asRecord(cursor);
+    if (!rec) return undefined;
+    cursor = rec[key];
   }
   return cursor;
 }
@@ -167,7 +151,28 @@ function titleFromCode(value: string, fallback = "Free") {
     .replace(/\b\w/g, (m) => m.toUpperCase());
 }
 
-function toneForMetric(
+function pageCardStyle(extra?: React.CSSProperties): React.CSSProperties {
+  return {
+    borderRadius: 28,
+    border: "1px solid var(--border)",
+    background: "var(--panel-bg)",
+    padding: 28,
+    boxShadow: "0 10px 34px rgba(15, 23, 42, 0.04)",
+    ...extra,
+  };
+}
+
+function innerCardStyle(extra?: React.CSSProperties): React.CSSProperties {
+  return {
+    borderRadius: 22,
+    border: "1px solid var(--border)",
+    background: "var(--surface)",
+    padding: 22,
+    ...extra,
+  };
+}
+
+function toneStyles(
   tone: "default" | "good" | "warn" | "danger" = "default"
 ): React.CSSProperties {
   if (tone === "good") {
@@ -197,37 +202,16 @@ function toneForMetric(
   };
 }
 
-function pageCardStyle(extra?: React.CSSProperties): React.CSSProperties {
-  return {
-    borderRadius: 28,
-    border: "1px solid var(--border)",
-    background: "var(--panel-bg)",
-    padding: 28,
-    boxShadow: "0 10px 34px rgba(15, 23, 42, 0.04)",
-    ...extra,
-  };
-}
-
-function innerCardStyle(extra?: React.CSSProperties): React.CSSProperties {
-  return {
-    borderRadius: 22,
-    border: "1px solid var(--border)",
-    background: "var(--surface)",
-    padding: 22,
-    ...extra,
-  };
-}
-
 function metricCardStyle(
   tone: "default" | "good" | "warn" | "danger" = "default"
 ): React.CSSProperties {
   return {
     borderRadius: 22,
     padding: 18,
-    minHeight: 112,
+    minHeight: 108,
     display: "grid",
     gap: 8,
-    ...toneForMetric(tone),
+    ...toneStyles(tone),
   };
 }
 
@@ -336,10 +320,10 @@ function parseAnswer(rawAnswer: string): ParsedAnswer {
     }
 
     if (!lead && !/:$/.test(rawLines[0])) {
-      const containsBullets = rawLines.some((line) => /^[-•]\s+/.test(line));
-      const containsOrdered = rawLines.some((line) => /^\d+\.\s+/.test(line));
+      const hasBullets = rawLines.some((line) => /^[-•]\s+/.test(line));
+      const hasOrdered = rawLines.some((line) => /^\d+\.\s+/.test(line));
 
-      if (!containsBullets && !containsOrdered) {
+      if (!hasBullets && !hasOrdered) {
         lead = rawLines.join(" ");
         continue;
       }
@@ -371,53 +355,7 @@ function parseAnswer(rawAnswer: string): ParsedAnswer {
     lead = sections.length ? sections[0].lines[0] : raw.replace(/\n+/g, " ").trim();
   }
 
-  return {
-    lead,
-    sections,
-    source,
-  };
-}
-
-function AttentionCard({
-  title,
-  message,
-  tone = "warn",
-}: {
-  title: string;
-  message: string;
-  tone?: "warn" | "danger" | "good";
-}) {
-  return (
-    <div
-      style={{
-        ...pageCardStyle(),
-        ...toneForMetric(tone),
-        display: "grid",
-        gap: 10,
-        padding: 24,
-      }}
-    >
-      <div
-        style={{
-          fontSize: 19,
-          fontWeight: 950,
-          color: "var(--text)",
-        }}
-      >
-        {title}
-      </div>
-
-      <div
-        style={{
-          color: "var(--text-muted)",
-          fontSize: 15,
-          lineHeight: 1.8,
-        }}
-      >
-        {message}
-      </div>
-    </div>
-  );
+  return { lead, sections, source };
 }
 
 function AskPageFallback() {
@@ -462,7 +400,7 @@ function AskPageContent() {
   } = useWorkspaceState({
     refreshSession,
     autoLoad: true,
-    includeAccount: false,
+    includeAccount: true,
     includeBilling: true,
     includeDebug: true,
     loadingMessage: "Loading your assistant...",
@@ -496,6 +434,8 @@ function AskPageContent() {
         readPath(status, ["channel_links", "whatsapp", "linked"]) ??
         readPath(status, ["workspace", "channel_links", "whatsapp_linked"]) ??
         readPath(status, ["workspace", "channel_links", "whatsapp", "linked"]) ??
+        readPath(status, ["account", "channel_links", "whatsapp_linked"]) ??
+        readPath(status, ["account", "channel_links", "whatsapp", "linked"]) ??
         readPath(status, ["whatsapp_linked"]) ??
         readPath(status, ["whatsapp", "linked"])
     );
@@ -505,6 +445,8 @@ function AskPageContent() {
         readPath(status, ["channel_links", "telegram", "linked"]) ??
         readPath(status, ["workspace", "channel_links", "telegram_linked"]) ??
         readPath(status, ["workspace", "channel_links", "telegram", "linked"]) ??
+        readPath(status, ["account", "channel_links", "telegram_linked"]) ??
+        readPath(status, ["account", "channel_links", "telegram", "linked"]) ??
         readPath(status, ["telegram_linked"]) ??
         readPath(status, ["telegram", "linked"])
     );
@@ -522,17 +464,15 @@ function AskPageContent() {
 
   const dailyLeft = useMemo(() => {
     if (dailyLimit <= 0) return "—";
-    const left = Math.max(dailyLimit - dailyUsage, 0);
-    return String(left);
+    return String(Math.max(dailyLimit - dailyUsage, 0));
   }, [dailyLimit, dailyUsage]);
 
-  const accountAttention = useMemo(() => {
+  const attention = useMemo(() => {
     if (!activeNow && creditBalance <= 0) {
       return {
         title: "Account attention needed",
         message:
           "Starter or already-covered questions may still work, but some live asks can be blocked until plan and credits are active.",
-        tone: "warn" as const,
       };
     }
 
@@ -541,7 +481,6 @@ function AskPageContent() {
         title: "Subscription attention needed",
         message:
           "The page is working, but your billing state may still block some fresh questions until the subscription shows active.",
-        tone: "warn" as const,
       };
     }
 
@@ -550,7 +489,6 @@ function AskPageContent() {
         title: "Daily limit reached",
         message:
           "You have reached your current visible daily question limit. You can still review starter questions, history, and existing answers.",
-        tone: "warn" as const,
       };
     }
 
@@ -561,6 +499,7 @@ function AskPageContent() {
     setQuestion(starterQuestion);
     setFriendlyError("");
     setClarificationPrompt("");
+
     requestAnimationFrame(() => {
       textareaRef.current?.focus();
       textareaRef.current?.scrollIntoView({
@@ -710,8 +649,8 @@ function AskPageContent() {
             error?: string;
             fix?: string;
             root_cause?: string;
-            debug?: unknown;
             clarification_prompt?: string;
+            debug?: unknown;
           };
           message?: string;
         };
@@ -763,20 +702,8 @@ function AskPageContent() {
       title="Ask Naija Tax Guide"
       subtitle="Ask a practical Nigerian tax question and get a structured response inside your workspace."
     >
-      <div
-        style={{
-          display: "grid",
-          gap: 20,
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "flex-end",
-            gap: 12,
-            flexWrap: "wrap",
-          }}
-        >
+      <div style={{ display: "grid", gap: 20 }}>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 12, flexWrap: "wrap" }}>
           <button
             onClick={() => {
               void load("Refreshing assistant state...");
@@ -796,12 +723,36 @@ function AskPageContent() {
           </button>
         </div>
 
-        {accountAttention ? (
-          <AttentionCard
-            title={accountAttention.title}
-            message={accountAttention.message}
-            tone={accountAttention.tone}
-          />
+        {attention ? (
+          <div
+            style={{
+              ...pageCardStyle(),
+              ...toneStyles("warn"),
+              display: "grid",
+              gap: 10,
+              padding: 24,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 19,
+                fontWeight: 950,
+                color: "var(--text)",
+              }}
+            >
+              {attention.title}
+            </div>
+
+            <div
+              style={{
+                color: "var(--text-muted)",
+                fontSize: 15,
+                lineHeight: 1.8,
+              }}
+            >
+              {attention.message}
+            </div>
+          </div>
         ) : null}
 
         <div
@@ -814,12 +765,7 @@ function AskPageContent() {
         >
           <div style={{ display: "grid", gap: 20 }}>
             <div style={pageCardStyle()}>
-              <div
-                style={{
-                  display: "grid",
-                  gap: 16,
-                }}
-              >
+              <div style={{ display: "grid", gap: 16 }}>
                 <div
                   style={{
                     display: "grid",
@@ -839,13 +785,7 @@ function AskPageContent() {
                     >
                       PLAN
                     </div>
-                    <div
-                      style={{
-                        fontSize: 18,
-                        fontWeight: 950,
-                        color: "var(--text)",
-                      }}
-                    >
+                    <div style={{ fontSize: 18, fontWeight: 950, color: "var(--text)" }}>
                       {planLabel}
                     </div>
                   </div>
@@ -862,13 +802,7 @@ function AskPageContent() {
                     >
                       CREDITS
                     </div>
-                    <div
-                      style={{
-                        fontSize: 18,
-                        fontWeight: 950,
-                        color: "var(--text)",
-                      }}
-                    >
+                    <div style={{ fontSize: 18, fontWeight: 950, color: "var(--text)" }}>
                       {String(creditBalance)}
                     </div>
                   </div>
@@ -885,13 +819,7 @@ function AskPageContent() {
                     >
                       DAILY LEFT
                     </div>
-                    <div
-                      style={{
-                        fontSize: 18,
-                        fontWeight: 950,
-                        color: "var(--text)",
-                      }}
-                    >
+                    <div style={{ fontSize: 18, fontWeight: 950, color: "var(--text)" }}>
                       {dailyLeft}
                     </div>
                   </div>
@@ -899,7 +827,7 @@ function AskPageContent() {
 
                 <div
                   style={{
-                    maxWidth: 240,
+                    maxWidth: 300,
                     ...metricCardStyle(channelSummary === "No channel linked" ? "default" : "good"),
                   }}
                 >
@@ -941,7 +869,13 @@ function AskPageContent() {
                     ref={textareaRef}
                     value={question}
                     onChange={(e) => setQuestion(e.target.value)}
-                    placeholder="Example: how do i register for vat?"
+                    onKeyDown={(e) => {
+                      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+                        e.preventDefault();
+                        void handleAsk();
+                      }
+                    }}
+                    placeholder="Ask one clear tax question at a time."
                     style={textareaStyle()}
                   />
 
@@ -1042,7 +976,7 @@ function AskPageContent() {
                 <div
                   style={{
                     ...innerCardStyle(),
-                    ...toneForMetric("warn"),
+                    ...toneStyles("warn"),
                     display: "grid",
                     gap: 12,
                   }}
@@ -1076,14 +1010,7 @@ function AskPageContent() {
 
               {resultOk && answer ? (
                 <div style={{ display: "grid", gap: 18 }}>
-                  <div
-                    style={{
-                      display: "flex",
-                      gap: 10,
-                      flexWrap: "wrap",
-                      alignItems: "center",
-                    }}
-                  >
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
                     <div style={chipStyle()}>Latest answer</div>
                     <div style={chipStyle()}>Question: {latestQuestionLabel}</div>
                   </div>
@@ -1177,7 +1104,7 @@ function AskPageContent() {
                           borderTop: "1px solid var(--border)",
                           paddingTop: 16,
                           display: "grid",
-                          gap: 10,
+                          gap: 8,
                         }}
                       >
                         <div
@@ -1254,13 +1181,7 @@ function AskPageContent() {
               overflowY: "auto",
             }}
           >
-            <div
-              style={{
-                display: "grid",
-                gap: 8,
-                marginBottom: 18,
-              }}
-            >
+            <div style={{ display: "grid", gap: 8, marginBottom: 18 }}>
               <div
                 style={{
                   fontSize: 18,
