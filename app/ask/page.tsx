@@ -133,7 +133,16 @@ function truthyValue(value: unknown): boolean {
   if (typeof value === "number") return value > 0;
   if (typeof value === "string") {
     const raw = value.trim().toLowerCase();
-    return ["1", "true", "yes", "active", "linked", "enabled", "paid", "verified"].includes(raw);
+    return [
+      "1",
+      "true",
+      "yes",
+      "active",
+      "linked",
+      "enabled",
+      "paid",
+      "verified",
+    ].includes(raw);
   }
   return false;
 }
@@ -141,9 +150,7 @@ function truthyValue(value: unknown): boolean {
 function prettifyPlanName(value: string | null | undefined): string {
   const raw = String(value || "").trim();
   if (!raw) return "Free";
-  return raw
-    .replace(/[_-]+/g, " ")
-    .replace(/\b\w/g, (m) => m.toUpperCase());
+  return raw.replace(/[_-]+/g, " ").replace(/\b\w/g, (m) => m.toUpperCase());
 }
 
 function looksLikeBrokenAnswer(text: string): boolean {
@@ -216,9 +223,7 @@ function parseStructuredAnswer(text: string): ParsedAnswer {
 
     const firstLine = lines[0].trim();
     const looksLikeHeading =
-      firstLine.endsWith(":") &&
-      firstLine.length <= 80 &&
-      lines.length > 1;
+      firstLine.endsWith(":") && firstLine.length <= 80 && lines.length > 1;
 
     if (looksLikeHeading) {
       sections.push({
@@ -266,7 +271,7 @@ function statusTileStyle(
 
   return {
     ...toneMap[tone],
-    borderRadius: 16,
+    borderRadius: 18,
     padding: "12px 14px",
     minWidth: 150,
     display: "grid",
@@ -283,9 +288,7 @@ function starterButtonStyle(isActive: boolean): React.CSSProperties {
     border: isActive
       ? "1px solid rgba(99, 102, 241, 0.35)"
       : "1px solid var(--border)",
-    background: isActive
-      ? "rgba(99, 102, 241, 0.08)"
-      : "var(--surface)",
+    background: isActive ? "rgba(99, 102, 241, 0.08)" : "var(--surface)",
     color: "var(--text)",
     cursor: "pointer",
     fontSize: 14,
@@ -339,6 +342,31 @@ function fieldLabelStyle(): React.CSSProperties {
     color: "var(--text-muted)",
     marginBottom: 8,
   };
+}
+
+function helperCardStyle(): React.CSSProperties {
+  return {
+    borderRadius: 22,
+    border: "1px solid var(--border)",
+    background: "var(--surface)",
+    padding: 18,
+    display: "grid",
+    gap: 12,
+  };
+}
+
+function formatExpiryLabel(value: unknown): string {
+  const raw = normalizeText(value);
+  if (!raw) return "Not shown";
+
+  const dt = new Date(raw);
+  if (Number.isNaN(dt.getTime())) return raw;
+
+  return dt.toLocaleDateString("en-NG", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
 }
 
 function AskPageContent() {
@@ -572,8 +600,7 @@ function AskPageContent() {
     busy || !question.trim() || (dailyLimit > 0 && dailyUsage >= dailyLimit);
 
   const planName = prettifyPlanName(planCode);
-  const dailyRemaining =
-    dailyLimit > 0 ? Math.max(dailyLimit - dailyUsage, 0) : 0;
+  const dailyRemaining = dailyLimit > 0 ? Math.max(dailyLimit - dailyUsage, 0) : 0;
 
   const whatsappLinked = truthyValue(
     channelLinks?.whatsapp_linked || channelLinks?.whatsapp?.linked
@@ -582,13 +609,14 @@ function AskPageContent() {
     channelLinks?.telegram_linked || channelLinks?.telegram?.linked
   );
 
-  const channelStatus = whatsappLinked && telegramLinked
-    ? "WhatsApp + Telegram linked"
-    : whatsappLinked
-    ? "WhatsApp linked"
-    : telegramLinked
-    ? "Telegram linked"
-    : "No channel linked";
+  const channelStatus =
+    whatsappLinked && telegramLinked
+      ? "WhatsApp + Telegram linked"
+      : whatsappLinked
+      ? "WhatsApp linked"
+      : telegramLinked
+      ? "Telegram linked"
+      : "No channel linked";
 
   const topTone =
     dailyLimit > 0 && dailyUsage >= dailyLimit
@@ -610,6 +638,13 @@ function AskPageContent() {
       : !activeNow || creditBalance <= 0
       ? "Starter or already-covered questions may still work, but some live asks can be blocked until plan and credits are active."
       : status || "Write one direct tax question or tap any starter question on the right.";
+
+  const helperItems = [
+    `Status: ${activeNow ? "Plan looks active" : "Plan may still need attention"}`,
+    `Daily usage: ${dailyLimit > 0 ? `${dailyUsage} used / ${dailyLimit} total` : "not shown"}`,
+    `AI used this month: ${monthlyAiUsed}`,
+    `Expires: ${formatExpiryLabel(expiresAt)}`,
+  ];
 
   return (
     <AppShell
@@ -636,12 +671,12 @@ function AskPageContent() {
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "minmax(0, 1.35fr) minmax(320px, 0.92fr)",
+              gridTemplateColumns: "minmax(0, 1.28fr) minmax(320px, 0.86fr)",
               gap: 18,
               alignItems: "start",
             }}
           >
-            <div style={{ display: "grid", gap: 16 }}>
+            <div style={{ display: "grid", gap: 16, minWidth: 0 }}>
               <div
                 style={{
                   display: "flex",
@@ -763,7 +798,7 @@ function AskPageContent() {
                   alignItems: "end",
                 }}
               >
-                <div style={{ minWidth: 240 }}>
+                <div style={{ minWidth: 240, flex: "1 1 240px" }}>
                   <div style={fieldLabelStyle()}>Reply language</div>
                   <select
                     value={language}
@@ -806,6 +841,49 @@ function AskPageContent() {
                   Clear
                 </button>
               </div>
+
+              {friendlyError && resultOk === false ? (
+                <Banner
+                  tone="danger"
+                  title="Question could not be completed"
+                  subtitle={friendlyError}
+                />
+              ) : null}
+
+              <div style={helperCardStyle()}>
+                <div
+                  style={{
+                    fontSize: 15,
+                    fontWeight: 900,
+                    color: "var(--text)",
+                  }}
+                >
+                  Current ask-page target
+                </div>
+                <div
+                  style={{
+                    fontSize: 14,
+                    color: "var(--text-muted)",
+                    lineHeight: 1.75,
+                  }}
+                >
+                  Clean ask form, clean starter questions, and clean structured answers.
+                  That is the section we are finishing now.
+                </div>
+                <div
+                  style={{
+                    display: "grid",
+                    gap: 6,
+                    color: "var(--text-muted)",
+                    fontSize: 13,
+                    lineHeight: 1.7,
+                  }}
+                >
+                  {helperItems.map((item) => (
+                    <div key={item}>{item}</div>
+                  ))}
+                </div>
+              </div>
             </div>
 
             <div
@@ -824,6 +902,8 @@ function AskPageContent() {
                   padding: 18,
                   display: "grid",
                   gap: 14,
+                  maxHeight: "calc(100vh - 180px)",
+                  overflowY: "auto",
                 }}
               >
                 <div>
@@ -932,9 +1012,7 @@ function AskPageContent() {
                 >
                   <div style={chipStyle()}>Latest answer</div>
                   {question.trim() ? (
-                    <div style={chipStyle()}>
-                      Question: {question.trim()}
-                    </div>
+                    <div style={chipStyle()}>Question: {question.trim()}</div>
                   ) : null}
                 </div>
 
@@ -1005,19 +1083,8 @@ function AskPageContent() {
                 </div>
 
                 {citations.length ? (
-                  <div
-                    style={{
-                      border: "1px solid var(--border)",
-                      borderRadius: 20,
-                      background: "var(--surface)",
-                      padding: 16,
-                      display: "grid",
-                      gap: 8,
-                    }}
-                  >
-                    <div style={{ fontWeight: 900, color: "var(--text)" }}>
-                      References
-                    </div>
+                  <div style={helperCardStyle()}>
+                    <div style={{ fontWeight: 900, color: "var(--text)" }}>References</div>
                     <ul
                       style={{
                         margin: 0,
