@@ -132,13 +132,11 @@ function normalizeSummary(payload: unknown): WorkspaceSummary {
   const channelLinks = asRecord(data.channel_links) ?? asRecord(data.channels);
 
   const whatsappLinked = truthyValue(
-    channelLinks?.whatsapp_linked ??
-      asRecord(channelLinks?.whatsapp)?.linked
+    channelLinks?.whatsapp_linked ?? asRecord(channelLinks?.whatsapp)?.linked
   );
 
   const telegramLinked = truthyValue(
-    channelLinks?.telegram_linked ??
-      asRecord(channelLinks?.telegram)?.linked
+    channelLinks?.telegram_linked ?? asRecord(channelLinks?.telegram)?.linked
   );
 
   const planLabel =
@@ -811,15 +809,20 @@ export default function AskPage() {
         </div>
       </div>
 
-      <style jsx>{`
+      <style jsx global>{`
         .askPage {
           min-height: 100vh;
           background: #f6f7fb;
           color: #0f172a;
           padding: 16px;
+          box-sizing: border-box;
         }
 
-        .askGrid {
+        .askPage * {
+          box-sizing: border-box;
+        }
+
+        .askPage .askGrid {
           max-width: 1800px;
           margin: 0 auto;
           display: grid;
@@ -828,27 +831,33 @@ export default function AskPage() {
           align-items: start;
         }
 
-        .leftColumn,
-        .centerColumn,
-        .rightColumn {
+        .askPage .leftColumn,
+        .askPage .centerColumn,
+        .askPage .rightColumn {
           min-width: 0;
         }
 
-        .leftColumn,
-        .centerColumn {
+        .askPage .leftColumn,
+        .askPage .centerColumn {
           display: flex;
           flex-direction: column;
           gap: 20px;
         }
 
-        .panel {
+        .askPage .rightColumn {
+          position: sticky;
+          top: 16px;
+          align-self: start;
+        }
+
+        .askPage .panel {
           background: #ffffff;
           border: 1px solid #dbe1ea;
           border-radius: 28px;
           box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
         }
 
-        .collapseButton {
+        .askPage .collapseButton {
           width: 100%;
           border: 1px solid #dbe1ea;
           background: #f8fafc;
@@ -860,54 +869,55 @@ export default function AskPage() {
           cursor: pointer;
         }
 
-        .brandPanel {
+        .askPage .brandPanel {
           padding: 20px;
         }
 
-        .brandRow {
+        .askPage .brandRow {
           display: flex;
           align-items: center;
           gap: 16px;
         }
 
-        .brandLogo {
-          width: 64px;
-          height: 64px;
-          border-radius: 18px;
+        .askPage .brandLogo {
+          width: 72px;
+          height: 72px;
+          border-radius: 20px;
           background: #0f172a;
           color: #fbbf24;
           display: flex;
           align-items: center;
           justify-content: center;
-          font-size: 20px;
+          font-size: 22px;
           font-weight: 800;
+          flex: 0 0 auto;
         }
 
-        .brandText {
+        .askPage .brandText {
           min-width: 0;
         }
 
-        .brandName {
+        .askPage .brandName {
           font-size: 20px;
           font-weight: 800;
           color: #0f172a;
         }
 
-        .brandCompany {
+        .askPage .brandCompany {
           font-size: 18px;
           font-weight: 800;
           color: #b45309;
           margin-top: 4px;
         }
 
-        .brandDesc {
+        .askPage .brandDesc {
           margin-top: 6px;
           font-size: 15px;
           line-height: 1.6;
           color: #475569;
         }
 
-        .sidebarHeading {
+        .askPage .sidebarHeading {
           padding: 20px 20px 0;
           font-size: 14px;
           font-weight: 800;
@@ -915,14 +925,14 @@ export default function AskPage() {
           color: #64748b;
         }
 
-        .sidebarLinks {
+        .askPage .sidebarLinks {
           padding: 16px 16px 18px;
           display: flex;
           flex-direction: column;
           gap: 10px;
         }
 
-        .sidebarLink {
+        .askPage .sidebarLink {
           display: flex;
           align-items: center;
           justify-content: space-between;
@@ -938,17 +948,17 @@ export default function AskPage() {
           transition: 0.2s ease;
         }
 
-        .sidebarLink:hover {
+        .askPage .sidebarLink:hover {
           background: #f8fafc;
           border-color: #dbe1ea;
         }
 
-        .sidebarLinkActive {
+        .askPage .sidebarLinkActive {
           background: #eef2ff;
           border-color: #c7d2fe;
         }
 
-        .sidebarBadge {
+        .askPage .sidebarBadge {
           padding: 6px 12px;
           border-radius: 999px;
           border: 1px solid #fde68a;
@@ -956,41 +966,43 @@ export default function AskPage() {
           color: #b45309;
           font-size: 13px;
           font-weight: 800;
+          white-space: nowrap;
+          flex: 0 0 auto;
         }
 
-        .contactTitle {
+        .askPage .contactTitle {
           padding: 20px 20px 0;
           font-size: 18px;
           font-weight: 800;
           color: #0f172a;
         }
 
-        .contactLine {
+        .askPage .contactLine {
           padding: 0 20px;
           margin-top: 14px;
           font-size: 16px;
           color: #475569;
         }
 
-        .contactLinks {
+        .askPage .contactLinks {
           padding: 20px;
           display: flex;
           flex-wrap: wrap;
           gap: 16px;
         }
 
-        .contactLinks :global(a) {
+        .askPage .contactLinks a {
           color: #0f172a;
           text-decoration: none;
           font-size: 16px;
           font-weight: 700;
         }
 
-        .pageShell {
+        .askPage .pageShell {
           overflow: hidden;
         }
 
-        .pageHeader {
+        .askPage .pageHeader {
           padding: 28px 30px 22px;
           border-bottom: 1px solid #e2e8f0;
           display: flex;
@@ -1000,7 +1012,7 @@ export default function AskPage() {
           flex-wrap: wrap;
         }
 
-        .pageTitle {
+        .askPage .pageTitle {
           margin: 0;
           font-size: 34px;
           line-height: 1.15;
@@ -1009,20 +1021,20 @@ export default function AskPage() {
           color: #0f172a;
         }
 
-        .pageSubtitle {
+        .askPage .pageSubtitle {
           margin: 10px 0 0;
           font-size: 18px;
           line-height: 1.7;
           color: #64748b;
         }
 
-        .headerActions {
+        .askPage .headerActions {
           display: flex;
           flex-wrap: wrap;
           gap: 12px;
         }
 
-        .topActionButton {
+        .askPage .topActionButton {
           display: inline-flex;
           align-items: center;
           justify-content: center;
@@ -1038,17 +1050,17 @@ export default function AskPage() {
           cursor: pointer;
         }
 
-        .topActionButtonMuted {
+        .askPage .topActionButtonMuted {
           border-color: #cbd5e1;
           background: #e9edf5;
         }
 
-        .topActionButtonSoft {
+        .askPage .topActionButtonSoft {
           border-color: #fecdd3;
           background: #ffffff;
         }
 
-        .attentionBox {
+        .askPage .attentionBox {
           margin: 24px 30px 0;
           padding: 22px 24px;
           border: 1px solid #e2e8f0;
@@ -1056,58 +1068,59 @@ export default function AskPage() {
           background: #f8fafc;
         }
 
-        .attentionTitle {
+        .askPage .attentionTitle {
           font-size: 18px;
           font-weight: 800;
           color: #0f172a;
         }
 
-        .attentionText {
+        .askPage .attentionText {
           margin-top: 10px;
           font-size: 17px;
           line-height: 1.8;
           color: #64748b;
         }
 
-        .statsGrid {
+        .askPage .statsGrid {
           margin: 24px 30px 0;
           display: grid;
           grid-template-columns: repeat(4, minmax(0, 1fr));
           gap: 16px;
         }
 
-        .statCard {
+        .askPage .statCard {
           padding: 20px;
           border-radius: 22px;
           border: 1px solid #fde7c7;
           background: #fffaf0;
         }
 
-        .statCardGreen {
+        .askPage .statCardGreen {
           border-color: #cce7dd;
           background: #f0fbf6;
         }
 
-        .statTitle {
+        .askPage .statTitle {
           font-size: 13px;
           font-weight: 800;
           letter-spacing: 0.08em;
           color: #64748b;
         }
 
-        .statValue {
+        .askPage .statValue {
           margin-top: 10px;
           font-size: 22px;
+          line-height: 1.4;
           font-weight: 900;
           color: #0f172a;
         }
 
-        .formPanel {
+        .askPage .formPanel {
           margin: 24px 30px 30px;
           padding: 24px;
         }
 
-        .fieldLabel {
+        .askPage .fieldLabel {
           display: block;
           margin-bottom: 10px;
           font-size: 18px;
@@ -1115,7 +1128,7 @@ export default function AskPage() {
           color: #1e293b;
         }
 
-        .questionInput {
+        .askPage .questionInput {
           width: 100%;
           min-height: 240px;
           resize: vertical;
@@ -1127,34 +1140,33 @@ export default function AskPage() {
           line-height: 1.8;
           color: #0f172a;
           outline: none;
-          box-sizing: border-box;
         }
 
-        .questionInput:focus {
+        .askPage .questionInput:focus {
           border-color: #a5b4fc;
           box-shadow: 0 0 0 4px rgba(165, 180, 252, 0.2);
         }
 
-        .tipText {
+        .askPage .tipText {
           margin-top: 14px;
           font-size: 16px;
           line-height: 1.7;
           color: #64748b;
         }
 
-        .controlsRow {
+        .askPage .controlsRow {
           margin-top: 22px;
           display: grid;
-          grid-template-columns: 320px 220px 180px;
+          grid-template-columns: minmax(220px, 320px) minmax(180px, 220px) minmax(160px, 180px);
           gap: 16px;
           align-items: end;
         }
 
-        .languageBlock {
+        .askPage .languageBlock {
           min-width: 0;
         }
 
-        .languageSelect {
+        .askPage .languageSelect {
           width: 100%;
           border: 1px solid #cbd5e1;
           border-radius: 20px;
@@ -1165,39 +1177,41 @@ export default function AskPage() {
           outline: none;
         }
 
-        .languageSelect:focus {
+        .askPage .languageSelect:focus {
           border-color: #a5b4fc;
           box-shadow: 0 0 0 4px rgba(165, 180, 252, 0.2);
         }
 
-        .primaryButton,
-        .secondaryButton {
+        .askPage .primaryButton,
+        .askPage .secondaryButton {
+          width: 100%;
           border-radius: 20px;
           padding: 15px 20px;
           font-size: 18px;
           font-weight: 800;
           cursor: pointer;
+          white-space: nowrap;
         }
 
-        .primaryButton {
+        .askPage .primaryButton {
           border: 1px solid #c7d2fe;
           background: #ffffff;
           color: #0f172a;
         }
 
-        .secondaryButton {
+        .askPage .secondaryButton {
           border: 1px solid #cbd5e1;
           background: #e9edf5;
           color: #0f172a;
         }
 
-        .primaryButton:disabled,
-        .secondaryButton:disabled {
+        .askPage .primaryButton:disabled,
+        .askPage .secondaryButton:disabled {
           opacity: 0.6;
           cursor: not-allowed;
         }
 
-        .errorBox {
+        .askPage .errorBox {
           margin-top: 18px;
           padding: 14px 16px;
           border-radius: 18px;
@@ -1208,22 +1222,22 @@ export default function AskPage() {
           line-height: 1.7;
         }
 
-        .emptyAnswerPanel {
+        .askPage .emptyAnswerPanel {
           min-height: 420px;
         }
 
-        .answerOuterPanel {
+        .askPage .answerOuterPanel {
           padding: 24px;
         }
 
-        .answerMetaRow {
+        .askPage .answerMetaRow {
           display: flex;
           flex-wrap: wrap;
           gap: 12px;
           margin-bottom: 18px;
         }
 
-        .pill {
+        .askPage .pill {
           display: inline-flex;
           align-items: center;
           padding: 10px 16px;
@@ -1235,14 +1249,14 @@ export default function AskPage() {
           font-weight: 800;
         }
 
-        .answerCard {
+        .askPage .answerCard {
           border: 1px solid #cfe6da;
           border-radius: 28px;
           background: #f5fbf7;
           padding: 30px;
         }
 
-        .answerLead {
+        .askPage .answerLead {
           margin: 0;
           font-size: 28px;
           line-height: 1.5;
@@ -1250,27 +1264,27 @@ export default function AskPage() {
           color: #0f172a;
         }
 
-        .answerSections {
+        .askPage .answerSections {
           margin-top: 28px;
           display: flex;
           flex-direction: column;
           gap: 22px;
         }
 
-        .answerSectionCard {
+        .askPage .answerSectionCard {
           border: 1px solid #dde4ea;
           border-radius: 24px;
           background: rgba(255, 255, 255, 0.85);
           padding: 28px;
         }
 
-        .answerSectionTitle {
+        .askPage .answerSectionTitle {
           font-size: 22px;
           font-weight: 900;
           color: #0f172a;
         }
 
-        .answerOrderedList {
+        .askPage .answerOrderedList {
           margin: 18px 0 0;
           padding-left: 28px;
           font-size: 18px;
@@ -1278,17 +1292,17 @@ export default function AskPage() {
           color: #0f172a;
         }
 
-        .answerOrderedList li + li {
+        .askPage .answerOrderedList li + li {
           margin-top: 6px;
         }
 
-        .answerBulletList {
+        .askPage .answerBulletList {
           list-style: none;
           margin: 18px 0 0;
           padding: 0;
         }
 
-        .answerBulletList li {
+        .askPage .answerBulletList li {
           display: flex;
           gap: 12px;
           align-items: flex-start;
@@ -1297,11 +1311,11 @@ export default function AskPage() {
           color: #0f172a;
         }
 
-        .answerBulletList li + li {
+        .askPage .answerBulletList li + li {
           margin-top: 6px;
         }
 
-        .bulletDot {
+        .askPage .bulletDot {
           width: 7px;
           height: 7px;
           border-radius: 999px;
@@ -1310,7 +1324,7 @@ export default function AskPage() {
           flex: 0 0 auto;
         }
 
-        .answerSource {
+        .askPage .answerSource {
           margin-top: 28px;
           padding-top: 22px;
           border-top: 1px solid #dde4ea;
@@ -1319,36 +1333,38 @@ export default function AskPage() {
           color: #64748b;
         }
 
-        .answerSourceLabel {
+        .askPage .answerSourceLabel {
           font-weight: 800;
           color: #334155;
         }
 
-        .starterRail {
+        .askPage .starterRail {
           padding: 24px;
+          max-height: calc(100vh - 32px);
+          overflow: auto;
         }
 
-        .starterTitle {
+        .askPage .starterTitle {
           font-size: 18px;
           font-weight: 900;
           color: #0f172a;
         }
 
-        .starterSubtext {
+        .askPage .starterSubtext {
           margin-top: 8px;
           font-size: 15px;
           line-height: 1.7;
           color: #64748b;
         }
 
-        .starterGroups {
+        .askPage .starterGroups {
           margin-top: 24px;
           display: flex;
           flex-direction: column;
           gap: 24px;
         }
 
-        .starterGroupTitle {
+        .askPage .starterGroupTitle {
           margin-bottom: 12px;
           font-size: 14px;
           font-weight: 900;
@@ -1356,13 +1372,13 @@ export default function AskPage() {
           color: #64748b;
         }
 
-        .starterButtons {
+        .askPage .starterButtons {
           display: flex;
           flex-direction: column;
           gap: 12px;
         }
 
-        .starterButton {
+        .askPage .starterButton {
           width: 100%;
           border-radius: 20px;
           border: 1px solid #dbe1ea;
@@ -1374,56 +1390,57 @@ export default function AskPage() {
           font-weight: 800;
           cursor: pointer;
           transition: 0.2s ease;
+          line-height: 1.5;
         }
 
-        .starterButton:hover {
+        .askPage .starterButton:hover {
           background: #f8fafc;
           border-color: #cbd5e1;
         }
 
-        .starterButtonActive {
+        .askPage .starterButtonActive {
           background: #eef2ff;
           border-color: #c7d2fe;
         }
 
-        .footerPanel {
+        .askPage .footerPanel {
           padding: 24px 28px;
         }
 
-        .footerTop {
+        .askPage .footerTop {
           display: flex;
           justify-content: space-between;
           gap: 24px;
           flex-wrap: wrap;
         }
 
-        .footerBrand {
+        .askPage .footerBrand {
           font-size: 20px;
           font-weight: 900;
           color: #0f172a;
         }
 
-        .footerText {
+        .askPage .footerText {
           margin-top: 8px;
           font-size: 17px;
           line-height: 1.8;
           color: #64748b;
         }
 
-        .footerCopy {
+        .askPage .footerCopy {
           margin-top: 16px;
           font-size: 16px;
           color: #94a3b8;
         }
 
-        .footerLinks {
+        .askPage .footerLinks {
           display: flex;
           flex-wrap: wrap;
           gap: 18px;
           align-content: flex-start;
         }
 
-        .footerLinks :global(a) {
+        .askPage .footerLinks a {
           color: #0f172a;
           text-decoration: none;
           font-size: 17px;
@@ -1431,29 +1448,35 @@ export default function AskPage() {
         }
 
         @media (max-width: 1400px) {
-          .askGrid {
+          .askPage .askGrid {
             grid-template-columns: 320px minmax(0, 1fr);
           }
 
-          .rightColumn {
+          .askPage .rightColumn {
             grid-column: 2;
+            position: static;
+          }
+
+          .askPage .starterRail {
+            max-height: none;
+            overflow: visible;
           }
         }
 
         @media (max-width: 1100px) {
-          .askGrid {
+          .askPage .askGrid {
             grid-template-columns: 1fr;
           }
 
-          .rightColumn {
+          .askPage .rightColumn {
             grid-column: auto;
           }
 
-          .controlsRow {
+          .askPage .controlsRow {
             grid-template-columns: 1fr;
           }
 
-          .statsGrid {
+          .askPage .statsGrid {
             grid-template-columns: repeat(2, minmax(0, 1fr));
           }
         }
@@ -1463,41 +1486,41 @@ export default function AskPage() {
             padding: 10px;
           }
 
-          .pageHeader,
-          .attentionBox,
-          .formPanel,
-          .statsGrid {
+          .askPage .pageHeader,
+          .askPage .attentionBox,
+          .askPage .formPanel,
+          .askPage .statsGrid {
             margin-left: 16px;
             margin-right: 16px;
           }
 
-          .formPanel {
+          .askPage .formPanel {
             margin-bottom: 20px;
           }
 
-          .pageTitle {
+          .askPage .pageTitle {
             font-size: 28px;
           }
 
-          .pageSubtitle,
-          .attentionText,
-          .tipText,
-          .footerText {
+          .askPage .pageSubtitle,
+          .askPage .attentionText,
+          .askPage .tipText,
+          .askPage .footerText {
             font-size: 16px;
           }
 
-          .statsGrid {
+          .askPage .statsGrid {
             grid-template-columns: 1fr;
           }
 
-          .answerCard,
-          .answerSectionCard,
-          .starterRail,
-          .footerPanel {
+          .askPage .answerCard,
+          .askPage .answerSectionCard,
+          .askPage .starterRail,
+          .askPage .footerPanel {
             padding: 20px;
           }
 
-          .questionInput {
+          .askPage .questionInput {
             min-height: 180px;
             font-size: 18px;
           }
