@@ -21,7 +21,10 @@ import {
 } from "@/components/page-layout";
 import WorkspaceOverviewMetrics from "@/components/workspace-overview-metrics";
 import { useWorkspaceState } from "@/hooks/useWorkspaceState";
-import { getHistoryItems, type HistoryItem as LocalHistoryItem } from "@/lib/history-storage";
+import {
+  getHistoryItems,
+  type HistoryItem as LocalHistoryItem,
+} from "@/lib/history-storage";
 
 type BackendHistoryItem = {
   id?: string;
@@ -74,9 +77,14 @@ type PageAlert = {
   tone: NoticeTone;
 };
 
+type HistoryMode = "backend" | "local";
+
 function resolveApiBase(): string {
-  const envBase =
-    (process.env.NEXT_PUBLIC_API_BASE || process.env.NEXT_PUBLIC_API_URL || "").trim();
+  const envBase = (
+    process.env.NEXT_PUBLIC_API_BASE ||
+    process.env.NEXT_PUBLIC_API_URL ||
+    ""
+  ).trim();
 
   if (envBase) {
     return envBase.replace(/\/+$/, "");
@@ -141,7 +149,67 @@ async function fetchHistoryItems(params?: {
     );
   }
 
-  return data || { ok: false, error: "invalid_response", message: "Invalid history response." };
+  return data || {
+    ok: false,
+    error: "invalid_response",
+    message: "Invalid history response.",
+  };
+}
+
+async function deleteBackendHistoryItem(id: string): Promise<boolean> {
+  const apiBase = resolveApiBase();
+  const headers = buildAuthHeaders();
+
+  const candidates = [
+    `${apiBase}/api/history/${encodeURIComponent(id)}`,
+    `${apiBase}/api/history?id=${encodeURIComponent(id)}`,
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      const res = await fetch(candidate, {
+        method: "DELETE",
+        headers,
+        credentials: "include",
+      });
+
+      if (res.ok) {
+        return true;
+      }
+    } catch {
+      // keep trying fallbacks
+    }
+  }
+
+  return false;
+}
+
+async function clearBackendHistory(): Promise<boolean> {
+  const apiBase = resolveApiBase();
+  const headers = buildAuthHeaders();
+
+  const candidates = [
+    `${apiBase}/api/history/clear`,
+    `${apiBase}/api/history?all=1`,
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      const res = await fetch(candidate, {
+        method: "DELETE",
+        headers,
+        credentials: "include",
+      });
+
+      if (res.ok) {
+        return true;
+      }
+    } catch {
+      // keep trying fallbacks
+    }
+  }
+
+  return false;
 }
 
 function truncateText(value: string, max = 180) {
@@ -162,7 +230,16 @@ function sourceLabel(source?: string) {
 
 function languageLabel(language?: string) {
   const v = String(language || "").trim();
-  return v || "English";
+  if (!v) return "English";
+
+  const lower = v.toLowerCase();
+  if (lower === "en") return "English";
+  if (lower === "pcm") return "Pidgin";
+  if (lower === "yo") return "Yoruba";
+  if (lower === "ig") return "Igbo";
+  if (lower === "ha") return "Hausa";
+
+  return v;
 }
 
 function toneFromHistoryCount(count: number): "good" | "warn" | "default" {
@@ -174,9 +251,9 @@ function toneFromHistoryCount(count: number): "good" | "warn" | "default" {
 function mapBackendItem(row: BackendHistoryItem, index: number): DisplayHistoryItem {
   return {
     id: String(row.id || `${row.created_at || "history"}-${index}`),
-    question: String(row.question || ""),
-    answer: String(row.answer || ""),
-    language: String(row.lang || "en"),
+    question: String(row.question || "").trim(),
+    answer: String(row.answer || "").trim(),
+    language: languageLabel(String(row.lang || "English")),
     source: String(row.source || "web"),
     created_at: String(row.created_at || row.updated_at || ""),
     from_cache: Boolean(row.from_cache),
@@ -186,22 +263,129 @@ function mapBackendItem(row: BackendHistoryItem, index: number): DisplayHistoryI
 function mapLocalItem(row: LocalHistoryItem, index: number): DisplayHistoryItem {
   return {
     id: String(row.id || `${row.created_at || "local"}-${index}`),
-    question: String(row.question || ""),
-    answer: String(row.answer || ""),
-    language: String(row.language || "English"),
+    question: String(row.question || "").trim(),
+    answer: String(row.answer || "").trim(),
+    language: languageLabel(String(row.language || "English")),
     source: String(row.source || "web"),
     created_at: String(row.created_at || ""),
+  };
+}
+
+function readLocalHistoryItems(): DisplayHistoryItem[] {
+  try {
+    return getHistoryItems().map(mapLocalItem);
+  } catch {
+    return [];
+  }
+}
+
+function looksLikeHistoryArray(value: unknown): value is Array<Record<string, unknown>> {
+  if (!Array.isArray(value)) return false;
+  return value.every((row) => {
+    if (!row || typeof row !== "object") return false;
+    const item = row as Record<string, unknown>;
+    return (
+      typeof item.question === "string" &&
+      typeof item.answer === "string" &&
+      typeof item.created_at === "string"
+    );
+  });
+}
+
+function findHistoryStorageKey(): string | null {
+  if (typeof window === "undefined") return null;
+
+  try {
+    for (let i = 0; i < window.localStorage.length; i += 1) {
+      const key = window.localStorage.key(i);
+      if (!key) continue;
+
+      const raw = window.localStorage.getItem(key);
+      if (!raw) continue;
+
+      try {
+        const parsed = JSON.parse(raw) as unknown;
+        if (looksLikeHistoryArray(parsed)) {
+          return key;
+        }
+      } catch {
+        // ignore non-json values
+      }
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+function persistLocalHistoryItems(items: DisplayHistoryItem[]): boolean {
+  if (typeof window === "undefined") return false;
+
+  const key = findHistoryStorageKey();
+  if (!key) return false;
+
+  const payload: LocalHistoryItem[] = items.map((item) => ({
+    id: item.id,
+    question: item.question,
+    answer: item.answer,
+    language: item.language,
+    created_at: item.created_at,
+    source: item.source,
+  }));
+
+  try {
+    window.localStorage.setItem(key, JSON.stringify(payload));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function actionButtonStyle(tone: "default" | "primary" | "danger" = "default"): React.CSSProperties {
+  const tones: Record<string, React.CSSProperties> = {
+    default: {
+      border: "1px solid var(--border-strong)",
+      background: "var(--button-bg)",
+      color: "var(--text)",
+    },
+    primary: {
+      border: "1px solid var(--brand-border)",
+      background: "var(--button-bg)",
+      color: "var(--text)",
+    },
+    danger: {
+      border: "1px solid rgba(176, 77, 77, 0.35)",
+      background: "rgba(176, 77, 77, 0.08)",
+      color: "var(--text)",
+    },
+  };
+
+  return {
+    padding: "12px 16px",
+    borderRadius: 14,
+    fontWeight: 900,
+    cursor: "pointer",
+    ...tones[tone],
   };
 }
 
 function HistoryItemCard({
   item,
   expanded,
+  actionBusy,
   onToggle,
+  onOpenInAsk,
+  onCopyQuestion,
+  onDelete,
 }: {
   item: DisplayHistoryItem;
   expanded: boolean;
+  actionBusy: boolean;
   onToggle: () => void;
+  onOpenInAsk: () => void;
+  onCopyQuestion: () => void;
+  onDelete: () => void;
 }) {
   return (
     <div
@@ -232,6 +416,7 @@ function HistoryItemCard({
             }}
           >
             {sourceLabel(item.source)} • {languageLabel(item.language)}
+            {item.from_cache ? " • Cache-assisted" : ""}
           </div>
 
           <div
@@ -317,20 +502,50 @@ function HistoryItemCard({
           Saved item available for continuity, follow-up, and user review.
         </div>
 
-        <button
-          onClick={onToggle}
+        <div
           style={{
-            padding: "12px 16px",
-            borderRadius: 14,
-            border: "1px solid var(--border-strong)",
-            background: "var(--button-bg)",
-            color: "var(--text)",
-            fontWeight: 900,
-            cursor: "pointer",
+            display: "flex",
+            gap: 10,
+            flexWrap: "wrap",
           }}
         >
-          {expanded ? "Show Less" : "Open Full Item"}
-        </button>
+          <button onClick={onToggle} style={actionButtonStyle("default")}>
+            {expanded ? "Show Less" : "Open Full Item"}
+          </button>
+
+          <button
+            onClick={onOpenInAsk}
+            disabled={actionBusy}
+            style={{
+              ...actionButtonStyle("primary"),
+              opacity: actionBusy ? 0.6 : 1,
+            }}
+          >
+            Reopen in Ask
+          </button>
+
+          <button
+            onClick={onCopyQuestion}
+            disabled={actionBusy}
+            style={{
+              ...actionButtonStyle("default"),
+              opacity: actionBusy ? 0.6 : 1,
+            }}
+          >
+            Copy Question
+          </button>
+
+          <button
+            onClick={onDelete}
+            disabled={actionBusy}
+            style={{
+              ...actionButtonStyle("danger"),
+              opacity: actionBusy ? 0.6 : 1,
+            }}
+          >
+            {actionBusy ? "Deleting..." : "Delete Item"}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -346,6 +561,9 @@ export default function HistoryPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [historyNotice, setHistoryNotice] = useState<HistoryNotice | null>(null);
+  const [historyMode, setHistoryMode] = useState<HistoryMode>("local");
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [clearingAll, setClearingAll] = useState(false);
 
   const {
     busy,
@@ -384,11 +602,13 @@ export default function HistoryPage() {
 
       if (result.ok && Array.isArray(result.items)) {
         setHistoryItems(result.items.map(mapBackendItem));
+        setHistoryMode("backend");
         return;
       }
 
-      const localItems = getHistoryItems().map(mapLocalItem);
+      const localItems = readLocalHistoryItems();
       setHistoryItems(localItems);
+      setHistoryMode("local");
 
       if (result.error) {
         setHistoryNotice({
@@ -401,8 +621,9 @@ export default function HistoryPage() {
         });
       }
     } catch (err: unknown) {
-      const localItems = getHistoryItems().map(mapLocalItem);
+      const localItems = readLocalHistoryItems();
       setHistoryItems(localItems);
+      setHistoryMode("local");
 
       setHistoryNotice({
         title: "History fallback in use",
@@ -419,6 +640,7 @@ export default function HistoryPage() {
 
   useEffect(() => {
     void loadHistoryWorkspace();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const alerts = useMemo<PageAlert[]>(() => {
@@ -463,14 +685,24 @@ export default function HistoryPage() {
       items.push({
         title: "Pending plan change detected",
         subtitle: pendingStartsAt
-          ? `A pending plan change to ${pendingPlanCode} is scheduled for ${formatDate(pendingStartsAt)}.`
+          ? `A pending plan change to ${pendingPlanCode} is scheduled for ${formatDate(
+              pendingStartsAt
+            )}.`
           : `A pending plan change to ${pendingPlanCode} is scheduled.`,
         tone: "default",
       });
     }
 
     return items;
-  }, [status, activeNow, creditBalance, dailyLimit, dailyUsage, pendingPlanCode, pendingStartsAt]);
+  }, [
+    status,
+    activeNow,
+    creditBalance,
+    dailyLimit,
+    dailyUsage,
+    pendingPlanCode,
+    pendingStartsAt,
+  ]);
 
   const filteredItems = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -513,6 +745,136 @@ export default function HistoryPage() {
   const newestItem = historyItems[0];
   const oldestItem = historyItems[historyItems.length - 1];
 
+  const handleOpenInAsk = (item: DisplayHistoryItem) => {
+    const q = encodeURIComponent(item.question || "");
+    const lang = encodeURIComponent(languageLabel(item.language || "English"));
+    router.push(`/ask?q=${q}&lang=${lang}`);
+  };
+
+  const handleCopyQuestion = async (item: DisplayHistoryItem) => {
+    try {
+      await navigator.clipboard.writeText(String(item.question || ""));
+      setHistoryNotice({
+        title: "Question copied",
+        subtitle: "The selected history question has been copied to your clipboard.",
+        tone: "good",
+      });
+    } catch {
+      setHistoryNotice({
+        title: "Copy could not be completed",
+        subtitle:
+          "Clipboard access failed in this browser session. You can still reopen the item in Ask.",
+        tone: "warn",
+      });
+    }
+  };
+
+  const handleDeleteItem = async (item: DisplayHistoryItem) => {
+    const confirmed = window.confirm(
+      "Delete this saved history item? This will remove the selected question and answer from the current history list."
+    );
+
+    if (!confirmed) return;
+
+    setDeletingId(item.id);
+    setHistoryNotice(null);
+
+    try {
+      if (historyMode === "backend") {
+        const ok = await deleteBackendHistoryItem(item.id);
+
+        if (!ok) {
+          setHistoryNotice({
+            title: "Backend delete route not ready",
+            subtitle:
+              "The page is working, but backend deletion is not yet confirmed for history items. The item was not removed from the server.",
+            tone: "warn",
+          });
+          return;
+        }
+      }
+
+      const nextItems = historyItems.filter((row) => row.id !== item.id);
+      setHistoryItems(nextItems);
+
+      if (historyMode === "local") {
+        const persisted = persistLocalHistoryItems(nextItems);
+
+        setHistoryNotice({
+          title: "History item deleted",
+          subtitle: persisted
+            ? "The selected saved item has been removed successfully."
+            : "The selected saved item has been removed from the page. Local storage persistence could not be confirmed automatically.",
+          tone: persisted ? "good" : "warn",
+        });
+      } else {
+        setHistoryNotice({
+          title: "History item deleted",
+          subtitle: "The selected backend history item has been removed successfully.",
+          tone: "good",
+        });
+      }
+
+      if (expandedId === item.id) {
+        setExpandedId(null);
+      }
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handleClearAll = async () => {
+    if (!historyItems.length) return;
+
+    const confirmed = window.confirm(
+      "Clear all visible history items? This action is meant for workspace cleanup."
+    );
+
+    if (!confirmed) return;
+
+    setClearingAll(true);
+    setHistoryNotice(null);
+
+    try {
+      if (historyMode === "backend") {
+        const ok = await clearBackendHistory();
+
+        if (!ok) {
+          setHistoryNotice({
+            title: "Backend clear-all route not ready",
+            subtitle:
+              "The page is working, but backend bulk deletion is not yet confirmed for history items. Nothing was removed from the server.",
+            tone: "warn",
+          });
+          return;
+        }
+      }
+
+      setHistoryItems([]);
+      setExpandedId(null);
+
+      if (historyMode === "local") {
+        const persisted = persistLocalHistoryItems([]);
+
+        setHistoryNotice({
+          title: "History cleared",
+          subtitle: persisted
+            ? "All visible local history items have been cleared successfully."
+            : "The page has been cleared, but local storage persistence could not be confirmed automatically.",
+          tone: persisted ? "good" : "warn",
+        });
+      } else {
+        setHistoryNotice({
+          title: "History cleared",
+          subtitle: "All backend history items have been cleared successfully.",
+          tone: "good",
+        });
+      }
+    } finally {
+      setClearingAll(false);
+    }
+  };
+
   return (
     <AppShell
       title="History"
@@ -528,7 +890,7 @@ export default function HistoryPage() {
                 void loadHistoryWorkspace("Refreshing history workspace...");
               },
               tone: "secondary",
-              disabled: busy || loadingHistory,
+              disabled: busy || loadingHistory || deletingId !== null || clearingAll,
             },
             {
               label: "Logout",
@@ -536,7 +898,7 @@ export default function HistoryPage() {
                 void logout();
               },
               tone: "danger",
-              disabled: busy || loadingHistory,
+              disabled: busy || loadingHistory || deletingId !== null || clearingAll,
             },
           ]}
         />
@@ -585,16 +947,16 @@ export default function HistoryPage() {
             helper="Visible results after current search and source filter are applied."
           />
           <MetricCard
+            label="Storage Mode"
+            value={historyMode === "backend" ? "Backend" : "Local"}
+            tone={historyMode === "backend" ? "good" : "warn"}
+            helper="Shows whether this page is currently reading server-backed history or local fallback history."
+          />
+          <MetricCard
             label="Newest Item"
             value={newestItem ? formatDate(newestItem.created_at) : "—"}
             tone={newestItem ? "good" : "default"}
             helper="Most recent saved entry currently visible in history."
-          />
-          <MetricCard
-            label="Oldest Item"
-            value={oldestItem ? formatDate(oldestItem.created_at) : "—"}
-            tone={oldestItem ? "default" : "warn"}
-            helper="Earliest visible entry still available in history."
           />
         </CardsGrid>
 
@@ -647,18 +1009,31 @@ export default function HistoryPage() {
               </div>
 
               <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-                <WorkspaceActionBar
-                  items={[
-                    {
-                      label: loadingHistory ? "Searching..." : "Apply Search",
-                      onClick: () => {
-                        void loadHistoryWorkspace("Refreshing filtered history...");
-                      },
-                      tone: "primary",
-                      disabled: loadingHistory || busy,
-                    },
-                  ]}
-                />
+                <button
+                  onClick={() => {
+                    void loadHistoryWorkspace("Refreshing filtered history...");
+                  }}
+                  disabled={loadingHistory || busy || deletingId !== null || clearingAll}
+                  style={{
+                    ...actionButtonStyle("primary"),
+                    opacity:
+                      loadingHistory || busy || deletingId !== null || clearingAll ? 0.6 : 1,
+                  }}
+                >
+                  {loadingHistory ? "Searching..." : "Apply Search"}
+                </button>
+
+                <button
+                  onClick={handleClearAll}
+                  disabled={!historyItems.length || busy || loadingHistory || clearingAll}
+                  style={{
+                    ...actionButtonStyle("danger"),
+                    opacity:
+                      !historyItems.length || busy || loadingHistory || clearingAll ? 0.6 : 1,
+                  }}
+                >
+                  {clearingAll ? "Clearing..." : "Clear All History"}
+                </button>
               </div>
 
               <div
@@ -672,7 +1047,7 @@ export default function HistoryPage() {
                   fontSize: 14,
                 }}
               >
-                History is part of user continuity. It should help users return to previous tax guidance, compare earlier answers, and continue work without retyping the same question again.
+                History is part of user continuity. It should help users return to previous tax guidance, compare earlier answers, reopen a saved item back into Ask, and remove items that are no longer useful.
               </div>
             </div>
           </WorkspaceSectionCard>
@@ -725,9 +1100,17 @@ export default function HistoryPage() {
                     key={itemId}
                     item={item}
                     expanded={expandedId === itemId}
+                    actionBusy={deletingId === itemId || clearingAll}
                     onToggle={() =>
                       setExpandedId((current) => (current === itemId ? null : itemId))
                     }
+                    onOpenInAsk={() => handleOpenInAsk(item)}
+                    onCopyQuestion={() => {
+                      void handleCopyQuestion(item);
+                    }}
+                    onDelete={() => {
+                      void handleDeleteItem(item);
+                    }}
                   />
                 );
               })}
@@ -756,8 +1139,8 @@ export default function HistoryPage() {
                 !activeNow
                   ? "Your account may need active paid access before new questions can continue."
                   : creditBalance <= 0
-                    ? "Your visible credits are exhausted. Review Credits or Plans before continuing."
-                    : "Ask a new tax question when saved history is no longer enough."
+                  ? "Your visible credits are exhausted. Review Credits or Plans before continuing."
+                  : "Ask a new tax question when saved history is no longer enough."
               }
               tone={!activeNow ? "warn" : creditBalance <= 0 ? "danger" : "good"}
               onClick={() => router.push("/ask")}
@@ -803,8 +1186,8 @@ export default function HistoryPage() {
               <div>1. History should make the product feel continuous, not disposable.</div>
               <div>2. Users should be able to find earlier answers without friction.</div>
               <div>3. Search and source filtering reduce repeated questioning.</div>
-              <div>4. Saved answers improve trust because users can revisit prior guidance.</div>
-              <div>5. This page is now prepared for real backend-linked continuity.</div>
+              <div>4. Reopen in Ask should let the user continue from any saved item.</div>
+              <div>5. Delete and clear-all should support workspace cleanup.</div>
             </div>
           </WorkspaceSectionCard>
 
@@ -817,17 +1200,17 @@ export default function HistoryPage() {
                 label="Best Immediate Action"
                 value={
                   filteredItems.length > 0
-                    ? "Review Saved Answers"
+                    ? "Review or Reopen"
                     : historyItems.length > 0
-                      ? "Adjust Filters"
-                      : "Ask First Question"
+                    ? "Adjust Filters"
+                    : "Ask First Question"
                 }
                 tone={
                   filteredItems.length > 0
                     ? "good"
                     : historyItems.length > 0
-                      ? "warn"
-                      : "default"
+                    ? "warn"
+                    : "default"
                 }
                 helper="Most sensible next move based on current visible history."
               />
@@ -836,6 +1219,12 @@ export default function HistoryPage() {
                 value={historyItems.length > 0 ? "Useful" : "Not Yet Built"}
                 tone={historyItems.length > 0 ? "good" : "warn"}
                 helper="Shows whether user continuity is already active in this workspace."
+              />
+              <MetricCard
+                label="Oldest Item"
+                value={oldestItem ? formatDate(oldestItem.created_at) : "—"}
+                tone={oldestItem ? "default" : "warn"}
+                helper="Earliest visible entry still available in history."
               />
             </CardsGrid>
           </WorkspaceSectionCard>
