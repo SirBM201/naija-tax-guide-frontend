@@ -1,6 +1,13 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  type CSSProperties,
+  type FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import AppShell from "@/components/app-shell";
 
 type WorkspacePlan = {
@@ -114,8 +121,7 @@ function formatDate(value?: string) {
 }
 
 function normalizeMembers(input: MembersResponse["members"]): MemberRecord[] {
-  if (Array.isArray(input)) return input;
-  return [];
+  return Array.isArray(input) ? input : [];
 }
 
 function extractErrorMessage(payload: ApiErrorShape | null, fallback: string) {
@@ -123,16 +129,58 @@ function extractErrorMessage(payload: ApiErrorShape | null, fallback: string) {
   return payload.fix || payload.message || payload.error || payload.reason || fallback;
 }
 
+function normalizeThrownError(error: unknown, fallback: string) {
+  if (error instanceof Error) {
+    if (error.message === "Failed to fetch") {
+      return "Unable to reach the workspace service right now. Confirm the backend is running, the workspace routes exist, and CORS/cookie settings still allow this page to call the API.";
+    }
+    return error.message || fallback;
+  }
+  return fallback;
+}
+
+function buildPlanName(
+  plan: WorkspacePlan | undefined,
+  planFamily?: string,
+  planCode?: string,
+  maxWorkspaceUsers?: number,
+  maxTotalChannels?: number
+) {
+  if (plan?.name?.trim()) return plan.name.trim();
+  if (plan?.code?.trim()) return plan.code.trim();
+  if (planCode?.trim()) return planCode.trim();
+  if (planFamily?.trim()) {
+    return planFamily
+      .trim()
+      .replace(/[_-]+/g, " ")
+      .replace(/\b\w/g, (char) => char.toUpperCase());
+  }
+  if ((maxWorkspaceUsers ?? 0) > 0 || (maxTotalChannels ?? 0) > 0) {
+    return "Workspace-enabled plan";
+  }
+  return "No active plan";
+}
+
+function safeCount(value?: number) {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
 async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
-    ...init,
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers || {}),
-    },
-    cache: "no-store",
-  });
+  let response: Response;
+
+  try {
+    response = await fetch(`${API_BASE}${path}`, {
+      ...init,
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+        ...(init?.headers || {}),
+      },
+      cache: "no-store",
+    });
+  } catch (error) {
+    throw new Error(normalizeThrownError(error, "Unable to reach workspace service."));
+  }
 
   const text = await response.text();
   let data: unknown = null;
@@ -154,51 +202,51 @@ async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   return data as T;
 }
 
-const styles = {
+const styles: Record<string, CSSProperties> = {
   page: {
     minHeight: "100%",
     background: "transparent",
     color: "#0f172a",
     fontFamily:
       'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-  } as React.CSSProperties,
+  },
   container: {
     maxWidth: "1180px",
     margin: "0 auto",
-  } as React.CSSProperties,
+  },
   topSummary: {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
     gap: 14,
     marginBottom: 20,
-  } as React.CSSProperties,
+  },
   summaryCard: {
     background: "linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)",
     border: "1px solid #e2e8f0",
     borderRadius: 20,
     padding: 16,
     boxShadow: "0 8px 20px rgba(15, 23, 42, 0.05)",
-  } as React.CSSProperties,
+  },
   summaryLabel: {
     fontSize: 11,
     fontWeight: 800,
-    textTransform: "uppercase" as const,
+    textTransform: "uppercase",
     letterSpacing: "0.08em",
     color: "#64748b",
     marginBottom: 8,
-  } as React.CSSProperties,
+  },
   summaryValue: {
     fontSize: 20,
     fontWeight: 800,
     color: "#0f172a",
     lineHeight: 1.3,
-  } as React.CSSProperties,
+  },
   summarySub: {
     fontSize: 13,
     color: "#64748b",
     marginTop: 6,
     lineHeight: 1.5,
-  } as React.CSSProperties,
+  },
   heroAlert: {
     background: "linear-gradient(180deg, #fff7ed 0%, #fffbeb 100%)",
     border: "1px solid #fed7aa",
@@ -211,20 +259,31 @@ const styles = {
     alignItems: "center",
     gap: 16,
     flexWrap: "wrap",
-  } as React.CSSProperties,
-  heroAlertTitle: {
+  },
+  heroInfo: {
+    background: "linear-gradient(180deg, #eff6ff 0%, #f8fafc 100%)",
+    border: "1px solid #bfdbfe",
+    color: "#1d4ed8",
+    borderRadius: 22,
+    padding: 18,
+    marginBottom: 20,
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 16,
+    flexWrap: "wrap",
+  },
+  heroTitle: {
     margin: 0,
     fontSize: 18,
     fontWeight: 800,
-    color: "#9a3412",
-  } as React.CSSProperties,
-  heroAlertText: {
+  },
+  heroText: {
     marginTop: 6,
     fontSize: 14,
     lineHeight: 1.6,
-    color: "#9a3412",
     maxWidth: 760,
-  } as React.CSSProperties,
+  },
   button: {
     border: "none",
     borderRadius: 16,
@@ -239,12 +298,12 @@ const styles = {
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-  } as React.CSSProperties,
+  },
   buttonDisabled: {
     background: "#94a3b8",
     cursor: "not-allowed",
     boxShadow: "none",
-  } as React.CSSProperties,
+  },
   buttonSecondary: {
     border: "1px solid #c7d2fe",
     borderRadius: 16,
@@ -258,7 +317,7 @@ const styles = {
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-  } as React.CSSProperties,
+  },
   buttonWarning: {
     border: "1px solid #fdba74",
     borderRadius: 16,
@@ -273,7 +332,7 @@ const styles = {
     alignItems: "center",
     justifyContent: "center",
     boxShadow: "0 10px 22px rgba(234, 88, 12, 0.20)",
-  } as React.CSSProperties,
+  },
   bannerError: {
     border: "1px solid #fecaca",
     background: "#fef2f2",
@@ -282,58 +341,64 @@ const styles = {
     padding: 14,
     marginBottom: 20,
     fontSize: 14,
-  } as React.CSSProperties,
+    lineHeight: 1.6,
+  },
   grid4: {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
     gap: 16,
     marginBottom: 20,
-  } as React.CSSProperties,
+  },
   grid3: {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
     gap: 16,
     marginBottom: 20,
-  } as React.CSSProperties,
+  },
   grid2: {
     display: "grid",
-    gridTemplateColumns: "minmax(320px, 420px) minmax(0, 1fr)",
+    gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
     gap: 20,
     alignItems: "start",
     marginBottom: 20,
-  } as React.CSSProperties,
+  },
   card: {
     background: "#ffffff",
     borderRadius: 24,
     padding: 20,
     boxShadow: "0 8px 24px rgba(15, 23, 42, 0.06)",
-  } as React.CSSProperties,
+  },
   label: {
     fontSize: 12,
     fontWeight: 800,
-    textTransform: "uppercase" as const,
+    textTransform: "uppercase",
     letterSpacing: "0.08em",
     color: "#64748b",
     marginBottom: 8,
-  } as React.CSSProperties,
+  },
   bigTitle: {
     margin: 0,
     fontSize: 24,
     fontWeight: 800,
     color: "#0f172a",
-  } as React.CSSProperties,
+  },
   hugeValue: {
     margin: "8px 0 0",
     fontSize: 42,
     fontWeight: 800,
     color: "#0f172a",
-  } as React.CSSProperties,
+  },
+  hugeValueSub: {
+    fontSize: 22,
+    color: "#64748b",
+    fontWeight: 600,
+  },
   subText: {
     marginTop: 8,
     fontSize: 14,
     color: "#64748b",
     lineHeight: 1.5,
-  } as React.CSSProperties,
+  },
   statRow: {
     display: "flex",
     justifyContent: "space-between",
@@ -344,59 +409,59 @@ const styles = {
     padding: "14px 16px",
     marginTop: 10,
     fontSize: 15,
-  } as React.CSSProperties,
+  },
   statValue: {
     fontWeight: 700,
     color: "#0f172a",
-  } as React.CSSProperties,
+  },
   ownerBox: {
     border: "1px solid #e2e8f0",
     borderRadius: 18,
     padding: 16,
     marginTop: 14,
     background: "#ffffff",
-  } as React.CSSProperties,
+  },
   ownerName: {
     margin: 0,
     fontSize: 18,
     fontWeight: 700,
     color: "#0f172a",
-  } as React.CSSProperties,
+  },
   ownerMeta: {
     marginTop: 6,
     fontSize: 14,
     color: "#475569",
-  } as React.CSSProperties,
+  },
   miniLabel: {
     marginTop: 14,
     fontSize: 11,
     fontWeight: 800,
-    textTransform: "uppercase" as const,
+    textTransform: "uppercase",
     letterSpacing: "0.08em",
     color: "#94a3b8",
-  } as React.CSSProperties,
+  },
   sectionTitle: {
     margin: 0,
     fontSize: 18,
     fontWeight: 800,
     color: "#0f172a",
-  } as React.CSSProperties,
+  },
   sectionText: {
     marginTop: 8,
     fontSize: 14,
     color: "#64748b",
     lineHeight: 1.6,
-  } as React.CSSProperties,
+  },
   formGroup: {
     marginTop: 16,
-  } as React.CSSProperties,
+  },
   formLabel: {
     display: "block",
     marginBottom: 8,
     fontSize: 14,
     fontWeight: 600,
     color: "#334155",
-  } as React.CSSProperties,
+  },
   input: {
     width: "100%",
     borderRadius: 16,
@@ -406,13 +471,13 @@ const styles = {
     outline: "none",
     background: "#ffffff",
     color: "#0f172a",
-    boxSizing: "border-box" as const,
-  } as React.CSSProperties,
+    boxSizing: "border-box",
+  },
   inputDisabled: {
     background: "#f1f5f9",
     color: "#94a3b8",
     cursor: "not-allowed",
-  } as React.CSSProperties,
+  },
   select: {
     width: "100%",
     borderRadius: 16,
@@ -422,13 +487,13 @@ const styles = {
     outline: "none",
     background: "#ffffff",
     color: "#0f172a",
-    boxSizing: "border-box" as const,
-  } as React.CSSProperties,
+    boxSizing: "border-box",
+  },
   selectDisabled: {
     background: "#f1f5f9",
     color: "#94a3b8",
     cursor: "not-allowed",
-  } as React.CSSProperties,
+  },
   successBox: {
     border: "1px solid #bbf7d0",
     background: "#f0fdf4",
@@ -437,7 +502,8 @@ const styles = {
     padding: "12px 14px",
     marginTop: 14,
     fontSize: 14,
-  } as React.CSSProperties,
+    lineHeight: 1.6,
+  },
   errorBox: {
     border: "1px solid #fecaca",
     background: "#fef2f2",
@@ -446,7 +512,8 @@ const styles = {
     padding: "12px 14px",
     marginTop: 14,
     fontSize: 14,
-  } as React.CSSProperties,
+    lineHeight: 1.6,
+  },
   warningBox: {
     border: "1px solid #fcd34d",
     background: "#fffbeb",
@@ -456,7 +523,7 @@ const styles = {
     marginTop: 16,
     fontSize: 14,
     lineHeight: 1.6,
-  } as React.CSSProperties,
+  },
   noteBox: {
     marginTop: 16,
     borderRadius: 18,
@@ -465,20 +532,20 @@ const styles = {
     fontSize: 14,
     lineHeight: 1.6,
     color: "#475569",
-  } as React.CSSProperties,
+  },
   actionRow: {
     display: "flex",
     gap: 12,
-    flexWrap: "wrap" as const,
+    flexWrap: "wrap",
     marginTop: 14,
-  } as React.CSSProperties,
+  },
   membersHeader: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
     gap: 12,
-    flexWrap: "wrap" as const,
-  } as React.CSSProperties,
+    flexWrap: "wrap",
+  },
   badge: {
     borderRadius: 999,
     background: "#e2e8f0",
@@ -486,48 +553,49 @@ const styles = {
     fontSize: 12,
     fontWeight: 700,
     color: "#334155",
-  } as React.CSSProperties,
+  },
   emptyBox: {
     marginTop: 18,
     border: "1px dashed #cbd5e1",
     background: "#f8fafc",
     borderRadius: 18,
     padding: 24,
-    textAlign: "center" as const,
+    textAlign: "center",
     color: "#64748b",
     fontSize: 15,
-  } as React.CSSProperties,
+    lineHeight: 1.6,
+  },
   memberCard: {
     border: "1px solid #e2e8f0",
     borderRadius: 18,
     padding: 16,
     marginTop: 16,
     background: "#ffffff",
-  } as React.CSSProperties,
+  },
   memberHead: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "flex-start",
     gap: 16,
-    flexWrap: "wrap" as const,
-  } as React.CSSProperties,
+    flexWrap: "wrap",
+  },
   memberName: {
     margin: 0,
     fontSize: 16,
     fontWeight: 700,
     color: "#0f172a",
-  } as React.CSSProperties,
+  },
   memberEmail: {
     marginTop: 6,
     fontSize: 14,
     color: "#475569",
-  } as React.CSSProperties,
+  },
   memberGrid: {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
     gap: 14,
     marginTop: 14,
-  } as React.CSSProperties,
+  },
   removeButton: {
     border: "none",
     borderRadius: 14,
@@ -537,12 +605,12 @@ const styles = {
     fontSize: 14,
     fontWeight: 700,
     cursor: "pointer",
-  } as React.CSSProperties,
+  },
   removeButtonDisabled: {
     background: "#e2e8f0",
     color: "#64748b",
     cursor: "not-allowed",
-  } as React.CSSProperties,
+  },
   loadingCard: {
     background: "#ffffff",
     borderRadius: 24,
@@ -550,7 +618,7 @@ const styles = {
     boxShadow: "0 8px 24px rgba(15, 23, 42, 0.06)",
     fontSize: 16,
     color: "#475569",
-  } as React.CSSProperties,
+  },
 };
 
 export default function WorkspacePage() {
@@ -573,20 +641,42 @@ export default function WorkspacePage() {
   const loadWorkspace = useCallback(async (isRefresh = false) => {
     try {
       setPageError("");
-      if (isRefresh) setRefreshing(true);
-      else setLoading(true);
+      if (isRefresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
 
-      const [limitsRes, membersRes] = await Promise.all([
+      const [limitsResult, membersResult] = await Promise.allSettled([
         apiRequest<LimitsResponse>("/api/workspace/limits"),
         apiRequest<MembersResponse>("/api/workspace/members"),
       ]);
 
-      setLimits(limitsRes);
-      setMembersData(membersRes);
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Unable to load workspace data.";
-      setPageError(message);
+      const nextErrors: string[] = [];
+
+      if (limitsResult.status === "fulfilled") {
+        setLimits(limitsResult.value);
+      } else {
+        nextErrors.push(
+          `Workspace limits could not be loaded. ${normalizeThrownError(
+            limitsResult.reason,
+            "Unable to load workspace limits."
+          )}`
+        );
+      }
+
+      if (membersResult.status === "fulfilled") {
+        setMembersData(membersResult.value);
+      } else {
+        nextErrors.push(
+          `Workspace members could not be loaded. ${normalizeThrownError(
+            membersResult.reason,
+            "Unable to load workspace members."
+          )}`
+        );
+      }
+
+      setPageError(nextErrors.join(" "));
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -613,12 +703,41 @@ export default function WorkspacePage() {
     [membersData?.members]
   );
 
-  const usedSlots = counts.owner_included_total ?? 0;
-  const memberOnlyCount = counts.active_members_only ?? members.length ?? 0;
-  const maxWorkspaceUsers = workspaceLimits.max_workspace_users ?? 0;
+  const usedSlots = safeCount(counts.owner_included_total);
+  const memberOnlyCount = safeCount(counts.active_members_only) || members.length;
+  const maxWorkspaceUsers = safeCount(workspaceLimits.max_workspace_users);
+  const maxLinkedWebAccounts = safeCount(workspaceLimits.max_linked_web_accounts);
+  const maxTotalChannels = safeCount(channelLimits.max_total_channels);
+  const maxWhatsappChannels = safeCount(channelLimits.max_whatsapp_channels);
+  const maxTelegramChannels = safeCount(channelLimits.max_telegram_channels);
+
   const availableSlots =
     maxWorkspaceUsers > 0 ? Math.max(maxWorkspaceUsers - usedSlots, 0) : 0;
-  const hasNoAvailableSlots = availableSlots <= 0;
+
+  const planName = buildPlanName(
+    plan,
+    limits?.entitlements?.plan_family || membersData?.entitlements?.plan_family,
+    limits?.entitlements?.plan_code || plan?.code,
+    maxWorkspaceUsers,
+    maxTotalChannels
+  );
+
+  const hasWorkspacePlan =
+    planName !== "No active plan" ||
+    maxWorkspaceUsers > 0 ||
+    maxTotalChannels > 0 ||
+    Boolean(limits?.entitlements?.plan_code);
+
+  const workspacePlanFull = hasWorkspacePlan && maxWorkspaceUsers > 0 && availableSlots <= 0;
+  const addBlockedBecauseNoPlan = !hasWorkspacePlan || maxWorkspaceUsers <= 0;
+  const addBlocked = addBlockedBecauseNoPlan || workspacePlanFull;
+
+  const ownerAccountId =
+    owner?.account_id ||
+    membersData?.account_id ||
+    limits?.account_id ||
+    limits?.entitlements?.account_id ||
+    "—";
 
   async function handleAddMember(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -627,8 +746,17 @@ export default function WorkspacePage() {
     setRemoveMessage("");
     setRemoveError("");
 
-    if (hasNoAvailableSlots) {
-      setAddError("Your current plan is full. Upgrade your plan or remove an existing member.");
+    if (addBlockedBecauseNoPlan) {
+      setAddError(
+        "Workspace member access is not enabled on the current plan. Activate or upgrade to a plan that includes workspace slots first."
+      );
+      return;
+    }
+
+    if (workspacePlanFull) {
+      setAddError(
+        "Your current workspace plan is full. Upgrade your plan or remove an existing member first."
+      );
       return;
     }
 
@@ -658,9 +786,9 @@ export default function WorkspacePage() {
       setRole("member");
       await loadWorkspace(true);
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Unable to add workspace member.";
-      setAddError(message);
+      setAddError(
+        normalizeThrownError(error, "Unable to add workspace member right now.")
+      );
     } finally {
       setSubmittingAdd(false);
     }
@@ -691,9 +819,9 @@ export default function WorkspacePage() {
       setRemoveMessage(result.message || "Member removed successfully.");
       await loadWorkspace(true);
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Unable to remove workspace member.";
-      setRemoveError(message);
+      setRemoveError(
+        normalizeThrownError(error, "Unable to remove workspace member right now.")
+      );
     } finally {
       setRemovingId("");
     }
@@ -721,15 +849,42 @@ export default function WorkspacePage() {
         <div style={styles.container}>
           {pageError ? <div style={styles.bannerError}>{pageError}</div> : null}
 
-          {!loading && hasNoAvailableSlots ? (
+          {!loading && addBlockedBecauseNoPlan ? (
+            <div style={styles.heroInfo}>
+              <div>
+                <h2 style={{ ...styles.heroTitle, color: "#1d4ed8" }}>
+                  Workspace member access is not enabled yet
+                </h2>
+                <div style={{ ...styles.heroText, color: "#1e3a8a" }}>
+                  This account does not currently show an active plan with workspace
+                  member slots. You can still review limits and owner details below,
+                  but adding members will remain disabled until a workspace-enabled plan
+                  becomes active.
+                </div>
+              </div>
+
+              <div style={styles.actionRow}>
+                <a href="/plans" style={styles.buttonSecondary}>
+                  View Plans
+                </a>
+                <a href="/billing" style={styles.buttonSecondary}>
+                  Go to Billing
+                </a>
+              </div>
+            </div>
+          ) : null}
+
+          {!loading && !addBlockedBecauseNoPlan && workspacePlanFull ? (
             <div style={styles.heroAlert}>
               <div>
-                <h2 style={styles.heroAlertTitle}>Workspace plan is currently full</h2>
-                <div style={styles.heroAlertText}>
+                <h2 style={{ ...styles.heroTitle, color: "#9a3412" }}>
+                  Workspace plan is currently full
+                </h2>
+                <div style={{ ...styles.heroText, color: "#9a3412" }}>
                   You are using {usedSlots} of {maxWorkspaceUsers} allowed workspace slot
                   {maxWorkspaceUsers === 1 ? "" : "s"} on the{" "}
-                  <strong>{plan?.name || "current plan"}</strong>. Upgrade your plan to
-                  add more members, or remove an existing member first.
+                  <strong>{planName}</strong>. Upgrade your plan to add more members,
+                  or remove an existing member first.
                 </div>
               </div>
 
@@ -744,55 +899,57 @@ export default function WorkspacePage() {
             </div>
           ) : null}
 
-          {!loading ? (
-            <section style={styles.topSummary}>
-              <div style={styles.summaryCard}>
-                <div style={styles.summaryLabel}>Plan</div>
-                <div style={styles.summaryValue}>{plan?.name || "No active plan"}</div>
-                <div style={styles.summarySub}>
-                  Family: {plan?.plan_family || limits?.entitlements?.plan_family || "—"}
-                </div>
-              </div>
-
-              <div style={styles.summaryCard}>
-                <div style={styles.summaryLabel}>Workspace usage</div>
-                <div style={styles.summaryValue}>
-                  {usedSlots} / {maxWorkspaceUsers || 0}
-                </div>
-                <div style={styles.summarySub}>Owner included total usage</div>
-              </div>
-
-              <div style={styles.summaryCard}>
-                <div style={styles.summaryLabel}>Total channels allowed</div>
-                <div style={styles.summaryValue}>
-                  {channelLimits.max_total_channels ?? 0}
-                </div>
-                <div style={styles.summarySub}>Across all supported channels</div>
-              </div>
-
-              <div style={styles.summaryCard}>
-                <div style={styles.summaryLabel}>WhatsApp / Telegram</div>
-                <div style={styles.summaryValue}>
-                  {channelLimits.max_whatsapp_channels ?? 0} /{" "}
-                  {channelLimits.max_telegram_channels ?? 0}
-                </div>
-                <div style={styles.summarySub}>Per-channel entitlement split</div>
-              </div>
-            </section>
-          ) : null}
-
           {loading ? (
             <div style={styles.loadingCard}>Loading workspace data...</div>
           ) : (
             <>
+              <section style={styles.topSummary}>
+                <div style={styles.summaryCard}>
+                  <div style={styles.summaryLabel}>Plan</div>
+                  <div style={styles.summaryValue}>{planName}</div>
+                  <div style={styles.summarySub}>
+                    Family:{" "}
+                    {plan?.plan_family ||
+                      limits?.entitlements?.plan_family ||
+                      membersData?.entitlements?.plan_family ||
+                      "—"}
+                  </div>
+                </div>
+
+                <div style={styles.summaryCard}>
+                  <div style={styles.summaryLabel}>Workspace usage</div>
+                  <div style={styles.summaryValue}>
+                    {usedSlots} / {maxWorkspaceUsers}
+                  </div>
+                  <div style={styles.summarySub}>Owner included total usage</div>
+                </div>
+
+                <div style={styles.summaryCard}>
+                  <div style={styles.summaryLabel}>Total channels allowed</div>
+                  <div style={styles.summaryValue}>{maxTotalChannels}</div>
+                  <div style={styles.summarySub}>Across all supported channels</div>
+                </div>
+
+                <div style={styles.summaryCard}>
+                  <div style={styles.summaryLabel}>WhatsApp / Telegram</div>
+                  <div style={styles.summaryValue}>
+                    {maxWhatsappChannels} / {maxTelegramChannels}
+                  </div>
+                  <div style={styles.summarySub}>Per-channel entitlement split</div>
+                </div>
+              </section>
+
               <section style={styles.grid4}>
                 <div style={styles.card}>
                   <div style={styles.label}>Current plan</div>
-                  <h2 style={styles.bigTitle}>{plan?.name || "No active plan"}</h2>
+                  <h2 style={styles.bigTitle}>{planName}</h2>
                   <div style={styles.subText}>
                     Family:{" "}
                     <strong style={{ color: "#0f172a", textTransform: "capitalize" }}>
-                      {limits?.entitlements?.plan_family || plan?.plan_family || "—"}
+                      {limits?.entitlements?.plan_family ||
+                        plan?.plan_family ||
+                        membersData?.entitlements?.plan_family ||
+                        "—"}
                     </strong>
                   </div>
                   <div style={styles.subText}>
@@ -807,10 +964,7 @@ export default function WorkspacePage() {
                   <div style={styles.label}>Workspace slots used</div>
                   <div style={styles.hugeValue}>
                     {usedSlots}
-                    <span style={{ fontSize: 22, color: "#64748b", fontWeight: 600 }}>
-                      {" "}
-                      / {maxWorkspaceUsers || 0}
-                    </span>
+                    <span style={styles.hugeValueSub}> / {maxWorkspaceUsers}</span>
                   </div>
                   <div style={styles.subText}>Owner included total</div>
                 </div>
@@ -833,15 +987,11 @@ export default function WorkspacePage() {
                   <h3 style={styles.sectionTitle}>Workspace limits</h3>
                   <div style={styles.statRow}>
                     <span>Max workspace users</span>
-                    <span style={styles.statValue}>
-                      {workspaceLimits.max_workspace_users ?? 0}
-                    </span>
+                    <span style={styles.statValue}>{maxWorkspaceUsers}</span>
                   </div>
                   <div style={styles.statRow}>
                     <span>Max linked web accounts</span>
-                    <span style={styles.statValue}>
-                      {workspaceLimits.max_linked_web_accounts ?? 0}
-                    </span>
+                    <span style={styles.statValue}>{maxLinkedWebAccounts}</span>
                   </div>
                 </div>
 
@@ -849,21 +999,15 @@ export default function WorkspacePage() {
                   <h3 style={styles.sectionTitle}>Channel limits</h3>
                   <div style={styles.statRow}>
                     <span>Total channels</span>
-                    <span style={styles.statValue}>
-                      {channelLimits.max_total_channels ?? 0}
-                    </span>
+                    <span style={styles.statValue}>{maxTotalChannels}</span>
                   </div>
                   <div style={styles.statRow}>
                     <span>WhatsApp channels</span>
-                    <span style={styles.statValue}>
-                      {channelLimits.max_whatsapp_channels ?? 0}
-                    </span>
+                    <span style={styles.statValue}>{maxWhatsappChannels}</span>
                   </div>
                   <div style={styles.statRow}>
                     <span>Telegram channels</span>
-                    <span style={styles.statValue}>
-                      {channelLimits.max_telegram_channels ?? 0}
-                    </span>
+                    <span style={styles.statValue}>{maxTelegramChannels}</span>
                   </div>
                 </div>
 
@@ -882,19 +1026,16 @@ export default function WorkspacePage() {
 
                     <div style={styles.miniLabel}>Created</div>
                     <div style={styles.ownerMeta}>{formatDate(owner?.created_at)}</div>
+
+                    <div style={styles.miniLabel}>Owner account ID</div>
+                    <div style={{ ...styles.ownerMeta, wordBreak: "break-all" }}>
+                      {ownerAccountId}
+                    </div>
                   </div>
                 </div>
               </section>
 
-              <section
-                style={{
-                  ...styles.grid2,
-                  gridTemplateColumns:
-                    typeof window !== "undefined" && window.innerWidth < 980
-                      ? "1fr"
-                      : "minmax(320px, 420px) minmax(0, 1fr)",
-                }}
-              >
+              <section style={styles.grid2}>
                 <div style={styles.card}>
                   <h3 style={styles.sectionTitle}>Add member</h3>
                   <div style={styles.sectionText}>
@@ -913,10 +1054,10 @@ export default function WorkspacePage() {
                         value={memberEmail}
                         onChange={(e) => setMemberEmail(e.target.value)}
                         placeholder="user@example.com"
-                        disabled={hasNoAvailableSlots || submittingAdd}
+                        disabled={addBlocked || submittingAdd}
                         style={{
                           ...styles.input,
-                          ...(hasNoAvailableSlots || submittingAdd ? styles.inputDisabled : {}),
+                          ...(addBlocked || submittingAdd ? styles.inputDisabled : {}),
                         }}
                       />
                     </div>
@@ -929,20 +1070,35 @@ export default function WorkspacePage() {
                         id="member_role"
                         value={role}
                         onChange={(e) => setRole(e.target.value)}
-                        disabled={hasNoAvailableSlots || submittingAdd}
+                        disabled={addBlocked || submittingAdd}
                         style={{
                           ...styles.select,
-                          ...(hasNoAvailableSlots || submittingAdd ? styles.selectDisabled : {}),
+                          ...(addBlocked || submittingAdd ? styles.selectDisabled : {}),
                         }}
                       >
                         <option value="member">member</option>
                       </select>
                     </div>
 
-                    {hasNoAvailableSlots ? (
+                    {addBlockedBecauseNoPlan ? (
                       <div style={styles.warningBox}>
-                        <strong>Your current plan is full.</strong> Upgrade your plan or remove
-                        an existing member before adding another workspace user.
+                        <strong>Workspace member access is not enabled.</strong> Activate
+                        a plan with workspace slots before adding members.
+                        <div style={styles.actionRow}>
+                          <a href="/billing" style={styles.buttonSecondary}>
+                            Go to Billing
+                          </a>
+                          <a href="/plans" style={styles.buttonSecondary}>
+                            View Plans
+                          </a>
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {!addBlockedBecauseNoPlan && workspacePlanFull ? (
+                      <div style={styles.warningBox}>
+                        <strong>Your current plan is full.</strong> Upgrade your plan or
+                        remove an existing member before adding another workspace user.
                         <div style={styles.actionRow}>
                           <a href="/billing" style={styles.buttonSecondary}>
                             Go to Billing
@@ -959,17 +1115,19 @@ export default function WorkspacePage() {
 
                     <button
                       type="submit"
-                      disabled={submittingAdd || hasNoAvailableSlots}
+                      disabled={submittingAdd || addBlocked}
                       style={{
                         ...styles.button,
                         width: "100%",
                         marginTop: 16,
-                        ...(submittingAdd || hasNoAvailableSlots ? styles.buttonDisabled : {}),
+                        ...(submittingAdd || addBlocked ? styles.buttonDisabled : {}),
                       }}
                     >
                       {submittingAdd
                         ? "Adding member..."
-                        : hasNoAvailableSlots
+                        : addBlockedBecauseNoPlan
+                        ? "Workspace plan required"
+                        : workspacePlanFull
                         ? "No slots available"
                         : "Add member"}
                     </button>
@@ -980,11 +1138,8 @@ export default function WorkspacePage() {
                       Current rule
                     </div>
                     Your plan currently allows{" "}
-                    <strong style={{ color: "#0f172a" }}>
-                      {maxWorkspaceUsers || 0}
-                    </strong>{" "}
-                    total workspace user{maxWorkspaceUsers === 1 ? "" : "s"}, including
-                    the owner.
+                    <strong style={{ color: "#0f172a" }}>{maxWorkspaceUsers}</strong> total
+                    workspace user{maxWorkspaceUsers === 1 ? "" : "s"}, including the owner.
                   </div>
                 </div>
 
@@ -1001,9 +1156,7 @@ export default function WorkspacePage() {
                     </span>
                   </div>
 
-                  {removeMessage ? (
-                    <div style={styles.successBox}>{removeMessage}</div>
-                  ) : null}
+                  {removeMessage ? <div style={styles.successBox}>{removeMessage}</div> : null}
                   {removeError ? <div style={styles.errorBox}>{removeError}</div> : null}
 
                   {members.length === 0 ? (
@@ -1034,15 +1187,11 @@ export default function WorkspacePage() {
                               <div style={styles.memberGrid}>
                                 <div>
                                   <div style={styles.miniLabel}>Role</div>
-                                  <div style={styles.ownerMeta}>
-                                    {member.role || "member"}
-                                  </div>
+                                  <div style={styles.ownerMeta}>{member.role || "member"}</div>
                                 </div>
                                 <div>
                                   <div style={styles.miniLabel}>Status</div>
-                                  <div style={styles.ownerMeta}>
-                                    {member.status || "active"}
-                                  </div>
+                                  <div style={styles.ownerMeta}>{member.status || "active"}</div>
                                 </div>
                                 <div>
                                   <div style={styles.miniLabel}>Added</div>
