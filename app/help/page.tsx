@@ -41,6 +41,14 @@ function bulletListStyle(): React.CSSProperties {
   };
 }
 
+function faqGridStyle(): React.CSSProperties {
+  return {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+    gap: 16,
+  };
+}
+
 function faqItemStyle(): React.CSSProperties {
   return {
     border: "1px solid var(--border)",
@@ -49,6 +57,7 @@ function faqItemStyle(): React.CSSProperties {
     padding: 18,
     display: "grid",
     gap: 10,
+    alignContent: "start",
   };
 }
 
@@ -86,6 +95,16 @@ function infoCardStyle(): React.CSSProperties {
     padding: 18,
     display: "grid",
     gap: 8,
+    alignContent: "start",
+  };
+}
+
+function miniActionRowStyle(): React.CSSProperties {
+  return {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 10,
+    alignItems: "center",
   };
 }
 
@@ -121,6 +140,39 @@ function helperStyle(): React.CSSProperties {
 export default function HelpPage() {
   const router = useRouter();
 
+  const faqItems = [
+    {
+      question: "How do I know if my payment worked?",
+      answer:
+        "Open the Billing page and review your current plan, billing state, or subscription status. A successful payment may still need a short sync window before every visible field updates.",
+    },
+    {
+      question: "Why am I seeing access denied or unauthorized?",
+      answer:
+        "This usually means your session has expired, your login state is missing, or the page requires access that is not currently available under your account or plan.",
+    },
+    {
+      question: "What should I do if my credits seem wrong?",
+      answer:
+        "First check your Credits or Billing area. If the visible balance still does not match what you expect after a reasonable refresh or payment sync window, open Support so the issue can be tracked.",
+    },
+    {
+      question: "Where do support replies appear?",
+      answer:
+        "Support replies should appear inside the in-app support inbox on the Support page. Important updates may also be sent through the linked account email when available.",
+    },
+    {
+      question: "Can I request a refund?",
+      answer:
+        "Refunds are not automatic for digital services. Valid cases may still be reviewed under the Refund Policy. Eligible refund requests must be submitted within 3 days of payment.",
+    },
+    {
+      question: "How do I request deletion of my data?",
+      answer:
+        "Use the Data Deletion page for the official route. Some information may still need to be retained for lawful, billing, security, or audit-related reasons where applicable.",
+    },
+  ];
+
   return (
     <AppShell
       title="Help Center"
@@ -154,6 +206,11 @@ export default function HelpPage() {
               <p style={helperStyle()}>
                 Use for billing problems, login trouble, credits, technical faults, and ticket-based follow-up.
               </p>
+              <div style={miniActionRowStyle()}>
+                <button onClick={() => router.push("/support")} style={shellButtonPrimary()}>
+                  Open Support
+                </button>
+              </div>
             </div>
 
             <div style={infoCardStyle()}>
@@ -162,6 +219,24 @@ export default function HelpPage() {
               <p style={helperStyle()}>
                 Use for partnerships, public enquiries, compliance communication, and general business contact.
               </p>
+              <div style={miniActionRowStyle()}>
+                <button onClick={() => router.push("/contact")} style={shellButtonSecondary()}>
+                  Open Contact
+                </button>
+              </div>
+            </div>
+
+            <div style={infoCardStyle()}>
+              <p style={labelStyle()}>Best for billing checks</p>
+              <p style={valueStyle()}>Billing</p>
+              <p style={helperStyle()}>
+                Use for plan visibility, subscription checks, payment review, and payment-result confirmation.
+              </p>
+              <div style={miniActionRowStyle()}>
+                <button onClick={() => router.push("/billing")} style={shellButtonSecondary()}>
+                  Open Billing
+                </button>
+              </div>
             </div>
 
             <div style={infoCardStyle()}>
@@ -178,54 +253,13 @@ export default function HelpPage() {
           title="Common questions"
           subtitle="The most likely issues users may want to understand quickly."
         >
-          <div style={sectionBodyStyle()}>
-            <div style={faqItemStyle()}>
-              <h3 style={faqQuestionStyle()}>How do I know if my payment worked?</h3>
-              <p style={faqAnswerStyle()}>
-                Open the Billing page and review your current plan, billing state, or subscription status.
-                A successful payment may still need a short sync window before every visible field updates.
-              </p>
-            </div>
-
-            <div style={faqItemStyle()}>
-              <h3 style={faqQuestionStyle()}>Why am I seeing access denied or unauthorized?</h3>
-              <p style={faqAnswerStyle()}>
-                This usually means your session has expired, your login state is missing, or the page
-                requires access that is not currently available under your account or plan.
-              </p>
-            </div>
-
-            <div style={faqItemStyle()}>
-              <h3 style={faqQuestionStyle()}>What should I do if my credits seem wrong?</h3>
-              <p style={faqAnswerStyle()}>
-                First check your Credits or Billing area. If the visible balance still does not match
-                what you expect after a reasonable refresh or payment sync window, open Support so the issue can be tracked.
-              </p>
-            </div>
-
-            <div style={faqItemStyle()}>
-              <h3 style={faqQuestionStyle()}>Where do support replies appear?</h3>
-              <p style={faqAnswerStyle()}>
-                Support replies should appear inside the in-app support inbox on the Support page.
-                Important updates may also be sent through the linked account email when available.
-              </p>
-            </div>
-
-            <div style={faqItemStyle()}>
-              <h3 style={faqQuestionStyle()}>Can I request a refund?</h3>
-              <p style={faqAnswerStyle()}>
-                Refunds are not automatic for digital services. Valid cases may still be reviewed under the Refund Policy.
-                Eligible refund requests must be submitted within 3 days of payment.
-              </p>
-            </div>
-
-            <div style={faqItemStyle()}>
-              <h3 style={faqQuestionStyle()}>How do I request deletion of my data?</h3>
-              <p style={faqAnswerStyle()}>
-                Use the Data Deletion page for the official route. Some information may still need to be retained
-                for lawful, billing, security, or audit-related reasons where applicable.
-              </p>
-            </div>
+          <div style={faqGridStyle()}>
+            {faqItems.map((item) => (
+              <div key={item.question} style={faqItemStyle()}>
+                <h3 style={faqQuestionStyle()}>{item.question}</h3>
+                <p style={faqAnswerStyle()}>{item.answer}</p>
+              </div>
+            ))}
           </div>
         </WorkspaceSectionCard>
 
@@ -287,7 +321,10 @@ export default function HelpPage() {
               alignItems: "center",
             }}
           >
-            <button onClick={() => router.push("/contact")} style={shellButtonPrimary()}>
+            <button onClick={() => router.push("/support")} style={shellButtonPrimary()}>
+              Open Support
+            </button>
+            <button onClick={() => router.push("/contact")} style={shellButtonSecondary()}>
               Open Contact
             </button>
             <button onClick={() => router.push("/billing")} style={shellButtonSecondary()}>
