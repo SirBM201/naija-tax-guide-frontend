@@ -11,29 +11,31 @@ type WebMeResp = {
   error?: string;
 };
 
-function primaryButton(): React.CSSProperties {
+function primaryButton(disabled = false): React.CSSProperties {
   return {
     padding: "16px 20px",
     borderRadius: 18,
     border: "1px solid var(--accent-border)",
-    background: "var(--button-bg-strong)",
-    color: "var(--text)",
+    background: disabled ? "#e5e7eb" : "var(--button-bg-strong)",
+    color: disabled ? "#6b7280" : "var(--text)",
     fontWeight: 900,
-    cursor: "pointer",
+    cursor: disabled ? "not-allowed" : "pointer",
     fontSize: 15,
+    boxShadow: disabled ? "none" : undefined,
   };
 }
 
-function secondaryButton(): React.CSSProperties {
+function secondaryButton(disabled = false): React.CSSProperties {
   return {
     padding: "16px 20px",
     borderRadius: 18,
     border: "1px solid var(--border-strong)",
-    background: "var(--button-bg)",
-    color: "var(--text)",
+    background: disabled ? "#f3f4f6" : "var(--button-bg)",
+    color: disabled ? "#6b7280" : "var(--text)",
     fontWeight: 900,
-    cursor: "pointer",
+    cursor: disabled ? "not-allowed" : "pointer",
     fontSize: 15,
+    boxShadow: disabled ? "none" : undefined,
   };
 }
 
@@ -47,7 +49,9 @@ function sectionCardStyle(): React.CSSProperties {
   };
 }
 
-function metricCardStyle(tone: "default" | "good" | "warn" = "default"): React.CSSProperties {
+function metricCardStyle(
+  tone: "default" | "good" | "warn" = "default"
+): React.CSSProperties {
   let border = "1px solid var(--border)";
   let bg = "var(--surface-soft)";
 
@@ -84,6 +88,36 @@ function channelCardStyle(): React.CSSProperties {
     background: "var(--surface)",
     padding: 20,
     height: "100%",
+  };
+}
+
+function infoPillStyle(): React.CSSProperties {
+  return {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
+    borderRadius: 999,
+    border: "1px solid var(--border)",
+    background: "var(--surface)",
+    padding: "8px 12px",
+    color: "var(--text-soft)",
+    fontSize: 13,
+    fontWeight: 700,
+  };
+}
+
+function numberBadgeStyle(): React.CSSProperties {
+  return {
+    width: 42,
+    height: 42,
+    borderRadius: 999,
+    background: "var(--gold-soft)",
+    color: "var(--gold)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontWeight: 900,
+    fontSize: 16,
   };
 }
 
@@ -147,6 +181,8 @@ export default function LandingPage() {
   const [checkingSession, setCheckingSession] = useState(true);
 
   useEffect(() => {
+    let alive = true;
+
     const checkSession = async () => {
       try {
         const data = await apiJson<WebMeResp>("/web/auth/me", {
@@ -154,18 +190,26 @@ export default function LandingPage() {
           timeoutMs: 12000,
           useAuthToken: false,
         });
+
+        if (!alive) return;
         setHasSession(Boolean(data?.ok && data?.account_id));
       } catch {
+        if (!alive) return;
         setHasSession(false);
       } finally {
+        if (!alive) return;
         setCheckingSession(false);
       }
     };
 
-    checkSession();
+    void checkSession();
+
+    return () => {
+      alive = false;
+    };
   }, []);
 
-  const handlePrimaryAction = () => {
+  const goToPrimary = () => {
     if (hasSession) {
       router.push("/dashboard");
       return;
@@ -173,13 +217,49 @@ export default function LandingPage() {
     router.push("/login");
   };
 
-  const handleSecondaryAction = () => {
+  const goToSecondary = () => {
     if (hasSession) {
       router.push("/welcome");
       return;
     }
     router.push("/login");
   };
+
+  const topRouteLabel = checkingSession
+    ? "Checking..."
+    : hasSession
+    ? "Dashboard"
+    : "Login";
+
+  const primaryLabel = checkingSession
+    ? "Get Started"
+    : hasSession
+    ? "Continue to Dashboard"
+    : "Get Started";
+
+  const heroPrimaryLabel = checkingSession
+    ? "Start Using Naija Tax Guide"
+    : hasSession
+    ? "Continue to Dashboard"
+    : "Start Using Naija Tax Guide";
+
+  const heroSecondaryLabel = checkingSession
+    ? "Explore the Product"
+    : hasSession
+    ? "Open Welcome Page"
+    : "Explore the Product";
+
+  const finalCtaPrimaryLabel = checkingSession
+    ? "Get Started"
+    : hasSession
+    ? "Continue to Dashboard"
+    : "Get Started";
+
+  const finalCtaSecondaryLabel = checkingSession
+    ? "Login to Workspace"
+    : hasSession
+    ? "Open Welcome Page"
+    : "Login to Workspace";
 
   return (
     <div
@@ -268,23 +348,41 @@ export default function LandingPage() {
               alignItems: "center",
             }}
           >
-            <button onClick={() => setThemeMode("dark")} style={themeChipStyle(themeMode === "dark")}>
+            <button
+              onClick={() => setThemeMode("dark")}
+              style={themeChipStyle(themeMode === "dark")}
+            >
               Dark
             </button>
-            <button onClick={() => setThemeMode("light")} style={themeChipStyle(themeMode === "light")}>
+            <button
+              onClick={() => setThemeMode("light")}
+              style={themeChipStyle(themeMode === "light")}
+            >
               Light
             </button>
-            <button onClick={() => setThemeMode("system")} style={themeChipStyle(themeMode === "system")}>
+            <button
+              onClick={() => setThemeMode("system")}
+              style={themeChipStyle(themeMode === "system")}
+            >
               System
             </button>
+
             <button
               onClick={() => router.push(hasSession ? "/dashboard" : "/login")}
-              style={secondaryButton()}
+              disabled={checkingSession}
+              aria-disabled={checkingSession}
+              style={secondaryButton(checkingSession)}
             >
-              {checkingSession ? "Checking..." : hasSession ? "Dashboard" : "Login"}
+              {topRouteLabel}
             </button>
-            <button onClick={handlePrimaryAction} style={primaryButton()}>
-              {checkingSession ? "Get Started" : hasSession ? "Continue to Dashboard" : "Get Started"}
+
+            <button
+              onClick={goToPrimary}
+              disabled={checkingSession}
+              aria-disabled={checkingSession}
+              style={primaryButton(checkingSession)}
+            >
+              {primaryLabel}
             </button>
           </div>
         </header>
@@ -298,7 +396,7 @@ export default function LandingPage() {
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "minmax(0,1.2fr) minmax(320px,0.8fr)",
+              gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))",
               gap: 24,
               alignItems: "center",
             }}
@@ -352,7 +450,12 @@ export default function LandingPage() {
                   maxWidth: 820,
                 }}
               >
-                Naija Tax Guide helps users understand tax questions clearly, manage usage professionally, and access guidance through a clean AI-powered workspace designed for Nigeria. It is built to reduce confusion, improve confidence, and make tax guidance more accessible for freelancers, small businesses, creators, and growing digital entrepreneurs.
+                Naija Tax Guide helps users understand tax questions clearly,
+                manage usage professionally, and access guidance through a clean
+                AI-powered workspace designed for Nigeria. It is built to reduce
+                confusion, improve confidence, and make tax guidance more
+                accessible for freelancers, small businesses, creators, and
+                growing digital entrepreneurs.
               </div>
 
               <div
@@ -362,11 +465,22 @@ export default function LandingPage() {
                   flexWrap: "wrap",
                 }}
               >
-                <button onClick={handlePrimaryAction} style={primaryButton()}>
-                  {checkingSession ? "Start Using Naija Tax Guide" : hasSession ? "Continue to Dashboard" : "Start Using Naija Tax Guide"}
+                <button
+                  onClick={goToPrimary}
+                  disabled={checkingSession}
+                  aria-disabled={checkingSession}
+                  style={primaryButton(checkingSession)}
+                >
+                  {heroPrimaryLabel}
                 </button>
-                <button onClick={handleSecondaryAction} style={secondaryButton()}>
-                  {checkingSession ? "Explore the Product" : hasSession ? "Open Welcome Page" : "Explore the Product"}
+
+                <button
+                  onClick={goToSecondary}
+                  disabled={checkingSession}
+                  aria-disabled={checkingSession}
+                  style={secondaryButton(checkingSession)}
+                >
+                  {heroSecondaryLabel}
                 </button>
               </div>
 
@@ -377,56 +491,9 @@ export default function LandingPage() {
                   flexWrap: "wrap",
                 }}
               >
-                <div
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 8,
-                    borderRadius: 999,
-                    border: "1px solid var(--border)",
-                    background: "var(--surface)",
-                    padding: "8px 12px",
-                    color: "var(--text-soft)",
-                    fontSize: 13,
-                    fontWeight: 700,
-                  }}
-                >
-                  AI Tax Assistant
-                </div>
-
-                <div
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 8,
-                    borderRadius: 999,
-                    border: "1px solid var(--border)",
-                    background: "var(--surface)",
-                    padding: "8px 12px",
-                    color: "var(--text-soft)",
-                    fontSize: 13,
-                    fontWeight: 700,
-                  }}
-                >
-                  Web + WhatsApp + Telegram
-                </div>
-
-                <div
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 8,
-                    borderRadius: 999,
-                    border: "1px solid var(--border)",
-                    background: "var(--surface)",
-                    padding: "8px 12px",
-                    color: "var(--text-soft)",
-                    fontSize: 13,
-                    fontWeight: 700,
-                  }}
-                >
-                  Nigeria-Focused Guidance
-                </div>
+                <div style={infoPillStyle()}>AI Tax Assistant</div>
+                <div style={infoPillStyle()}>Web + WhatsApp + Telegram</div>
+                <div style={infoPillStyle()}>Nigeria-Focused Guidance</div>
               </div>
             </div>
 
@@ -437,7 +504,9 @@ export default function LandingPage() {
               }}
             >
               <div style={metricCardStyle("good")}>
-                <div style={{ color: "var(--text-faint)", fontSize: 13 }}>Core Experience</div>
+                <div style={{ color: "var(--text-faint)", fontSize: 13 }}>
+                  Core Experience
+                </div>
                 <div
                   style={{
                     marginTop: 8,
@@ -457,12 +526,15 @@ export default function LandingPage() {
                     fontSize: 14,
                   }}
                 >
-                  Ask tax questions clearly and receive structured responses in a professional workspace.
+                  Ask tax questions clearly and receive structured responses in a
+                  professional workspace.
                 </div>
               </div>
 
               <div style={metricCardStyle()}>
-                <div style={{ color: "var(--text-faint)", fontSize: 13 }}>Version 1 Channels</div>
+                <div style={{ color: "var(--text-faint)", fontSize: 13 }}>
+                  Version 1 Channels
+                </div>
                 <div
                   style={{
                     marginTop: 8,
@@ -482,12 +554,15 @@ export default function LandingPage() {
                     fontSize: 14,
                   }}
                 >
-                  One account, one subscription, and one shared usage model across supported channels.
+                  One account, one subscription, and one shared usage model
+                  across supported channels.
                 </div>
               </div>
 
               <div style={metricCardStyle("warn")}>
-                <div style={{ color: "var(--text-faint)", fontSize: 13 }}>Positioning</div>
+                <div style={{ color: "var(--text-faint)", fontSize: 13 }}>
+                  Positioning
+                </div>
                 <div
                   style={{
                     marginTop: 8,
@@ -507,7 +582,8 @@ export default function LandingPage() {
                     fontSize: 14,
                   }}
                 >
-                  Strong local relevance without looking like a government portal or a casual social app.
+                  Strong local relevance without looking like a government portal
+                  or a casual social app.
                 </div>
               </div>
             </div>
@@ -530,42 +606,107 @@ export default function LandingPage() {
             }}
           >
             <div style={featureCardStyle()}>
-              <div style={{ color: "var(--gold)", fontWeight: 900, fontSize: 18 }}>Clarity</div>
-              <div style={{ marginTop: 10, color: "var(--text)", fontSize: 20, fontWeight: 900 }}>
+              <div style={{ color: "var(--gold)", fontWeight: 900, fontSize: 18 }}>
+                Clarity
+              </div>
+              <div
+                style={{
+                  marginTop: 10,
+                  color: "var(--text)",
+                  fontSize: 20,
+                  fontWeight: 900,
+                }}
+              >
                 Understand tax questions more easily
               </div>
-              <div style={{ marginTop: 12, color: "var(--text-muted)", lineHeight: 1.75 }}>
-                Users can ask in simple language and receive more structured guidance without digging through scattered sources.
+              <div
+                style={{
+                  marginTop: 12,
+                  color: "var(--text-muted)",
+                  lineHeight: 1.75,
+                }}
+              >
+                Users can ask in simple language and receive more structured
+                guidance without digging through scattered sources.
               </div>
             </div>
 
             <div style={featureCardStyle()}>
-              <div style={{ color: "var(--gold)", fontWeight: 900, fontSize: 18 }}>Speed</div>
-              <div style={{ marginTop: 10, color: "var(--text)", fontSize: 20, fontWeight: 900 }}>
+              <div style={{ color: "var(--gold)", fontWeight: 900, fontSize: 18 }}>
+                Speed
+              </div>
+              <div
+                style={{
+                  marginTop: 10,
+                  color: "var(--text)",
+                  fontSize: 20,
+                  fontWeight: 900,
+                }}
+              >
                 Get answers faster in one workspace
               </div>
-              <div style={{ marginTop: 12, color: "var(--text-muted)", lineHeight: 1.75 }}>
-                Instead of waiting, searching endlessly, or guessing, users can go straight into a guided question flow.
+              <div
+                style={{
+                  marginTop: 12,
+                  color: "var(--text-muted)",
+                  lineHeight: 1.75,
+                }}
+              >
+                Instead of waiting, searching endlessly, or guessing, users can
+                go straight into a guided question flow.
               </div>
             </div>
 
             <div style={featureCardStyle()}>
-              <div style={{ color: "var(--gold)", fontWeight: 900, fontSize: 18 }}>Control</div>
-              <div style={{ marginTop: 10, color: "var(--text)", fontSize: 20, fontWeight: 900 }}>
+              <div style={{ color: "var(--gold)", fontWeight: 900, fontSize: 18 }}>
+                Control
+              </div>
+              <div
+                style={{
+                  marginTop: 10,
+                  color: "var(--text)",
+                  fontSize: 20,
+                  fontWeight: 900,
+                }}
+              >
                 Track usage, credits, and plans professionally
               </div>
-              <div style={{ marginTop: 12, color: "var(--text-muted)", lineHeight: 1.75 }}>
-                The app is not just an answer box. It is a proper workspace with history, billing, credits, support, and clear user visibility.
+              <div
+                style={{
+                  marginTop: 12,
+                  color: "var(--text-muted)",
+                  lineHeight: 1.75,
+                }}
+              >
+                The app is not just an answer box. It is a proper workspace with
+                history, billing, credits, support, and clear user visibility.
               </div>
             </div>
 
             <div style={featureCardStyle()}>
-              <div style={{ color: "var(--gold)", fontWeight: 900, fontSize: 18 }}>Localization</div>
-              <div style={{ marginTop: 10, color: "var(--text)", fontSize: 20, fontWeight: 900 }}>
+              <div style={{ color: "var(--gold)", fontWeight: 900, fontSize: 18 }}>
+                Localization
+              </div>
+              <div
+                style={{
+                  marginTop: 10,
+                  color: "var(--text)",
+                  fontSize: 20,
+                  fontWeight: 900,
+                }}
+              >
                 Built with Nigeria in mind
               </div>
-              <div style={{ marginTop: 12, color: "var(--text-muted)", lineHeight: 1.75 }}>
-                Language options, product direction, and messaging are designed to feel relevant to Nigerian users without losing a premium SaaS feel.
+              <div
+                style={{
+                  marginTop: 12,
+                  color: "var(--text-muted)",
+                  lineHeight: 1.75,
+                }}
+              >
+                Language options, product direction, and messaging are designed
+                to feel relevant to Nigerian users without losing a premium SaaS
+                feel.
               </div>
             </div>
           </div>
@@ -587,77 +728,74 @@ export default function LandingPage() {
             }}
           >
             <div style={featureCardStyle()}>
+              <div style={numberBadgeStyle()}>1</div>
               <div
                 style={{
-                  width: 42,
-                  height: 42,
-                  borderRadius: 999,
-                  background: "var(--gold-soft)",
-                  color: "var(--gold)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
+                  marginTop: 14,
+                  color: "var(--text)",
+                  fontSize: 21,
                   fontWeight: 900,
-                  fontSize: 16,
                 }}
               >
-                1
-              </div>
-              <div style={{ marginTop: 14, color: "var(--text)", fontSize: 21, fontWeight: 900 }}>
                 Sign in securely
               </div>
-              <div style={{ marginTop: 10, color: "var(--text-muted)", lineHeight: 1.75 }}>
-                Users enter their email, receive a one-time code, and access a secure workspace designed for guided tax support.
+              <div
+                style={{
+                  marginTop: 10,
+                  color: "var(--text-muted)",
+                  lineHeight: 1.75,
+                }}
+              >
+                Users enter their email, receive a one-time code, and access a
+                secure workspace designed for guided tax support.
               </div>
             </div>
 
             <div style={featureCardStyle()}>
+              <div style={numberBadgeStyle()}>2</div>
               <div
                 style={{
-                  width: 42,
-                  height: 42,
-                  borderRadius: 999,
-                  background: "var(--gold-soft)",
-                  color: "var(--gold)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
+                  marginTop: 14,
+                  color: "var(--text)",
+                  fontSize: 21,
                   fontWeight: 900,
-                  fontSize: 16,
                 }}
               >
-                2
-              </div>
-              <div style={{ marginTop: 14, color: "var(--text)", fontSize: 21, fontWeight: 900 }}>
                 Ask tax questions clearly
               </div>
-              <div style={{ marginTop: 10, color: "var(--text-muted)", lineHeight: 1.75 }}>
-                Users ask questions directly inside the web workspace and later through supported messaging channels.
+              <div
+                style={{
+                  marginTop: 10,
+                  color: "var(--text-muted)",
+                  lineHeight: 1.75,
+                }}
+              >
+                Users ask questions directly inside the web workspace and later
+                through supported messaging channels.
               </div>
             </div>
 
             <div style={featureCardStyle()}>
+              <div style={numberBadgeStyle()}>3</div>
               <div
                 style={{
-                  width: 42,
-                  height: 42,
-                  borderRadius: 999,
-                  background: "var(--gold-soft)",
-                  color: "var(--gold)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
+                  marginTop: 14,
+                  color: "var(--text)",
+                  fontSize: 21,
                   fontWeight: 900,
-                  fontSize: 16,
                 }}
               >
-                3
-              </div>
-              <div style={{ marginTop: 14, color: "var(--text)", fontSize: 21, fontWeight: 900 }}>
                 Manage everything in one place
               </div>
-              <div style={{ marginTop: 10, color: "var(--text-muted)", lineHeight: 1.75 }}>
-                The workspace brings together history, credits, billing, plans, help, channels, support, and settings in one professional system.
+              <div
+                style={{
+                  marginTop: 10,
+                  color: "var(--text-muted)",
+                  lineHeight: 1.75,
+                }}
+              >
+                The workspace brings together history, credits, billing, plans,
+                help, channels, support, and settings in one professional system.
               </div>
             </div>
           </div>
@@ -679,23 +817,50 @@ export default function LandingPage() {
             }}
           >
             <div style={channelCardStyle()}>
-              <div style={{ color: "var(--text)", fontWeight: 900, fontSize: 22 }}>Web Portal</div>
-              <div style={{ marginTop: 12, color: "var(--text-muted)", lineHeight: 1.75 }}>
-                The main management workspace for account access, AI questions, history, credits, billing, plans, help, and settings.
+              <div style={{ color: "var(--text)", fontWeight: 900, fontSize: 22 }}>
+                Web Portal
+              </div>
+              <div
+                style={{
+                  marginTop: 12,
+                  color: "var(--text-muted)",
+                  lineHeight: 1.75,
+                }}
+              >
+                The main management workspace for account access, AI questions,
+                history, credits, billing, plans, help, and settings.
               </div>
             </div>
 
             <div style={channelCardStyle()}>
-              <div style={{ color: "var(--text)", fontWeight: 900, fontSize: 22 }}>WhatsApp</div>
-              <div style={{ marginTop: 12, color: "var(--text-muted)", lineHeight: 1.75 }}>
-                Mobile-first access for users who prefer chat-based interaction while staying under the same account and usage model.
+              <div style={{ color: "var(--text)", fontWeight: 900, fontSize: 22 }}>
+                WhatsApp
+              </div>
+              <div
+                style={{
+                  marginTop: 12,
+                  color: "var(--text-muted)",
+                  lineHeight: 1.75,
+                }}
+              >
+                Mobile-first access for users who prefer chat-based interaction
+                while staying under the same account and usage model.
               </div>
             </div>
 
             <div style={channelCardStyle()}>
-              <div style={{ color: "var(--text)", fontWeight: 900, fontSize: 22 }}>Telegram</div>
-              <div style={{ marginTop: 12, color: "var(--text-muted)", lineHeight: 1.75 }}>
-                Flexible bot-based access for users who want another structured messaging path under the same product logic.
+              <div style={{ color: "var(--text)", fontWeight: 900, fontSize: 22 }}>
+                Telegram
+              </div>
+              <div
+                style={{
+                  marginTop: 12,
+                  color: "var(--text-muted)",
+                  lineHeight: 1.75,
+                }}
+              >
+                Flexible bot-based access for users who want another structured
+                messaging path under the same product logic.
               </div>
             </div>
           </div>
@@ -712,7 +877,7 @@ export default function LandingPage() {
             style={{
               marginTop: 22,
               display: "grid",
-              gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)",
+              gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))",
               gap: 18,
             }}
           >
@@ -748,7 +913,10 @@ export default function LandingPage() {
                   lineHeight: 1.85,
                 }}
               >
-                Naija Tax Guide is designed to provide guided tax support and structured user assistance. It is not presented as official government representation or a substitute for qualified professional escalation in highly sensitive or advanced cases.
+                Naija Tax Guide is designed to provide guided tax support and
+                structured user assistance. It is not presented as official
+                government representation or a substitute for qualified
+                professional escalation in highly sensitive or advanced cases.
               </div>
 
               <div
@@ -762,7 +930,9 @@ export default function LandingPage() {
                   lineHeight: 1.7,
                 }}
               >
-                This is exactly why the product can remain both useful and trustworthy: it aims for clarity and structure without pretending to be something it is not.
+                This is exactly why the product can remain both useful and
+                trustworthy: it aims for clarity and structure without pretending
+                to be something it is not.
               </div>
             </div>
           </div>
@@ -811,7 +981,9 @@ export default function LandingPage() {
                 marginInline: "auto",
               }}
             >
-              Enter a product designed to help users ask better questions, get clearer guidance, manage access professionally, and grow with confidence.
+              Enter a product designed to help users ask better questions, get
+              clearer guidance, manage access professionally, and grow with
+              confidence.
             </div>
 
             <div
@@ -823,11 +995,22 @@ export default function LandingPage() {
                 flexWrap: "wrap",
               }}
             >
-              <button onClick={handlePrimaryAction} style={primaryButton()}>
-                {checkingSession ? "Get Started" : hasSession ? "Continue to Dashboard" : "Get Started"}
+              <button
+                onClick={goToPrimary}
+                disabled={checkingSession}
+                aria-disabled={checkingSession}
+                style={primaryButton(checkingSession)}
+              >
+                {finalCtaPrimaryLabel}
               </button>
-              <button onClick={() => router.push(hasSession ? "/welcome" : "/login")} style={secondaryButton()}>
-                {checkingSession ? "Login to Workspace" : hasSession ? "Open Welcome Page" : "Login to Workspace"}
+
+              <button
+                onClick={() => router.push(hasSession ? "/welcome" : "/login")}
+                disabled={checkingSession}
+                aria-disabled={checkingSession}
+                style={secondaryButton(checkingSession)}
+              >
+                {finalCtaSecondaryLabel}
               </button>
             </div>
           </div>
