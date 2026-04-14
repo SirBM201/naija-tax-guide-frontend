@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { apiJson, isApiError } from "@/lib/api";
 import AppShell, {
@@ -211,6 +211,31 @@ function formatMinutesLabel(minutes: number | null) {
   return `Code expires in ${minutes} minutes.`;
 }
 
+function buttonStyleWithDisabledState(
+  baseStyle: React.CSSProperties,
+  disabled: boolean
+): React.CSSProperties {
+  if (!disabled) {
+    return {
+      ...baseStyle,
+      cursor: "pointer",
+      opacity: 1,
+    };
+  }
+
+  return {
+    ...baseStyle,
+    cursor: "not-allowed",
+    opacity: 1,
+    background: "#e5e7eb",
+    color: "#6b7280",
+    border: "1px solid #d1d5db",
+    boxShadow: "none",
+    filter: "grayscale(0.12)",
+    transform: "none",
+  };
+}
+
 function LinkCodePanel({
   provider,
   title,
@@ -357,7 +382,7 @@ function LinkCodePanel({
     if (provider === "tg") {
       return `Send this code to the Telegram bot immediately: ${state.code}`;
     }
-    return `Send this code to the WhatsApp channel immediately: ${state.code}`;
+    return `Send this code to the official WhatsApp linking chat immediately: ${state.code}`;
   }, [provider, state.code]);
 
   return (
@@ -424,23 +449,21 @@ function LinkCodePanel({
         <button
           onClick={handleGenerate}
           disabled={!canGenerate}
-          style={{
-            ...shellButtonPrimary(),
-            opacity: canGenerate ? 1 : 0.55,
-            cursor: canGenerate ? "pointer" : "not-allowed",
-          }}
+          aria-disabled={!canGenerate}
+          style={buttonStyleWithDisabledState(shellButtonPrimary(), !canGenerate)}
         >
-          {state.loading ? "Generating..." : `Generate ${title} Code`}
+          {state.loading
+            ? "Generating..."
+            : locked
+            ? `Generate ${title} Code Unavailable`
+            : `Generate ${title} Code`}
         </button>
 
         <button
           onClick={handleCopy}
           disabled={!hasCode}
-          style={{
-            ...shellButtonSecondary(),
-            opacity: hasCode ? 1 : 0.55,
-            cursor: hasCode ? "pointer" : "not-allowed",
-          }}
+          aria-disabled={!hasCode}
+          style={buttonStyleWithDisabledState(shellButtonSecondary(), !hasCode)}
         >
           Copy Code
         </button>
@@ -448,11 +471,8 @@ function LinkCodePanel({
         <button
           onClick={handleOpenLink}
           disabled={!hasLaunchUrl}
-          style={{
-            ...shellButtonSecondary(),
-            opacity: hasLaunchUrl ? 1 : 0.55,
-            cursor: hasLaunchUrl ? "pointer" : "not-allowed",
-          }}
+          aria-disabled={!hasLaunchUrl}
+          style={buttonStyleWithDisabledState(shellButtonSecondary(), !hasLaunchUrl)}
         >
           Open Link
         </button>
@@ -520,14 +540,20 @@ function UnlinkButton({
       });
 
       if (res?.ok) {
-        setMsg(res.unlinked ? `${title} unlinked successfully.` : `${title} is not currently linked.`);
+        setMsg(
+          res.unlinked
+            ? `${title} unlinked successfully.`
+            : `${title} is not currently linked.`
+        );
         await onDone();
       } else {
         setMsg(res?.error || "Could not unlink right now.");
       }
     } catch (error: unknown) {
       setMsg(
-        isApiError(error) ? error.message || "Could not unlink right now." : "Could not unlink right now."
+        isApiError(error)
+          ? error.message || "Could not unlink right now."
+          : "Could not unlink right now."
       );
     } finally {
       setBusy(false);
@@ -536,7 +562,12 @@ function UnlinkButton({
 
   return (
     <div style={{ display: "grid", gap: 8 }}>
-      <button onClick={handleUnlink} disabled={busy} style={shellButtonSecondary()}>
+      <button
+        onClick={handleUnlink}
+        disabled={busy}
+        aria-disabled={busy}
+        style={buttonStyleWithDisabledState(shellButtonSecondary(), busy)}
+      >
         {busy ? `Unlinking ${title}...` : `Unlink ${title}`}
       </button>
       {msg ? <div style={{ color: "var(--text-muted)", fontSize: 13 }}>{msg}</div> : null}
@@ -560,34 +591,35 @@ export default function ChannelsPage() {
   const [limitsData, setLimitsData] = useState<WorkspaceLimitsResponse | null>(null);
   const [limitsError, setLimitsError] = useState("");
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadLimits() {
-      try {
-        setLimitsError("");
-        const res = await apiJson<WorkspaceLimitsResponse>("/workspace/limits", {
-          method: "GET",
-          timeoutMs: 20000,
-          useAuthToken: false,
-        });
-        if (!cancelled) setLimitsData(res);
-      } catch (error) {
-        if (cancelled) return;
-        const message = isApiError(error)
-          ? error.message || "Unable to load channel entitlements."
-          : error instanceof Error
-          ? error.message || "Unable to load channel entitlements."
-          : "Unable to load channel entitlements.";
-        setLimitsError(message);
-      }
+  const loadLimits = useCallback(async () => {
+    try {
+      setLimitsError("");
+      const res = await apiJson<WorkspaceLimitsResponse>("/workspace/limits", {
+        method: "GET",
+        timeoutMs: 20000,
+        useAuthToken: false,
+      });
+      setLimitsData(res);
+    } catch (error: unknown) {
+      const message = isApiError(error)
+        ? error.message || "Unable to load channel entitlements."
+        : error instanceof Error
+        ? error.message || "Unable to load channel entitlements."
+        : "Unable to load channel entitlements.";
+      setLimitsError(message);
     }
-
-    void loadLimits();
-    return () => {
-      cancelled = true;
-    };
   }, []);
+
+  const refreshPage = useCallback(
+    async (message = "Refreshing channel status...") => {
+      await Promise.all([load(message), loadLimits()]);
+    },
+    [load, loadLimits]
+  );
+
+  useEffect(() => {
+    void loadLimits();
+  }, [loadLimits]);
 
   const whatsappLinked = truthyValue(
     channelLinks?.whatsapp_linked || channelLinks?.whatsapp?.linked
@@ -631,11 +663,20 @@ export default function ChannelsPage() {
     ""
   );
 
-  const planName = limitsData?.entitlements?.plan?.name || "Free";
-  const planFamily =
+  const planName = safeText(limitsData?.entitlements?.plan?.name || "Free", "Free");
+  const planFamily = safeText(
     limitsData?.entitlements?.plan_family ||
-    limitsData?.entitlements?.plan?.plan_family ||
-    "free";
+      limitsData?.entitlements?.plan?.plan_family ||
+      "free",
+    "free"
+  );
+
+  const normalizedPlanName = planName.toLowerCase();
+  const normalizedPlanFamily = planFamily.toLowerCase();
+  const isFreePlan =
+    normalizedPlanName === "free" ||
+    normalizedPlanFamily === "free" ||
+    normalizedPlanFamily === "starter-free";
 
   const maxTotalChannels = safeNumber(
     limitsData?.entitlements?.channel_limits?.max_total_channels,
@@ -666,7 +707,7 @@ export default function ChannelsPage() {
 
   const lockMessage =
     maxTotalChannels <= 0
-      ? "Your current plan does not allow channel linking yet. Upgrade to unlock channel connection."
+      ? "Your current plan does not allow channel linking yet. Upgrade your plan to unlock channel connection."
       : "All available channel slots are already in use. Unlink the currently connected channel or upgrade your plan before generating any new link code.";
 
   const topBanner = useMemo(() => {
@@ -683,7 +724,7 @@ export default function ChannelsPage() {
         tone: "warn" as const,
         title: "One channel is connected",
         subtitle:
-          "A supported messaging channel is already linked. Because your total channel capacity is now full, both link generators are locked until you unlink the current channel or upgrade your plan.",
+          "A supported messaging channel is already linked. Because your total channel capacity is now full, both link generators stay locked until you unlink the current channel or upgrade your plan.",
       };
     }
 
@@ -695,12 +736,66 @@ export default function ChannelsPage() {
     };
   }, [whatsappLinked, telegramLinked]);
 
+  const actionLimitBanner =
+    maxTotalChannels <= 0
+      ? {
+          title: "Channel linking is not available on this plan yet",
+          subtitle:
+            "Your current plan does not include any channel slots. Upgrade your plan to unlock channel connection.",
+        }
+      : {
+          title: "Channel capacity is currently full",
+          subtitle: (
+            <>
+              You are using <strong>{usedTotalChannels}</strong> of{" "}
+              <strong>{maxTotalChannels}</strong> allowed channel slot
+              {maxTotalChannels === 1 ? "" : "s"} on the <strong>{planName}</strong>.
+              Upgrade your plan to add more channels, or unlink an existing channel first.
+            </>
+          ),
+        };
+
+  const attentionBanner = !activeNow
+    ? isFreePlan
+      ? {
+          title: "Free plan limits are active",
+          subtitle:
+            "Your account can still view channel status, but some channel actions remain limited until you upgrade to a paid plan.",
+        }
+      : {
+          title: "Subscription attention needed",
+          subtitle:
+            "Your account can still view channel status, but some actions may remain limited until subscription access is active.",
+        }
+    : null;
+
+  const howItWorksSteps = channelsLockedOrFull
+    ? [
+        "1. Review your current channel entitlement and available slots above.",
+        "2. Unlink the currently connected channel or upgrade your plan first.",
+        "3. Once a slot becomes available, generate a fresh code for the channel you want to connect.",
+        "4. Copy the code or open the channel link directly on the messaging platform.",
+        "5. Return here and refresh the status when needed.",
+      ]
+    : [
+        "1. Review your current channel entitlement and available slots above.",
+        "2. Generate a fresh code for the channel you want to connect.",
+        "3. Copy the code or open the channel link directly.",
+        "4. Complete the step on the actual messaging platform.",
+        "5. Return here and refresh the status when needed.",
+      ];
+
   return (
     <AppShell
       title="Channels"
       subtitle="Link, verify, and manage your supported communication channels in one simple place."
       actions={
-        <button onClick={() => load("Refreshing channel status...")} style={shellButtonPrimary()}>
+        <button
+          onClick={() => void refreshPage()}
+          disabled={busy}
+          aria-disabled={busy}
+          style={buttonStyleWithDisabledState(shellButtonPrimary(), busy)}
+        >
           Refresh Status
         </button>
       }
@@ -729,13 +824,10 @@ export default function ChannelsPage() {
           >
             <div style={{ maxWidth: 820 }}>
               <div style={{ fontSize: 16, fontWeight: 900, color: "#9a3412" }}>
-                Channel capacity is currently full
+                {actionLimitBanner.title}
               </div>
               <div style={{ marginTop: 8, color: "#9a3412", lineHeight: 1.7 }}>
-                You are using <strong>{usedTotalChannels}</strong> of{" "}
-                <strong>{maxTotalChannels}</strong> allowed channel slot
-                {maxTotalChannels === 1 ? "" : "s"} on the <strong>{planName}</strong>.
-                Upgrade your plan to add more channels, or unlink an existing channel first.
+                {actionLimitBanner.subtitle}
               </div>
             </div>
 
@@ -805,11 +897,11 @@ export default function ChannelsPage() {
 
         <Banner tone={topBanner.tone} title={topBanner.title} subtitle={topBanner.subtitle} />
 
-        {!activeNow ? (
+        {attentionBanner ? (
           <Banner
             tone="warn"
-            title="Subscription attention needed"
-            subtitle="Your account can still view channel status, but some actions may remain limited until subscription access is active."
+            title={attentionBanner.title}
+            subtitle={attentionBanner.subtitle}
           />
         ) : null}
 
@@ -851,11 +943,27 @@ export default function ChannelsPage() {
               </div>
             </div>
 
-            <UnlinkButton
-              provider="wa"
-              title="WhatsApp"
-              onDone={() => load("Refreshing channel status...")}
-            />
+            {whatsappLinked ? (
+              <UnlinkButton
+                provider="wa"
+                title="WhatsApp"
+                onDone={() => refreshPage("Refreshing channel status...")}
+              />
+            ) : (
+              <div
+                style={{
+                  borderRadius: 14,
+                  border: "1px solid var(--border)",
+                  background: "var(--surface-muted, #f8fafc)",
+                  padding: 12,
+                  color: "var(--text-muted)",
+                  fontSize: 14,
+                  lineHeight: 1.6,
+                }}
+              >
+                No unlink action is needed because WhatsApp is not currently connected.
+              </div>
+            )}
           </div>
 
           <div style={channelCardStyle()}>
@@ -884,7 +992,7 @@ export default function ChannelsPage() {
             </div>
 
             <div style={itemStyle()}>
-              <div style={itemLabelStyle()}>Linked Username</div>
+              <div style={itemLabelStyle()}>Linked Account</div>
               <div style={itemValueStyle()}>{telegramValue}</div>
             </div>
 
@@ -895,11 +1003,27 @@ export default function ChannelsPage() {
               </div>
             </div>
 
-            <UnlinkButton
-              provider="tg"
-              title="Telegram"
-              onDone={() => load("Refreshing channel status...")}
-            />
+            {telegramLinked ? (
+              <UnlinkButton
+                provider="tg"
+                title="Telegram"
+                onDone={() => refreshPage("Refreshing channel status...")}
+              />
+            ) : (
+              <div
+                style={{
+                  borderRadius: 14,
+                  border: "1px solid var(--border)",
+                  background: "var(--surface-muted, #f8fafc)",
+                  padding: 12,
+                  color: "var(--text-muted)",
+                  fontSize: 14,
+                  lineHeight: 1.6,
+                }}
+              >
+                No unlink action is needed because Telegram is not currently connected.
+              </div>
+            )}
           </div>
         </CardsGrid>
 
@@ -907,7 +1031,7 @@ export default function ChannelsPage() {
           <LinkCodePanel
             provider="wa"
             title="WhatsApp"
-            description="Generate a temporary WhatsApp linking code for this logged-in workspace, then send that code into the connected WhatsApp channel."
+            description="Generate a temporary WhatsApp linking code for this logged-in workspace, then send that code to the official WhatsApp linking chat or open the WhatsApp link directly."
             accountId={accountId}
             busy={busy}
             locked={channelsLockedOrFull}
@@ -927,7 +1051,11 @@ export default function ChannelsPage() {
 
         <WorkspaceSectionCard
           title="How it works"
-          subtitle="Use this page only for checking status and completing channel linking."
+          subtitle={
+            channelsLockedOrFull
+              ? "A slot must become available before a new channel can be linked."
+              : "Use this page to check status and complete channel linking."
+          }
         >
           <div
             style={{
@@ -938,11 +1066,9 @@ export default function ChannelsPage() {
               lineHeight: 1.8,
             }}
           >
-            <div>1. Review your current channel entitlement and available slots above.</div>
-            <div>2. Generate a fresh code for the channel you want to connect.</div>
-            <div>3. Copy the code or open the channel link directly.</div>
-            <div>4. Complete the step on the actual messaging platform.</div>
-            <div>5. Return here and refresh the status when needed.</div>
+            {howItWorksSteps.map((step) => (
+              <div key={step}>{step}</div>
+            ))}
           </div>
         </WorkspaceSectionCard>
       </SectionStack>
