@@ -247,8 +247,6 @@ export default function DashboardPage() {
   const rawPlanFamily = safeText(
     limitsData?.entitlements?.plan_family ||
       limitsData?.entitlements?.plan?.plan_family ||
-      subscription?.plan_family ||
-      billing?.plan_family ||
       "",
     ""
   );
@@ -696,5 +694,3 @@ export default function DashboardPage() {
     </AppShell>
   );
 }
-
-
