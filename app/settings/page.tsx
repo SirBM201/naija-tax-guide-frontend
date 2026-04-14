@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import AppShell, {
   shellButtonPrimary,
@@ -38,6 +38,11 @@ function safeText(value: unknown, fallback = "—"): string {
   return text || fallback;
 }
 
+function safeNumber(value: unknown, fallback = 0): number {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : fallback;
+}
+
 function truthyValue(value: unknown): boolean {
   if (typeof value === "boolean") return value;
   if (typeof value === "number") return value > 0;
@@ -60,10 +65,7 @@ function defaultSettings(displayName: string, themeMode: ThemeMode): SettingsSta
   };
 }
 
-function readStoredSettings(
-  displayName: string,
-  themeMode: ThemeMode
-): SettingsState {
+function readStoredSettings(displayName: string, themeMode: ThemeMode): SettingsState {
   if (typeof window === "undefined") {
     return defaultSettings(displayName, themeMode);
   }
@@ -73,6 +75,7 @@ function readStoredSettings(
     if (!raw) return defaultSettings(displayName, themeMode);
 
     const parsed = JSON.parse(raw) as Partial<SettingsState>;
+
     return {
       ...defaultSettings(displayName, themeMode),
       ...parsed,
@@ -196,69 +199,120 @@ function toggleButtonStyle(active: boolean): React.CSSProperties {
   };
 }
 
+function actionButtonStyle(
+  baseStyle: React.CSSProperties,
+  disabled: boolean
+): React.CSSProperties {
+  if (!disabled) {
+    return {
+      ...baseStyle,
+      cursor: "pointer",
+      opacity: 1,
+    };
+  }
+
+  return {
+    ...baseStyle,
+    cursor: "not-allowed",
+    opacity: 1,
+    background: "#e5e7eb",
+    color: "#6b7280",
+    border: "1px solid #d1d5db",
+    boxShadow: "none",
+    filter: "grayscale(0.12)",
+    transform: "none",
+  };
+}
+
 export default function SettingsPage() {
   const router = useRouter();
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
   const { themeMode, resolvedMode, setThemeMode } = useSharedTheme();
-
   const { profile, subscription, billing, channelLinks, credits } = useWorkspaceState();
 
+  const profileData = (profile ?? {}) as Record<string, unknown>;
+  const subscriptionData = (subscription ?? {}) as Record<string, unknown>;
+  const billingData = (billing ?? {}) as Record<string, unknown>;
+  const channelLinksData = (channelLinks ?? {}) as Record<string, unknown>;
+  const creditsData = (credits ?? {}) as Record<string, unknown>;
+
   const visibleName = safeText(
-    (profile as any)?.full_name ||
-      (profile as any)?.display_name ||
-      (profile as any)?.first_name ||
-      "Workspace user"
+    profileData.full_name || profileData.display_name || profileData.first_name || "Workspace user"
   );
 
   const visibleEmail = safeText(
-    (profile as any)?.email || (billing as any)?.checkout_email || "Not visible"
+    profileData.email || billingData.checkout_email || user?.email || "Not visible"
   );
 
-  const planName = safeText(
-    (subscription as any)?.plan_name ||
-      (billing as any)?.plan_name ||
-      (subscription as any)?.plan_code ||
-      "No active plan"
+  const rawPlanName = safeText(
+    subscriptionData.plan_name ||
+      billingData.plan_name ||
+      subscriptionData.plan_code ||
+      billingData.plan_code ||
+      "",
+    ""
   );
 
-  const planStatus = safeText(
-    (subscription as any)?.status || (billing as any)?.status || "Unknown"
+  const rawPlanStatus = safeText(
+    subscriptionData.status || billingData.status || "",
+    ""
   );
+
+  const normalizedPlanName = rawPlanName.toLowerCase();
+  const normalizedPlanStatus = rawPlanStatus.toLowerCase();
+
+  const isFreeContext =
+    normalizedPlanName === "free" ||
+    normalizedPlanStatus === "free" ||
+    rawPlanName === "" ||
+    rawPlanName.toLowerCase() === "no active plan";
+
+  const planName = isFreeContext ? "Free plan" : rawPlanName;
+  const planStatus = isFreeContext ? "Available" : rawPlanStatus || "Active";
 
   const whatsappLinked = truthyValue(
-    (channelLinks as any)?.whatsapp_linked || (channelLinks as any)?.whatsapp?.linked
+    channelLinksData.whatsapp_linked ||
+      (channelLinksData.whatsapp as Record<string, unknown> | undefined)?.linked
   );
 
   const telegramLinked = truthyValue(
-    (channelLinks as any)?.telegram_linked || (channelLinks as any)?.telegram?.linked
+    channelLinksData.telegram_linked ||
+      (channelLinksData.telegram as Record<string, unknown> | undefined)?.linked
   );
 
   const channelState =
     whatsappLinked && telegramLinked
-      ? "WhatsApp + Telegram linked"
-      : whatsappLinked
-      ? "WhatsApp linked"
-      : telegramLinked
-      ? "Telegram linked"
+      ? "All linked"
+      : whatsappLinked || telegramLinked
+      ? "Partially linked"
       : "No linked channel";
+
+  const currentCredits = safeNumber(creditsData.balance, 0);
 
   const [settings, setSettings] = useState<SettingsState>(
     defaultSettings(visibleName, themeMode)
   );
+  const [lastSavedSettings, setLastSavedSettings] = useState<SettingsState | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [savedNotice, setSavedNotice] = useState("");
   const [errorNotice, setErrorNotice] = useState("");
 
+  const hasLoadedFromStorage = useRef(false);
+
   useEffect(() => {
+    if (hasLoadedFromStorage.current) return;
+
     const next = readStoredSettings(visibleName, themeMode);
     setSettings(next);
+    setLastSavedSettings(next);
     setThemeMode(next.themeMode);
     setLoaded(true);
+    hasLoadedFromStorage.current = true;
   }, [visibleName, themeMode, setThemeMode]);
 
   const themeSummary = useMemo(() => {
     if (settings.themeMode === "system") {
-      return resolvedMode === "light" ? "System (light now)" : "System (dark now)";
+      return resolvedMode === "light" ? "System default (light now)" : "System default (dark now)";
     }
     return settings.themeMode === "light" ? "Light mode" : "Dark mode";
   }, [settings.themeMode, resolvedMode]);
@@ -269,12 +323,14 @@ export default function SettingsPage() {
       settings.supportUpdates ? "Support" : null,
       settings.billingReminders ? "Billing" : null,
     ].filter(Boolean);
+
     return items.length ? items.join(", ") : "All disabled";
-  }, [
-    settings.emailNotifications,
-    settings.supportUpdates,
-    settings.billingReminders,
-  ]);
+  }, [settings.emailNotifications, settings.supportUpdates, settings.billingReminders]);
+
+  const hasChanges = useMemo(() => {
+    if (!lastSavedSettings) return false;
+    return JSON.stringify(settings) !== JSON.stringify(lastSavedSettings);
+  }, [settings, lastSavedSettings]);
 
   function updateField<K extends keyof SettingsState>(key: K, value: SettingsState[K]) {
     setSettings((prev) => ({ ...prev, [key]: value }));
@@ -293,9 +349,11 @@ export default function SettingsPage() {
         ...settings,
         displayName: safeText(settings.displayName, visibleName),
       };
+
       saveSettings(payload);
       setThemeMode(payload.themeMode);
       setSettings(payload);
+      setLastSavedSettings(payload);
       setSavedNotice(
         "Settings saved successfully. Theme and reminder preferences are now updated for this browser."
       );
@@ -308,9 +366,10 @@ export default function SettingsPage() {
 
   function onReset() {
     try {
-      const next = defaultSettings(visibleName, "dark");
+      const next = defaultSettings(visibleName, "system");
       saveSettings(next);
       setSettings(next);
+      setLastSavedSettings(next);
       setThemeMode(next.themeMode);
       setSavedNotice("Settings reset to default values.");
       setErrorNotice("");
@@ -344,10 +403,23 @@ export default function SettingsPage() {
       subtitle="Adjust your visible workspace preferences such as profile details, appearance mode, default channel behavior, and communication settings."
       actions={
         <>
-          <button type="button" onClick={onSave} style={shellButtonPrimary()}>
+          <button
+            type="button"
+            onClick={onSave}
+            disabled={!hasChanges}
+            aria-disabled={!hasChanges}
+            style={actionButtonStyle(shellButtonPrimary(), !hasChanges)}
+          >
             Save Changes
           </button>
-          <button type="button" onClick={onReset} style={shellButtonSecondary()}>
+
+          <button
+            type="button"
+            onClick={onReset}
+            disabled={!hasChanges}
+            aria-disabled={!hasChanges}
+            style={actionButtonStyle(shellButtonSecondary(), !hasChanges)}
+          >
             Reset Defaults
           </button>
         </>
@@ -464,7 +536,7 @@ export default function SettingsPage() {
                 <div style={{ color: "var(--text)", lineHeight: 1.85, fontSize: 15 }}>
                   <div>Email: {visibleEmail}</div>
                   <div>Current Plan: {planName}</div>
-                  <div>Visible Credits: {Number((credits as any)?.balance ?? 0)}</div>
+                  <div>Visible Credits: {currentCredits}</div>
                 </div>
               </div>
             </div>
@@ -622,15 +694,30 @@ export default function SettingsPage() {
           subtitle="Use these actions when you want to navigate safely or leave the workspace."
         >
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-            <button type="button" onClick={() => router.push("/profile")} style={shellButtonSecondary()}>
-              Open Profile
+            <button
+              type="button"
+              onClick={() => router.push("/workspace")}
+              style={shellButtonSecondary()}
+            >
+              Open Workspace
             </button>
-            <button type="button" onClick={() => router.push("/support")} style={shellButtonSecondary()}>
+
+            <button
+              type="button"
+              onClick={() => router.push("/support")}
+              style={shellButtonSecondary()}
+            >
               Open Support
             </button>
-            <button type="button" onClick={() => router.push("/channels")} style={shellButtonSecondary()}>
+
+            <button
+              type="button"
+              onClick={() => router.push("/channels")}
+              style={shellButtonSecondary()}
+            >
               Open Channels
             </button>
+
             <button type="button" onClick={onLogout} style={shellButtonPrimary()}>
               Logout
             </button>
