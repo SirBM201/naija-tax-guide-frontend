@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import AppShell, {
   shellButtonPrimary,
@@ -20,6 +20,11 @@ function safeText(value: unknown, fallback = "—"): string {
       ? ""
       : String(value).trim();
   return text || fallback;
+}
+
+function safeNumber(value: unknown, fallback = 0): number {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : fallback;
 }
 
 function truthyValue(value: unknown): boolean {
@@ -100,67 +105,112 @@ function actionRowStyle(): React.CSSProperties {
   };
 }
 
+function buttonStyleWithDisabledState(
+  baseStyle: React.CSSProperties,
+  disabled: boolean
+): React.CSSProperties {
+  if (!disabled) {
+    return {
+      ...baseStyle,
+      cursor: "pointer",
+      opacity: 1,
+    };
+  }
+
+  return {
+    ...baseStyle,
+    cursor: "not-allowed",
+    opacity: 1,
+    background: "#e5e7eb",
+    color: "#6b7280",
+    border: "1px solid #d1d5db",
+    boxShadow: "none",
+    filter: "grayscale(0.12)",
+    transform: "none",
+  };
+}
+
 export default function ProfilePage() {
   const router = useRouter();
   const { user, hasSession, authReady, logout } = useAuth();
-
-  const {
-    profile,
-    subscription,
-    billing,
-    credits,
-    channelLinks,
-  } = useWorkspaceState();
+  const { profile, subscription, billing, credits, channelLinks } = useWorkspaceState();
 
   const [loggingOut, setLoggingOut] = useState(false);
   const [logoutNotice, setLogoutNotice] = useState("");
 
+  const profileData = (profile ?? {}) as Record<string, unknown>;
+  const subscriptionData = (subscription ?? {}) as Record<string, unknown>;
+  const billingData = (billing ?? {}) as Record<string, unknown>;
+  const creditsData = (credits ?? {}) as Record<string, unknown>;
+  const channelLinksData = (channelLinks ?? {}) as Record<string, unknown>;
+  const userData = (user ?? {}) as Record<string, unknown>;
+
   const accountEmail = safeText(
-    profile?.email || user?.email || billing?.checkout_email || "Not currently available"
+    profileData.email || userData.email || billingData.checkout_email || "Not currently available"
   );
 
   const accountName = safeText(
-    profile?.full_name ||
-      profile?.display_name ||
-      profile?.first_name ||
+    profileData.full_name ||
+      profileData.display_name ||
+      profileData.first_name ||
       "Workspace user"
   );
 
   const accountId = safeText(
-    profile?.account_id || profile?.id || user?.account_id || "Not currently available"
+    profileData.account_id || profileData.id || userData.account_id || "Not currently available"
   );
 
-  const planName = safeText(
-    subscription?.plan_name ||
-      billing?.plan_name ||
-      subscription?.plan_code ||
-      billing?.plan_code ||
-      "No active plan"
+  const rawPlanName = safeText(
+    subscriptionData.plan_name ||
+      billingData.plan_name ||
+      subscriptionData.plan_code ||
+      billingData.plan_code ||
+      "",
+    ""
   );
 
-  const planStatus = safeText(subscription?.status || billing?.status || "Unknown");
-  const creditBalance = Number(credits?.balance ?? 0);
+  const rawPlanStatus = safeText(
+    subscriptionData.status || billingData.status || "",
+    ""
+  );
+
+  const normalizedPlanName = rawPlanName.toLowerCase();
+  const normalizedPlanStatus = rawPlanStatus.toLowerCase();
+
+  const isFreeContext =
+    normalizedPlanName === "free" ||
+    normalizedPlanName === "no active plan" ||
+    normalizedPlanName === "" ||
+    normalizedPlanStatus === "free" ||
+    normalizedPlanStatus === "none" ||
+    normalizedPlanStatus === "";
+
+  const planName = isFreeContext ? "Free plan" : rawPlanName;
+  const planStatus = isFreeContext ? "Available" : rawPlanStatus || "Active";
+
+  const creditBalance = safeNumber(creditsData.balance, 0);
 
   const whatsappLinked = truthyValue(
-    channelLinks?.whatsapp_linked || channelLinks?.whatsapp?.linked
+    channelLinksData.whatsapp_linked ||
+      (channelLinksData.whatsapp as Record<string, unknown> | undefined)?.linked
   );
+
   const telegramLinked = truthyValue(
-    channelLinks?.telegram_linked || channelLinks?.telegram?.linked
+    channelLinksData.telegram_linked ||
+      (channelLinksData.telegram as Record<string, unknown> | undefined)?.linked
   );
 
   const channelState = useMemo(() => {
-    if (whatsappLinked && telegramLinked) return "WhatsApp + Telegram linked";
-    if (whatsappLinked) return "WhatsApp linked";
-    if (telegramLinked) return "Telegram linked";
+    if (whatsappLinked && telegramLinked) return "All linked";
+    if (whatsappLinked || telegramLinked) return "Partially linked";
     return "No linked channel";
   }, [whatsappLinked, telegramLinked]);
 
-  useEffect(() => {
-    if (!authReady) return;
-    if (!hasSession) {
-      setLogoutNotice("");
-    }
-  }, [authReady, hasSession]);
+  const channelHelper = useMemo(() => {
+    return `WhatsApp: ${whatsappLinked ? "Linked" : "Not linked"} • Telegram: ${
+      telegramLinked ? "Linked" : "Not linked"
+    }`;
+  }, [whatsappLinked, telegramLinked]);
 
   async function handleLogout() {
     setLoggingOut(true);
@@ -168,7 +218,7 @@ export default function ProfilePage() {
 
     try {
       await logout();
-      setLogoutNotice("You have been logged out successfully.");
+      setLogoutNotice("You have been logged out successfully. Redirecting to login...");
       setTimeout(() => {
         router.replace("/login");
       }, 250);
@@ -219,11 +269,7 @@ export default function ProfilePage() {
         )}
 
         {logoutNotice ? (
-          <Banner
-            tone="default"
-            title="Account update"
-            subtitle={logoutNotice}
-          />
+          <Banner tone="default" title="Account update" subtitle={logoutNotice} />
         ) : null}
 
         <WorkspaceSectionCard
@@ -320,9 +366,7 @@ export default function ProfilePage() {
             <div style={infoCardStyle()}>
               <p style={labelStyle()}>Linked Channels</p>
               <p style={valueStyle()}>{channelState}</p>
-              <p style={helperStyle()}>
-                Visible WhatsApp and Telegram linking state for this account.
-              </p>
+              <p style={helperStyle()}>{channelHelper}</p>
             </div>
           </div>
         </WorkspaceSectionCard>
@@ -333,20 +377,21 @@ export default function ProfilePage() {
         >
           <div style={actionRowStyle()}>
             {!hasSession ? (
-              <button
-                onClick={() => router.push("/login")}
-                style={shellButtonPrimary()}
-              >
+              <button onClick={() => router.push("/login")} style={shellButtonPrimary()}>
                 Go to Login
               </button>
             ) : (
-              <button
-                onClick={() => router.push("/billing")}
-                style={shellButtonPrimary()}
-              >
+              <button onClick={() => router.push("/billing")} style={shellButtonPrimary()}>
                 Open Billing
               </button>
             )}
+
+            <button
+              onClick={() => router.push("/channels")}
+              style={shellButtonSecondary()}
+            >
+              Open Channels
+            </button>
 
             <button
               onClick={() => router.push("/privacy")}
@@ -365,12 +410,14 @@ export default function ProfilePage() {
             <button
               onClick={handleLogout}
               disabled={loggingOut || !hasSession}
-              style={{
-                ...shellButtonSecondary(),
-                opacity: loggingOut || !hasSession ? 0.7 : 1,
-                cursor: loggingOut || !hasSession ? "not-allowed" : "pointer",
-                border: "1px solid rgba(220,38,38,0.28)",
-              }}
+              aria-disabled={loggingOut || !hasSession}
+              style={buttonStyleWithDisabledState(
+                {
+                  ...shellButtonSecondary(),
+                  border: "1px solid rgba(220,38,38,0.28)",
+                },
+                loggingOut || !hasSession
+              )}
             >
               {loggingOut ? "Logging out..." : "Logout"}
             </button>
