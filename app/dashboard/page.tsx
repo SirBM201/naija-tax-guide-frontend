@@ -281,9 +281,7 @@ export default function DashboardPage() {
     return rawPlanStatus || "Not active";
   }, [activeNow, isFreePlan, rawPlanStatus]);
 
-  const creditBalance = safeNumber(
-    credits?.balance ?? credits?.available ?? billing?.credit_balance
-  );
+  const creditBalance = safeNumber(credits?.balance);
 
   const monthlyAiUsed = safeNumber(
     usage?.used_this_month ||
@@ -311,7 +309,7 @@ export default function DashboardPage() {
 
   const expiresAt = safeText(subscription?.expires_at || billing?.expires_at || "", "");
   const billingEmail = safeText(
-    billing?.checkout_email || billing?.email || profile?.email || user?.email || "Not shown"
+    billing?.checkout_email || profile?.email || user?.email || "Not shown"
   );
   const pendingPlanCode = safeText(
     billing?.pending_plan_code || subscription?.pending_plan_code || "",
