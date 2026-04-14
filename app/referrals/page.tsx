@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import AppShell, {
   shellButtonPrimary,
   shellButtonSecondary,
@@ -243,26 +243,53 @@ function inputStyle(): React.CSSProperties {
   };
 }
 
-function textareaStyle(): React.CSSProperties {
-  return {
-    width: "100%",
-    minHeight: 96,
-    border: "1px solid var(--border)",
-    borderRadius: 14,
-    background: "var(--surface)",
-    color: "var(--text)",
-    padding: "14px",
-    outline: "none",
-    resize: "vertical",
-    fontFamily: "inherit",
-  };
-}
-
 function labelStyle(): React.CSSProperties {
   return {
     fontSize: 13,
     fontWeight: 800,
     color: "var(--text-muted)",
+  };
+}
+
+function valueStyle(): React.CSSProperties {
+  return {
+    fontSize: 24,
+    fontWeight: 900,
+    color: "var(--text)",
+  };
+}
+
+function twoColumnGridStyle(): React.CSSProperties {
+  return {
+    display: "grid",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gap: 20,
+    alignItems: "start",
+  };
+}
+
+function buttonStyleWithDisabledState(
+  baseStyle: React.CSSProperties,
+  disabled: boolean
+): React.CSSProperties {
+  if (!disabled) {
+    return {
+      ...baseStyle,
+      cursor: "pointer",
+      opacity: 1,
+    };
+  }
+
+  return {
+    ...baseStyle,
+    cursor: "not-allowed",
+    opacity: 1,
+    background: "#e5e7eb",
+    color: "#6b7280",
+    border: "1px solid #d1d5db",
+    boxShadow: "none",
+    filter: "grayscale(0.12)",
+    transform: "none",
   };
 }
 
@@ -350,93 +377,110 @@ export default function ReferralsPage() {
   const [accountNumberMasked, setAccountNumberMasked] = useState("");
   const [recipientCode, setRecipientCode] = useState("");
   const [currencyInput, setCurrencyInput] = useState("NGN");
-  const [isVerified, setIsVerified] = useState(true);
+  const [isVerified, setIsVerified] = useState(false);
 
   const [payoutAmount, setPayoutAmount] = useState("");
   const [payoutProviderReference, setPayoutProviderReference] = useState("");
   const [payoutTransferCode, setPayoutTransferCode] = useState("");
 
-  async function loadAll(showRefreshState = false) {
-    if (!requireAuth()) return;
+  const loadAll = useCallback(
+    async (showRefreshState = false) => {
+      if (!requireAuth()) return;
 
-    if (showRefreshState) setRefreshing(true);
-    else setLoading(true);
+      if (showRefreshState) setRefreshing(true);
+      else setLoading(true);
 
-    setErrorText("");
+      setErrorText("");
 
-    try {
-      const [me, history, rewards, payouts] = await Promise.all([
-        apiJson<ReferralMeResponse>("/referrals/me", {
-          method: "GET",
-          useAuthToken: false,
-          timeoutMs: 15000,
-        }),
-        apiJson<ReferralHistoryResponse>("/referrals/history", {
-          method: "GET",
-          query: { limit: 20 },
-          useAuthToken: false,
-          timeoutMs: 15000,
-        }),
-        apiJson<ReferralRewardsResponse>("/referrals/rewards", {
-          method: "GET",
-          query: { limit: 20 },
-          useAuthToken: false,
-          timeoutMs: 15000,
-        }),
-        apiJson<ReferralPayoutsResponse>("/referrals/payouts", {
-          method: "GET",
-          query: { limit: 20 },
-          useAuthToken: false,
-          timeoutMs: 15000,
-        }),
-      ]);
+      try {
+        const [me, history, rewards, payouts] = await Promise.all([
+          apiJson<ReferralMeResponse>("/referrals/me", {
+            method: "GET",
+            useAuthToken: false,
+            timeoutMs: 15000,
+          }),
+          apiJson<ReferralHistoryResponse>("/referrals/history", {
+            method: "GET",
+            query: { limit: 20 },
+            useAuthToken: false,
+            timeoutMs: 15000,
+          }),
+          apiJson<ReferralRewardsResponse>("/referrals/rewards", {
+            method: "GET",
+            query: { limit: 20 },
+            useAuthToken: false,
+            timeoutMs: 15000,
+          }),
+          apiJson<ReferralPayoutsResponse>("/referrals/payouts", {
+            method: "GET",
+            query: { limit: 20 },
+            useAuthToken: false,
+            timeoutMs: 15000,
+          }),
+        ]);
 
-      setMeData(me);
-      setHistoryData(history);
-      setRewardsData(rewards);
-      setPayoutsData(payouts);
+        setMeData(me);
+        setHistoryData(history);
+        setRewardsData(rewards);
+        setPayoutsData(payouts);
 
-      const payoutAccount = me?.payout_account || me?.payout_eligibility?.payout_account;
-      if (payoutAccount) {
-        setProvider(safeText(payoutAccount.provider, "paystack"));
-        setBankCode(safeText(payoutAccount.bank_code, ""));
-        setBankName(safeText(payoutAccount.bank_name, ""));
-        setAccountName(safeText(payoutAccount.account_name, ""));
-        setAccountNumberMasked(safeText(payoutAccount.account_number_masked, ""));
-        setRecipientCode(safeText(payoutAccount.recipient_code, ""));
-        setCurrencyInput(safeText(payoutAccount.currency, "NGN"));
-        setIsVerified(Boolean(payoutAccount.is_verified));
+        const loadedPayoutAccount =
+          me?.payout_account || me?.payout_eligibility?.payout_account || null;
+
+        if (loadedPayoutAccount) {
+          setProvider(safeText(loadedPayoutAccount.provider, "paystack"));
+          setBankCode(safeText(loadedPayoutAccount.bank_code, ""));
+          setBankName(safeText(loadedPayoutAccount.bank_name, ""));
+          setAccountName(safeText(loadedPayoutAccount.account_name, ""));
+          setAccountNumber("");
+          setAccountNumberMasked(safeText(loadedPayoutAccount.account_number_masked, ""));
+          setRecipientCode(safeText(loadedPayoutAccount.recipient_code, ""));
+          setCurrencyInput(safeText(loadedPayoutAccount.currency, "NGN"));
+          setIsVerified(Boolean(loadedPayoutAccount.is_verified));
+        } else {
+          setProvider("paystack");
+          setBankCode("");
+          setBankName("");
+          setAccountName("");
+          setAccountNumber("");
+          setAccountNumberMasked("");
+          setRecipientCode("");
+          setCurrencyInput("NGN");
+          setIsVerified(false);
+        }
+      } catch (e: unknown) {
+        if (isApiError(e)) {
+          setErrorText(
+            safeText(
+              e.data?.error || e.data?.root_cause || e.message,
+              "Could not load referral data."
+            )
+          );
+        } else if (e instanceof Error) {
+          setErrorText(e.message);
+        } else {
+          setErrorText("Could not load referral data.");
+        }
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
       }
-    } catch (e: unknown) {
-      if (isApiError(e)) {
-        setErrorText(
-          safeText(
-            e.data?.error || e.data?.root_cause || e.message,
-            "Could not load referral data."
-          )
-        );
-      } else if (e instanceof Error) {
-        setErrorText(e.message);
-      } else {
-        setErrorText("Could not load referral data.");
-      }
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }
+    },
+    [requireAuth]
+  );
 
   useEffect(() => {
     if (!authReady) return;
     void loadAll(false);
-  }, [authReady]);
+  }, [authReady, loadAll]);
 
   const profile = meData?.summary?.profile || meData?.profile || null;
   const totals = meData?.summary?.totals || {};
   const recentReferrals = historyData?.rows || meData?.summary?.recent_referrals || [];
   const recentRewards = rewardsData?.rows || meData?.summary?.recent_rewards || [];
   const recentPayouts = payoutsData?.rows || meData?.summary?.recent_payouts || [];
-  const payoutAccount = meData?.payout_account || meData?.payout_eligibility?.payout_account || null;
+  const payoutAccount =
+    meData?.payout_account || meData?.payout_eligibility?.payout_account || null;
   const eligibility = meData?.payout_eligibility || null;
 
   const referralCode = safeText(profile?.referral_code, "—");
@@ -480,6 +524,43 @@ export default function ReferralsPage() {
     [currency, totals]
   );
 
+  const requestPayoutBlockReason = useMemo(() => {
+    if (!eligibility) {
+      return "Payout eligibility is not available yet.";
+    }
+
+    if (!eligibility.has_payout_account && !payoutAccount) {
+      return "Save a payout account first.";
+    }
+
+    if (eligibility.requires_verified_account && !eligibility.is_verified) {
+      return "Verify the payout account before requesting a payout.";
+    }
+
+    if (safeNumber(eligibility.open_payout_count, 0) > 0) {
+      return "You already have a pending or processing payout request.";
+    }
+
+    if (safeNumber(eligibility.available_amount, 0) <= 0) {
+      return "No approved referral balance is available for payout.";
+    }
+
+    if (!eligibility.minimum_reached) {
+      return `Minimum payout is ${formatMoney(eligibility.minimum_amount, currency)}.`;
+    }
+
+    if (!eligibility.eligible) {
+      return "Payout is not currently eligible.";
+    }
+
+    return "";
+  }, [currency, eligibility, payoutAccount]);
+
+  const savePayoutAccountDisabled =
+    savingAccount || !provider.trim() || !currencyInput.trim();
+
+  const requestPayoutDisabled = requestingPayout || Boolean(requestPayoutBlockReason);
+
   async function handleSavePayoutAccount() {
     if (!requireAuth()) return;
 
@@ -511,18 +592,23 @@ export default function ReferralsPage() {
       setNotice({
         tone: "good",
         title: "Payout account saved",
-        subtitle: `Provider: ${safeText(response?.payout_account?.provider, "paystack")} • Verified: ${
-          response?.payout_account?.is_verified ? "Yes" : "No"
-        }`,
+        subtitle: `Provider: ${safeText(
+          response?.payout_account?.provider,
+          "paystack"
+        )} • Verified: ${response?.payout_account?.is_verified ? "Yes" : "No"}`,
       });
 
+      setAccountNumber("");
       await loadAll(true);
     } catch (e: unknown) {
       if (isApiError(e)) {
         setNotice({
           tone: "danger",
           title: "Could not save payout account",
-          subtitle: safeText(e.data?.root_cause || e.data?.error || e.message, "Unknown error"),
+          subtitle: safeText(
+            e.data?.root_cause || e.data?.error || e.message,
+            "Unknown error"
+          ),
         });
       } else if (e instanceof Error) {
         setNotice({
@@ -544,6 +630,14 @@ export default function ReferralsPage() {
 
   async function handleRequestPayout() {
     if (!requireAuth()) return;
+    if (requestPayoutBlockReason) {
+      setNotice({
+        tone: "warn",
+        title: "Payout is not ready",
+        subtitle: requestPayoutBlockReason,
+      });
+      return;
+    }
 
     setRequestingPayout(true);
     setNotice(null);
@@ -572,7 +666,10 @@ export default function ReferralsPage() {
       setNotice({
         tone: "good",
         title: "Payout request submitted",
-        subtitle: `A new payout row was created with status ${safeText(response?.payout?.status, "pending")}.`,
+        subtitle: `A new payout row was created with status ${safeText(
+          response?.payout?.status,
+          "pending"
+        )}.`,
       });
 
       setPayoutAmount("");
@@ -585,7 +682,10 @@ export default function ReferralsPage() {
         setNotice({
           tone: "danger",
           title: "Could not request payout",
-          subtitle: safeText(e.data?.root_cause || e.data?.error || e.message, "Unknown error"),
+          subtitle: safeText(
+            e.data?.root_cause || e.data?.error || e.message,
+            "Unknown error"
+          ),
         });
       } else if (e instanceof Error) {
         setNotice({
@@ -613,40 +713,42 @@ export default function ReferralsPage() {
         <>
           <button
             type="button"
-            style={shellButtonPrimary()}
             onClick={() => void loadAll(true)}
+            disabled={refreshing}
+            aria-disabled={refreshing}
+            style={buttonStyleWithDisabledState(shellButtonPrimary(), refreshing)}
           >
             {refreshing ? "Refreshing..." : "Refresh"}
           </button>
 
           <button
             type="button"
-            style={shellButtonSecondary()}
             onClick={() => void copyText(referralCode, "Referral code")}
+            style={shellButtonSecondary()}
           >
             Copy Code
           </button>
 
           <button
             type="button"
-            style={shellButtonSecondary()}
             onClick={() => void copyText(referralLink, "Referral link")}
+            style={shellButtonSecondary()}
           >
             Copy Link
           </button>
 
           <button
             type="button"
-            style={shellButtonSecondary()}
             onClick={() => openWhatsAppShare(inviteMessage)}
+            style={shellButtonSecondary()}
           >
             Share WhatsApp
           </button>
 
           <button
             type="button"
-            style={shellButtonSecondary()}
             onClick={() => openTelegramShare(inviteMessage)}
+            style={shellButtonSecondary()}
           >
             Share Telegram
           </button>
@@ -670,7 +772,8 @@ export default function ReferralsPage() {
           <div style={cardStyle()}>
             <div style={sectionTitleStyle()}>Loading referral workspace...</div>
             <div style={mutedStyle()}>
-              Please wait while your referral profile, counts, rewards, payout account, and payout eligibility are being loaded.
+              Please wait while your referral profile, counts, rewards, payout
+              account, and payout eligibility are being loaded.
             </div>
           </div>
         ) : null}
@@ -680,25 +783,20 @@ export default function ReferralsPage() {
             <div style={sectionTitleStyle()}>Referral page could not load</div>
             <div style={{ ...mutedStyle(), color: "#fca5a5" }}>{errorText}</div>
             <div style={mutedStyle()}>
-              The backend referral routes are already in place. Any remaining issue should now be limited to response data or environment wiring.
+              The backend referral routes are already in place. Any remaining
+              issue should now be limited to response data or environment wiring.
             </div>
           </div>
         ) : null}
 
         {!loading && !errorText ? (
           <>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "minmax(0, 1.15fr) minmax(280px, 0.85fr)",
-                gap: 20,
-                alignItems: "start",
-              }}
-            >
+            <div style={twoColumnGridStyle()}>
               <div style={cardStyle()}>
                 <div style={sectionTitleStyle()}>Your referral profile</div>
                 <div style={mutedStyle()}>
-                  Share your referral code or invite link to bring new users into Naija Tax Guide.
+                  Share your referral code or invite link to bring new users into
+                  Naija Tax Guide.
                 </div>
 
                 <div style={{ display: "grid", gap: 12 }}>
@@ -748,13 +846,17 @@ export default function ReferralsPage() {
                   Quick view of totals, reward balances, and payout readiness.
                 </div>
 
-                <div style={{ display: "grid", gap: 12 }}>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                    gap: 12,
+                  }}
+                >
                   {statItems.map((item) => (
                     <div key={item.label} style={statCardStyle()}>
                       <div style={labelStyle()}>{item.label}</div>
-                      <div style={{ fontSize: 24, fontWeight: 900, color: "var(--text)" }}>
-                        {item.value}
-                      </div>
+                      <div style={valueStyle()}>{item.value}</div>
                       <div style={mutedStyle()}>{item.helper}</div>
                     </div>
                   ))}
@@ -762,34 +864,30 @@ export default function ReferralsPage() {
               </div>
             </div>
 
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                gap: 20,
-                alignItems: "start",
-              }}
-            >
+            <div style={twoColumnGridStyle()}>
               <div style={cardStyle()}>
                 <div style={sectionTitleStyle()}>Payout account</div>
                 <div style={mutedStyle()}>
-                  Save the payout destination details the backend will use when creating your payout requests.
+                  Save the payout destination details the backend will use when
+                  creating your payout requests.
                 </div>
 
                 <div style={statCardStyle()}>
                   <div style={labelStyle()}>Current saved payout account</div>
                   <div style={mutedStyle()}>
-                    Provider: {safeText(payoutAccount?.provider, "None")} • Bank: {safeText(payoutAccount?.bank_name, "None")}
+                    Provider: {safeText(payoutAccount?.provider, "None")} • Bank:{" "}
+                    {safeText(payoutAccount?.bank_name, "None")}
                   </div>
                   <div style={mutedStyle()}>
                     Account Name: {safeText(payoutAccount?.account_name, "None")}
                   </div>
                   <div style={mutedStyle()}>
-                    Account Number: {safeText(payoutAccount?.account_number_masked, "None")}
+                    Account Number:{" "}
+                    {safeText(payoutAccount?.account_number_masked, "None")}
                   </div>
                   <div style={mutedStyle()}>
-                    Recipient Code: {safeText(payoutAccount?.recipient_code, "None")} • Verified:{" "}
-                    {payoutAccount?.is_verified ? "Yes" : "No"}
+                    Recipient Code: {safeText(payoutAccount?.recipient_code, "None")} •
+                    Verified: {payoutAccount?.is_verified ? " Yes" : " No"}
                   </div>
                 </div>
 
@@ -900,8 +998,13 @@ export default function ReferralsPage() {
                   <div>
                     <button
                       type="button"
-                      style={shellButtonPrimary()}
                       onClick={() => void handleSavePayoutAccount()}
+                      disabled={savePayoutAccountDisabled}
+                      aria-disabled={savePayoutAccountDisabled}
+                      style={buttonStyleWithDisabledState(
+                        shellButtonPrimary(),
+                        savePayoutAccountDisabled
+                      )}
                     >
                       {savingAccount ? "Saving..." : "Save Payout Account"}
                     </button>
@@ -912,13 +1015,15 @@ export default function ReferralsPage() {
               <div style={cardStyle()}>
                 <div style={sectionTitleStyle()}>Payout eligibility and request</div>
                 <div style={mutedStyle()}>
-                  Check whether your approved reward balance is currently eligible for payout, then create a payout request.
+                  Check whether your approved reward balance is currently eligible
+                  for payout, then create a payout request.
                 </div>
 
                 <div style={statCardStyle()}>
                   <div style={labelStyle()}>Eligibility snapshot</div>
                   <div style={mutedStyle()}>
-                    Eligible: {eligibility?.eligible ? "Yes" : "No"} • Verified account: {eligibility?.is_verified ? "Yes" : "No"}
+                    Eligible: {eligibility?.eligible ? "Yes" : "No"} • Verified
+                    account: {eligibility?.is_verified ? "Yes" : "No"}
                   </div>
                   <div style={mutedStyle()}>
                     Available amount: {formatMoney(eligibility?.available_amount, currency)}
@@ -927,7 +1032,8 @@ export default function ReferralsPage() {
                     Minimum amount: {formatMoney(eligibility?.minimum_amount, currency)}
                   </div>
                   <div style={mutedStyle()}>
-                    Open payout amount: {formatMoney(eligibility?.open_payout_amount, currency)}
+                    Open payout amount:{" "}
+                    {formatMoney(eligibility?.open_payout_amount, currency)}
                   </div>
                 </div>
 
@@ -962,11 +1068,29 @@ export default function ReferralsPage() {
                     />
                   </div>
 
+                  {requestPayoutBlockReason ? (
+                    <div
+                      style={{
+                        ...statCardStyle(),
+                        border: "1px solid rgba(245,158,11,0.25)",
+                        background: "rgba(245,158,11,0.08)",
+                      }}
+                    >
+                      <div style={labelStyle()}>Request status</div>
+                      <div style={mutedStyle()}>{requestPayoutBlockReason}</div>
+                    </div>
+                  ) : null}
+
                   <div>
                     <button
                       type="button"
-                      style={shellButtonPrimary()}
                       onClick={() => void handleRequestPayout()}
+                      disabled={requestPayoutDisabled}
+                      aria-disabled={requestPayoutDisabled}
+                      style={buttonStyleWithDisabledState(
+                        shellButtonPrimary(),
+                        requestPayoutDisabled
+                      )}
                     >
                       {requestingPayout ? "Submitting..." : "Request Payout"}
                     </button>
@@ -1002,14 +1126,7 @@ export default function ReferralsPage() {
               )}
             </div>
 
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                gap: 20,
-                alignItems: "start",
-              }}
-            >
+            <div style={twoColumnGridStyle()}>
               <div style={cardStyle()}>
                 <div style={sectionTitleStyle()}>Recent rewards</div>
                 <div style={mutedStyle()}>
@@ -1023,7 +1140,8 @@ export default function ReferralsPage() {
                     {recentRewards.map((row, rowIndex) => (
                       <div key={String(row.id || rowIndex)} style={statCardStyle()}>
                         <div style={{ fontWeight: 800, color: "var(--text)" }}>
-                          {safeText(row.reward_type)} — {currency} {safeText(row.reward_amount, "0")}
+                          {safeText(row.reward_type)} — {currency}{" "}
+                          {safeText(row.reward_amount, "0")}
                         </div>
                         <div style={mutedStyle()}>
                           Status: {safeText(row.status)} • Plan: {safeText(row.plan_code)}
@@ -1053,11 +1171,18 @@ export default function ReferralsPage() {
                           {currency} {safeText(row.amount, "0")}
                         </div>
                         <div style={mutedStyle()}>
-                          Status: {safeText(row.status)} • Provider: {safeText(row.provider)}
+                          Status: {safeText(row.status)} • Provider:{" "}
+                          {safeText(row.provider)}
                         </div>
                         <div style={mutedStyle()}>
-                          Reference: {safeText(row.provider_reference, "None")} • Transfer code: {safeText(row.provider_transfer_code, "None")}
+                          Reference: {safeText(row.provider_reference, "None")} •
+                          Transfer code: {safeText(row.provider_transfer_code, "None")}
                         </div>
+                        {row.failure_reason ? (
+                          <div style={mutedStyle()}>
+                            Failure: {safeText(row.failure_reason)}
+                          </div>
+                        ) : null}
                         <div style={mutedStyle()}>
                           Created: {formatDate(row.requested_at || row.created_at)}
                         </div>
