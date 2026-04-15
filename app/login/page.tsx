@@ -1,222 +1,308 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { apiJson, isApiError } from "@/lib/api";
+import React, { Suspense, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 
-type NoticeTone = "default" | "good" | "warn" | "danger";
+type ThemeChoice = "dark" | "light" | "system";
+type SearchParamsLike = { get(name: string): string | null };
 
-const BRAND_LOGO_SRC = "/logo.png";
+const BRAND_NAME = "Naija Tax Guide";
+const BRAND_TAGLINE = "From Deep Roots, We Soar.";
+const THEME_STORAGE_KEY = "ntg-theme-preference";
 
-function safeText(value: unknown, fallback = "") {
-  if (value === null || value === undefined) return fallback;
-  const text = String(value).trim();
-  return text || fallback;
+const BRAND_LOGO_CANDIDATES = [
+  "/logo.png",
+  "/logo.jpg",
+  "/logo.jpeg",
+  "/ntg-logo.png",
+  "/ntg-logo.jpg",
+  "/images/logo.png",
+  "/images/logo.jpg",
+  "/brand/logo.png",
+];
+
+function sanitizePath(value: string | null | undefined, fallback: string) {
+  if (!value) return fallback;
+  const trimmed = value.trim();
+
+  if (!trimmed.startsWith("/")) return fallback;
+  if (trimmed.startsWith("//")) return fallback;
+
+  return trimmed;
 }
 
-function normalizePath(value: string, fallback: string) {
-  const raw = safeText(value, "");
-  if (!raw) return fallback;
-  return raw.startsWith("/") ? raw : `/${raw}`;
+function getSystemResolvedTheme(): "dark" | "light" {
+  if (typeof window === "undefined") return "light";
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
-function looksLikeEmail(value: string) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+function resolveTheme(choice: ThemeChoice): "dark" | "light" {
+  return choice === "system" ? getSystemResolvedTheme() : choice;
 }
 
-function extractFriendlyError(error: unknown, fallback: string) {
-  if (isApiError(error)) {
-    const data = (error as { data?: Record<string, unknown>; message?: string }).data || {};
-    const rawError = safeText(data.error, "").toLowerCase();
-    const rawMessage = safeText(data.message, "").toLowerCase();
-
-    if (rawError.includes("expired") || rawMessage.includes("expired")) {
-      return "This one-time code has expired. Request a new code and try again.";
-    }
-
-    if (rawError.includes("invalid") || rawMessage.includes("invalid")) {
-      return "The one-time code is not valid. Check the code and try again.";
-    }
-
-    if (rawError.includes("rate") || rawMessage.includes("too many")) {
-      return "Too many attempts were made. Please wait a little and try again.";
-    }
-
-    return fallback;
-  }
-
-  return fallback;
-}
-
-export default function LoginPage() {
-  const router = useRouter();
-
-  const [theme, setTheme] = useState<"dark" | "light" | "system">("system");
+function AuthLogo() {
+  const [logoIndex, setLogoIndex] = useState(0);
   const [logoBroken, setLogoBroken] = useState(false);
 
+  const logoSrc =
+    BRAND_LOGO_CANDIDATES[Math.min(logoIndex, BRAND_LOGO_CANDIDATES.length - 1)];
+
+  function handleLogoError() {
+    if (logoIndex < BRAND_LOGO_CANDIDATES.length - 1) {
+      setLogoIndex((prev) => prev + 1);
+      return;
+    }
+    setLogoBroken(true);
+  }
+
+  return (
+    <div className="logoBox">
+      {!logoBroken ? (
+        <img
+          key={logoSrc}
+          src={logoSrc}
+          alt={BRAND_NAME}
+          className="logoImage"
+          onError={handleLogoError}
+        />
+      ) : (
+        <div className="logoFallback">NTG</div>
+      )}
+    </div>
+  );
+}
+
+function LoginPageContent({ searchParams }: { searchParams?: SearchParamsLike }) {
+  const router = useRouter();
+
+  const nextPath = useMemo(
+    () => sanitizePath(searchParams?.get("next"), "/dashboard"),
+    [searchParams]
+  );
+
+  const signupHref = useMemo(() => {
+    if (!nextPath || nextPath === "/dashboard") return "/signup";
+    return `/signup?next=${encodeURIComponent(nextPath)}`;
+  }, [nextPath]);
+
+  const [themeChoice, setThemeChoice] = useState<ThemeChoice>("system");
+  const [resolvedTheme, setResolvedTheme] = useState<"dark" | "light">("light");
+
   const [email, setEmail] = useState("");
-  const [otpCode, setOtpCode] = useState("");
-  const [redirectTo, setRedirectTo] = useState("/profile");
+  const [otp, setOtp] = useState("");
 
   const [sendingOtp, setSendingOtp] = useState(false);
   const [verifyingOtp, setVerifyingOtp] = useState(false);
 
-  const [noticeTone, setNoticeTone] = useState<NoticeTone>("default");
-  const [noticeText, setNoticeText] = useState(
+  const [bannerTone, setBannerTone] = useState<"neutral" | "success" | "danger">("neutral");
+  const [bannerText, setBannerText] = useState(
     "Sign in securely with your email address and one-time code to continue to your workspace."
   );
 
   useEffect(() => {
     const saved =
-      safeText(window.localStorage.getItem("ntg-theme")) ||
-      safeText(window.localStorage.getItem("naija-tax-guide-theme")) ||
-      safeText(window.localStorage.getItem("theme")) ||
-      "system";
+      typeof window !== "undefined"
+        ? (window.localStorage.getItem(THEME_STORAGE_KEY) as ThemeChoice | null)
+        : null;
 
-    if (saved === "dark" || saved === "light" || saved === "system") {
-      setTheme(saved);
+    const initialChoice: ThemeChoice =
+      saved === "dark" || saved === "light" || saved === "system" ? saved : "system";
+
+    const apply = (choice: ThemeChoice) => {
+      const resolved = resolveTheme(choice);
+      setThemeChoice(choice);
+      setResolvedTheme(resolved);
+
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(THEME_STORAGE_KEY, choice);
+      }
+
+      if (typeof document !== "undefined") {
+        document.documentElement.setAttribute("data-theme", resolved);
+      }
+    };
+
+    apply(initialChoice);
+
+    if (typeof window === "undefined") return;
+
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const handleChange = () => {
+      if (themeChoice === "system") {
+        const resolved = getSystemResolvedTheme();
+        setResolvedTheme(resolved);
+        document.documentElement.setAttribute("data-theme", resolved);
+      }
+    };
+
+    if (typeof media.addEventListener === "function") {
+      media.addEventListener("change", handleChange);
+      return () => media.removeEventListener("change", handleChange);
     }
 
-    const params = new URLSearchParams(window.location.search);
-    const detectedRedirect =
-      params.get("redirect") ||
-      params.get("next") ||
-      params.get("continue") ||
-      params.get("continueTo") ||
-      "/profile";
+    media.addListener(handleChange);
+    return () => media.removeListener(handleChange);
+  }, [themeChoice]);
 
-    setRedirectTo(normalizePath(detectedRedirect, "/profile"));
-  }, []);
+  function applyTheme(choice: ThemeChoice) {
+    const resolved = resolveTheme(choice);
+    setThemeChoice(choice);
+    setResolvedTheme(resolved);
 
-  useEffect(() => {
-    const root = document.documentElement;
-    const resolved =
-      theme === "system"
-        ? window.matchMedia("(prefers-color-scheme: dark)").matches
-          ? "dark"
-          : "light"
-        : theme;
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(THEME_STORAGE_KEY, choice);
+    }
 
-    root.dataset.theme = resolved;
-    window.localStorage.setItem("ntg-theme", theme);
-    window.localStorage.setItem("naija-tax-guide-theme", theme);
-    window.localStorage.setItem("theme", theme);
-  }, [theme]);
+    if (typeof document !== "undefined") {
+      document.documentElement.setAttribute("data-theme", resolved);
+    }
+  }
+
+  async function parseJson(response: Response) {
+    try {
+      return await response.json();
+    } catch {
+      return {};
+    }
+  }
 
   async function handleSendOtp() {
-    const cleanEmail = email.trim().toLowerCase();
+    const trimmedEmail = email.trim().toLowerCase();
 
-    if (!looksLikeEmail(cleanEmail)) {
-      setNoticeTone("warn");
-      setNoticeText("Enter a valid email address before requesting a one-time code.");
+    if (!trimmedEmail) {
+      setBannerTone("danger");
+      setBannerText("Enter your email address first.");
       return;
     }
 
     setSendingOtp(true);
+    setBannerTone("neutral");
+    setBannerText("Sending your one-time code...");
 
     try {
-      await apiJson("/web/auth/request-otp", {
+      const response = await fetch("/api/web/auth/request-otp", {
         method: "POST",
-        useAuthToken: false,
-        timeoutMs: 15000,
-        body: {
-          email: cleanEmail,
-          purpose: "login",
-          flow: "login",
-          channel: "web",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
         },
+        body: JSON.stringify({
+          email: trimmedEmail,
+        }),
       });
 
-      setNoticeTone("good");
-      setNoticeText("OTP sent successfully. Check your email inbox and enter the code below.");
-    } catch (error: unknown) {
-      setNoticeTone("danger");
-      setNoticeText(
-        extractFriendlyError(
-          error,
-          "We could not send the one-time code right now. Please try again shortly."
-        )
-      );
+      const data = await parseJson(response);
+
+      if (!response.ok || data?.ok === false) {
+        throw new Error();
+      }
+
+      setBannerTone("success");
+      setBannerText("OTP sent successfully. Check your email inbox and enter the code below.");
+    } catch {
+      setBannerTone("danger");
+      setBannerText("We could not send the one-time code right now. Please try again.");
     } finally {
       setSendingOtp(false);
     }
   }
 
   async function handleVerifyOtp() {
-    const cleanEmail = email.trim().toLowerCase();
-    const cleanOtp = otpCode.trim();
+    const trimmedEmail = email.trim().toLowerCase();
+    const trimmedOtp = otp.trim();
 
-    if (!looksLikeEmail(cleanEmail)) {
-      setNoticeTone("warn");
-      setNoticeText("Enter a valid email address before continuing.");
-      return;
-    }
-
-    if (!cleanOtp) {
-      setNoticeTone("warn");
-      setNoticeText("Enter the one-time code that was sent to your email.");
+    if (!trimmedEmail || !trimmedOtp) {
+      setBannerTone("danger");
+      setBannerText("Enter both your email address and the one-time code.");
       return;
     }
 
     setVerifyingOtp(true);
+    setBannerTone("neutral");
+    setBannerText("Verifying your code...");
 
     try {
-      const response = await apiJson<{ redirect_to?: string }>("/web/auth/verify-otp", {
+      const response = await fetch("/api/web/auth/verify-otp", {
         method: "POST",
-        useAuthToken: false,
-        timeoutMs: 15000,
-        body: {
-          email: cleanEmail,
-          purpose: "login",
-          flow: "login",
-          code: cleanOtp,
-          otp: cleanOtp,
-          otp_code: cleanOtp,
-          redirect_to: redirectTo,
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
         },
+        body: JSON.stringify({
+          email: trimmedEmail,
+          otp: trimmedOtp,
+        }),
       });
 
-      const finalRedirect = normalizePath(
-        safeText(response?.redirect_to, redirectTo),
-        redirectTo
+      const data = await parseJson(response);
+
+      if (!response.ok || data?.ok === false) {
+        throw new Error();
+      }
+
+      const destination = sanitizePath(
+        typeof data?.redirect_to === "string" ? data.redirect_to : nextPath,
+        "/dashboard"
       );
 
-      router.replace(finalRedirect);
-      router.refresh();
-    } catch (error: unknown) {
-      setNoticeTone("danger");
-      setNoticeText(
-        extractFriendlyError(
-          error,
-          "We could not complete sign-in right now. Request a fresh code and try again."
-        )
-      );
+      setBannerTone("success");
+      setBannerText("Sign-in successful. Opening your workspace...");
+      router.replace(destination);
+    } catch {
+      setBannerTone("danger");
+      setBannerText("We could not verify that code. Check the code and try again.");
     } finally {
       setVerifyingOtp(false);
     }
   }
 
-  return (
-    <div className="auth-page">
-      <div className="auth-shell">
-        <div className="auth-content">
-          <div className="hero">
-            <div className="logo-box">
-              {!logoBroken ? (
-                <img
-                  src={BRAND_LOGO_SRC}
-                  alt="Naija Tax Guide"
-                  className="logo-image"
-                  onError={() => setLogoBroken(true)}
-                />
-              ) : (
-                <div className="logo-fallback">NTG</div>
-              )}
-            </div>
+  const themeVars =
+    resolvedTheme === "dark"
+      ? {
+          "--page-bg": "#07101f",
+          "--surface": "#0d1830",
+          "--surface-soft": "#101d39",
+          "--surface-muted": "#0b1730",
+          "--border": "rgba(148, 163, 184, 0.22)",
+          "--text": "#f8fafc",
+          "--text-muted": "#cbd5e1",
+          "--accent": "#818cf8",
+          "--accent-strong": "#6366f1",
+          "--accent-soft": "rgba(129, 140, 248, 0.14)",
+          "--success-bg": "rgba(34, 197, 94, 0.10)",
+          "--success-border": "rgba(34, 197, 94, 0.22)",
+          "--danger-bg": "rgba(239, 68, 68, 0.12)",
+          "--danger-border": "rgba(239, 68, 68, 0.24)",
+          "--shadow": "0 18px 50px rgba(2, 6, 23, 0.36)",
+        }
+      : {
+          "--page-bg": "#eef2f7",
+          "--surface": "#ffffff",
+          "--surface-soft": "#f8fafc",
+          "--surface-muted": "#f5f7fb",
+          "--border": "rgba(15, 23, 42, 0.10)",
+          "--text": "#0f172a",
+          "--text-muted": "#475569",
+          "--accent": "#818cf8",
+          "--accent-strong": "#6366f1",
+          "--accent-soft": "rgba(129, 140, 248, 0.10)",
+          "--success-bg": "rgba(34, 197, 94, 0.08)",
+          "--success-border": "rgba(34, 197, 94, 0.20)",
+          "--danger-bg": "rgba(239, 68, 68, 0.08)",
+          "--danger-border": "rgba(239, 68, 68, 0.18)",
+          "--shadow": "0 18px 50px rgba(15, 23, 42, 0.08)",
+        };
 
-            <div className="hero-copy">
+  return (
+    <div className="pageRoot" style={themeVars as React.CSSProperties}>
+      <div className="shell">
+        <div className="heroCard">
+          <div className="heroTop">
+            <AuthLogo />
+
+            <div className="heroText">
               <h1>Welcome Back</h1>
-              <div className="eyebrow">Naija Tax Guide Sign In</div>
+              <div className="brandLine">{BRAND_NAME} Sign In</div>
               <p>
                 Sign in securely with your email address and one-time code to continue to your
                 workspace.
@@ -224,123 +310,125 @@ export default function LoginPage() {
             </div>
           </div>
 
-          <div className="theme-row">
+          <div className="buttonRow">
             <button
               type="button"
-              className={`theme-btn ${theme === "dark" ? "active" : ""}`}
-              onClick={() => setTheme("dark")}
+              className={`themeButton ${themeChoice === "dark" ? "active" : ""}`}
+              onClick={() => applyTheme("dark")}
             >
               Dark
             </button>
             <button
               type="button"
-              className={`theme-btn ${theme === "light" ? "active" : ""}`}
-              onClick={() => setTheme("light")}
+              className={`themeButton ${themeChoice === "light" ? "active" : ""}`}
+              onClick={() => applyTheme("light")}
             >
               Light
             </button>
             <button
               type="button"
-              className={`theme-btn ${theme === "system" ? "active" : ""}`}
-              onClick={() => setTheme("system")}
+              className={`themeButton ${themeChoice === "system" ? "active" : ""}`}
+              onClick={() => applyTheme("system")}
             >
               System
             </button>
           </div>
 
-          <div className="top-actions">
+          <div className="buttonRow">
             <button
               type="button"
-              className="btn btn-primary"
-              onClick={() => router.push("/signup")}
+              className="primaryAction"
+              onClick={() => router.push(signupHref)}
             >
               New here? Create account
             </button>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={() => router.push("/welcome")}
-            >
+
+            <button type="button" className="secondaryAction" onClick={() => router.push("/")}>
               Open Welcome Page
             </button>
           </div>
 
-          <div className={`notice notice-${noticeTone}`}>{noticeText}</div>
+          <div
+            className={`banner ${
+              bannerTone === "success"
+                ? "success"
+                : bannerTone === "danger"
+                ? "danger"
+                : "neutral"
+            }`}
+          >
+            {bannerText}
+          </div>
 
-          <div className="main-grid">
-            <div className="card form-card">
-              <div className="field-group">
-                <label>Email Address</label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Email address"
-                  autoComplete="email"
-                />
-              </div>
+          <div className="contentGrid">
+            <div className="mainCard">
+              <label className="fieldLabel">Email Address</label>
+              <input
+                type="email"
+                value={email}
+                autoComplete="email"
+                placeholder="Email address"
+                className="input"
+                onChange={(e) => setEmail(e.target.value)}
+              />
 
-              <div className="field-actions">
+              <div className="inlineButtons">
                 <button
                   type="button"
-                  className="btn btn-secondary"
-                  onClick={() => void handleSendOtp()}
-                  disabled={sendingOtp || verifyingOtp}
+                  className="smallAction"
+                  onClick={handleSendOtp}
+                  disabled={sendingOtp}
                 >
                   {sendingOtp ? "Sending..." : "Send OTP"}
                 </button>
               </div>
 
-              <div className="field-group">
-                <label>OTP Code</label>
-                <input
-                  type="text"
-                  value={otpCode}
-                  onChange={(e) => setOtpCode(e.target.value)}
-                  placeholder="OTP code"
-                  autoComplete="one-time-code"
-                  inputMode="numeric"
-                />
-              </div>
+              <label className="fieldLabel">OTP Code</label>
+              <input
+                type="text"
+                value={otp}
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                placeholder="OTP code"
+                className="input"
+                onChange={(e) => setOtp(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    void handleVerifyOtp();
+                  }
+                }}
+              />
 
-              <div className="field-actions">
+              <div className="inlineButtons">
                 <button
                   type="button"
-                  className="btn btn-primary"
-                  onClick={() => void handleVerifyOtp()}
-                  disabled={sendingOtp || verifyingOtp}
+                  className="smallAction"
+                  onClick={handleVerifyOtp}
+                  disabled={verifyingOtp}
                 >
                   {verifyingOtp ? "Verifying..." : "Verify OTP"}
                 </button>
               </div>
             </div>
 
-            <div className="side-stack">
-              <div className="card info-card">
+            <div className="sideStack">
+              <div className="infoCard">
                 <h3>New user?</h3>
                 <p>Go to the separate sign-up page to start account creation properly.</p>
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  onClick={() => router.push("/signup")}
-                >
+                <button type="button" className="fullAction" onClick={() => router.push(signupHref)}>
                   Open Sign Up
                 </button>
               </div>
 
-              <div className="card info-card">
+              <div className="infoCard">
                 <h3>Referral handling</h3>
                 <p>Sign-in preserves access flow, but only sign-up should apply a referral code.</p>
               </div>
 
-              <div className="card info-card">
+              <div className="infoCard">
                 <h3>Need help?</h3>
                 <p>If sign-in fails after a proper attempt, use Support and try again after a short wait.</p>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => router.push("/support")}
-                >
+                <button type="button" className="fullAction" onClick={() => router.push("/support")}>
                   Open Support
                 </button>
               </div>
@@ -350,288 +438,340 @@ export default function LoginPage() {
       </div>
 
       <style jsx>{`
-        .auth-page {
+        .pageRoot {
           min-height: 100vh;
-          background: var(--page-bg, #f4f6fb);
-          padding: 20px 14px 36px;
+          background: var(--page-bg);
+          padding: 32px 16px;
+          color: var(--text);
         }
 
-        .auth-shell {
+        .shell {
           width: 100%;
-          max-width: 1180px;
+          max-width: 1280px;
           margin: 0 auto;
-          background: var(--panel-bg, #ffffff);
-          border: 1px solid var(--border, #d9deea);
-          border-radius: 34px;
-          box-shadow: 0 12px 40px rgba(15, 23, 42, 0.05);
-          overflow: hidden;
         }
 
-        .auth-content {
-          padding: 26px;
+        .heroCard {
+          background: var(--surface);
+          border: 1px solid var(--border);
+          border-radius: 32px;
+          box-shadow: var(--shadow);
+          padding: 36px;
           display: grid;
-          gap: 20px;
+          gap: 24px;
         }
 
-        .hero {
+        .heroTop {
           display: grid;
           grid-template-columns: auto minmax(0, 1fr);
-          gap: 22px;
+          gap: 28px;
           align-items: start;
         }
 
-        .logo-box {
-          width: 108px;
-          height: 108px;
-          border-radius: 26px;
+        .logoBox {
+          width: 132px;
+          height: 132px;
+          border-radius: 28px;
           overflow: hidden;
-          border: 1px solid var(--border, #d9deea);
-          background: var(--surface, #ffffff);
-          display: grid;
-          place-items: center;
+          border: 1px solid var(--border);
+          background: var(--surface-soft);
           flex-shrink: 0;
         }
 
-        .logo-image {
+        .logoImage {
           width: 100%;
           height: 100%;
           object-fit: cover;
+          display: block;
         }
 
-        .logo-fallback {
-          font-size: 24px;
-          font-weight: 900;
-          color: var(--text, #0f172a);
-        }
-
-        .hero-copy {
-          min-width: 0;
+        .logoFallback {
+          width: 100%;
+          height: 100%;
           display: grid;
-          gap: 10px;
-        }
-
-        .hero-copy h1 {
-          margin: 0;
-          font-size: clamp(48px, 7vw, 74px);
-          line-height: 0.95;
-          letter-spacing: -1.3px;
-          color: var(--text, #0f172a);
-          word-break: break-word;
-        }
-
-        .eyebrow {
+          place-items: center;
           font-size: 24px;
           font-weight: 900;
-          color: var(--brand-accent, #a85b1f);
+          color: var(--text);
+          background: var(--surface);
         }
 
-        .hero-copy p {
+        .heroText h1 {
           margin: 0;
-          color: var(--text-muted, #5e687b);
-          font-size: 18px;
-          line-height: 1.75;
-          max-width: 820px;
+          font-size: clamp(48px, 8vw, 92px);
+          line-height: 0.95;
+          letter-spacing: -0.04em;
+          font-weight: 950;
         }
 
-        .theme-row,
-        .top-actions,
-        .field-actions {
+        .brandLine {
+          margin-top: 10px;
+          font-size: clamp(20px, 2.7vw, 28px);
+          font-weight: 900;
+          color: #b2692e;
+        }
+
+        .heroText p {
+          margin: 18px 0 0;
+          max-width: 880px;
+          color: var(--text-muted);
+          font-size: clamp(20px, 2.2vw, 22px);
+          line-height: 1.55;
+        }
+
+        .buttonRow {
           display: flex;
           flex-wrap: wrap;
-          gap: 12px;
+          gap: 14px;
         }
 
-        .theme-btn,
-        .btn {
-          min-height: 54px;
-          padding: 0 20px;
-          border-radius: 18px;
-          font-size: 16px;
+        .themeButton,
+        .primaryAction,
+        .secondaryAction,
+        .smallAction,
+        .fullAction {
+          border-radius: 20px;
+          border: 1px solid var(--border);
           font-weight: 900;
           cursor: pointer;
-          transition: 0.2s ease;
+          transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease;
         }
 
-        .theme-btn {
-          border: 1px solid var(--border, #d9deea);
-          background: var(--surface, #ffffff);
-          color: var(--text, #0f172a);
+        .themeButton:hover,
+        .primaryAction:hover,
+        .secondaryAction:hover,
+        .smallAction:hover,
+        .fullAction:hover {
+          transform: translateY(-1px);
         }
 
-        .theme-btn.active {
-          border-color: var(--accent-border, #c7c9ff);
-          background: var(--accent-soft, #eef0ff);
+        .themeButton {
+          min-height: 64px;
+          padding: 0 24px;
+          background: var(--surface-soft);
+          color: var(--text);
+          font-size: 18px;
         }
 
-        .btn {
-          border: 1px solid var(--border-strong, #ccd2e2);
-          background: var(--button-bg, #f5f7fb);
-          color: var(--text, #0f172a);
+        .themeButton.active {
+          background: var(--accent-soft);
+          border-color: rgba(129, 140, 248, 0.35);
         }
 
-        .btn-primary {
-          border-color: var(--accent-border, #c7c9ff);
-          background: var(--button-bg-strong, #eef0ff);
+        .primaryAction {
+          min-height: 72px;
+          padding: 0 24px;
+          background: var(--accent-soft);
+          color: var(--text);
+          font-size: 20px;
         }
 
-        .btn:disabled {
-          opacity: 0.72;
-          cursor: not-allowed;
+        .secondaryAction {
+          min-height: 72px;
+          padding: 0 24px;
+          background: var(--surface-soft);
+          color: var(--text);
+          font-size: 20px;
         }
 
-        .notice {
+        .banner {
           border-radius: 22px;
-          padding: 18px 20px;
-          border: 1px solid var(--border, #d9deea);
-          background: var(--surface-soft, #f8f9fd);
-          color: var(--text, #0f172a);
-          font-size: 17px;
-          line-height: 1.7;
-          word-break: break-word;
+          border: 1px solid var(--border);
+          background: var(--surface-soft);
+          padding: 22px 24px;
+          font-size: 18px;
+          line-height: 1.55;
         }
 
-        .notice-good {
-          background: var(--success-bg, rgba(34, 197, 94, 0.08));
-          border-color: var(--success-border, rgba(34, 197, 94, 0.22));
+        .banner.success {
+          background: var(--success-bg);
+          border-color: var(--success-border);
         }
 
-        .notice-warn {
-          background: var(--warn-bg, rgba(245, 158, 11, 0.08));
-          border-color: var(--warn-border, rgba(245, 158, 11, 0.22));
+        .banner.danger {
+          background: var(--danger-bg);
+          border-color: var(--danger-border);
         }
 
-        .notice-danger {
-          background: var(--danger-bg, rgba(239, 68, 68, 0.08));
-          border-color: var(--danger-border, rgba(239, 68, 68, 0.22));
-        }
-
-        .main-grid {
+        .contentGrid {
           display: grid;
-          grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.95fr);
+          grid-template-columns: minmax(0, 1.2fr) minmax(300px, 0.8fr);
           gap: 20px;
           align-items: start;
         }
 
-        .card {
+        .mainCard,
+        .infoCard {
+          background: var(--surface);
+          border: 1px solid var(--border);
           border-radius: 26px;
-          border: 1px solid var(--border, #d9deea);
-          background: var(--surface, #ffffff);
-          padding: 22px;
-          min-width: 0;
+          padding: 28px;
         }
 
-        .form-card {
+        .sideStack {
           display: grid;
-          gap: 18px;
+          gap: 20px;
         }
 
-        .field-group {
-          display: grid;
-          gap: 8px;
-        }
-
-        .field-group label {
-          color: var(--text, #0f172a);
-          font-size: 16px;
+        .fieldLabel {
+          display: block;
+          margin-bottom: 12px;
+          font-size: 18px;
           font-weight: 900;
+          color: var(--text);
         }
 
-        .field-group input {
+        .input {
           width: 100%;
-          min-height: 58px;
-          border-radius: 18px;
-          border: 1px solid var(--border-strong, #ccd2e2);
-          background: var(--surface, #ffffff);
-          color: var(--text, #0f172a);
-          padding: 0 18px;
+          min-height: 72px;
+          border-radius: 20px;
+          border: 1px solid var(--border);
+          background: var(--surface-soft);
+          color: var(--text);
+          padding: 0 22px;
           font-size: 18px;
           outline: none;
-          box-sizing: border-box;
         }
 
-        .side-stack {
-          display: grid;
-          gap: 16px;
-          min-width: 0;
+        .input::placeholder {
+          color: var(--text-muted);
         }
 
-        .info-card {
-          display: grid;
+        .inlineButtons {
+          display: flex;
+          flex-wrap: wrap;
           gap: 12px;
+          margin: 20px 0 28px;
         }
 
-        .info-card h3 {
-          margin: 0;
-          color: var(--text, #0f172a);
+        .smallAction {
+          min-height: 64px;
+          padding: 0 26px;
+          background: var(--accent-soft);
+          color: var(--text);
           font-size: 18px;
-          font-weight: 900;
         }
 
-        .info-card p {
+        .smallAction:disabled,
+        .fullAction:disabled {
+          opacity: 0.7;
+          cursor: not-allowed;
+          transform: none;
+        }
+
+        .infoCard h3 {
+          margin: 0 0 12px;
+          font-size: 22px;
+          font-weight: 950;
+        }
+
+        .infoCard p {
           margin: 0;
-          color: var(--text-muted, #5e687b);
-          font-size: 16px;
-          line-height: 1.7;
+          color: var(--text-muted);
+          font-size: 18px;
+          line-height: 1.6;
         }
 
-        @media (max-width: 960px) {
-          .main-grid {
+        .fullAction {
+          width: 100%;
+          min-height: 66px;
+          margin-top: 18px;
+          padding: 0 20px;
+          background: var(--accent-soft);
+          color: var(--text);
+          font-size: 18px;
+        }
+
+        @media (max-width: 980px) {
+          .contentGrid {
             grid-template-columns: 1fr;
           }
         }
 
-        @media (max-width: 720px) {
-          .auth-content {
-            padding: 18px;
-            gap: 16px;
+        @media (max-width: 780px) {
+          .pageRoot {
+            padding: 16px 10px;
           }
 
-          .hero {
+          .heroCard {
+            padding: 20px;
+            border-radius: 24px;
+          }
+
+          .heroTop {
             grid-template-columns: 1fr;
-            gap: 16px;
+            gap: 18px;
           }
 
-          .logo-box {
-            width: 88px;
-            height: 88px;
+          .logoBox {
+            width: 96px;
+            height: 96px;
+            border-radius: 22px;
           }
 
-          .eyebrow {
-            font-size: 20px;
+          .heroText h1 {
+            font-size: clamp(40px, 14vw, 64px);
           }
 
-          .hero-copy p {
+          .brandLine {
+            font-size: 18px;
+          }
+
+          .heroText p {
             font-size: 16px;
           }
 
-          .theme-row,
-          .top-actions,
-          .field-actions {
+          .themeButton,
+          .primaryAction,
+          .secondaryAction,
+          .smallAction,
+          .fullAction {
+            width: 100%;
+          }
+
+          .buttonRow {
             display: grid;
             grid-template-columns: 1fr;
           }
 
-          .theme-btn,
-          .btn {
-            width: 100%;
-          }
-
-          .card {
-            padding: 18px;
+          .mainCard,
+          .infoCard {
+            padding: 20px;
             border-radius: 22px;
           }
 
-          .field-group input {
-            min-height: 54px;
-            font-size: 17px;
+          .input {
+            min-height: 64px;
+            font-size: 16px;
           }
 
-          .notice {
+          .fieldLabel {
             font-size: 16px;
-            padding: 16px 18px;
+          }
+
+          .infoCard h3 {
+            font-size: 20px;
+          }
+
+          .infoCard p,
+          .banner {
+            font-size: 16px;
           }
         }
       `}</style>
     </div>
+  );
+}
+
+function LoginSearchPage() {
+  const searchParams = useSearchParams();
+  return <LoginPageContent searchParams={searchParams} />;
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<LoginPageContent />}>
+      <LoginSearchPage />
+    </Suspense>
   );
 }
