@@ -72,7 +72,7 @@ function AuthLogo() {
   );
 }
 
-function LoginPageContent({ searchParams }: { searchParams?: SearchParamsLike }) {
+function SignupPageContent({ searchParams }: { searchParams?: SearchParamsLike }) {
   const router = useRouter();
 
   const nextPath = useMemo(
@@ -80,15 +80,25 @@ function LoginPageContent({ searchParams }: { searchParams?: SearchParamsLike })
     [searchParams]
   );
 
-  const signupHref = useMemo(() => {
-    if (!nextPath || nextPath === "/dashboard") return "/signup";
-    return `/signup?next=${encodeURIComponent(nextPath)}`;
+  const detectedReferral = useMemo(() => {
+    return (
+      searchParams?.get("ref") ||
+      searchParams?.get("referral") ||
+      searchParams?.get("code") ||
+      ""
+    ).trim();
+  }, [searchParams]);
+
+  const loginHref = useMemo(() => {
+    if (!nextPath || nextPath === "/dashboard") return "/login";
+    return `/login?next=${encodeURIComponent(nextPath)}`;
   }, [nextPath]);
 
   const [themeChoice, setThemeChoice] = useState<ThemeChoice>("system");
   const [resolvedTheme, setResolvedTheme] = useState<"dark" | "light">("light");
 
   const [email, setEmail] = useState("");
+  const [referralCode, setReferralCode] = useState(detectedReferral);
   const [otp, setOtp] = useState("");
 
   const [sendingOtp, setSendingOtp] = useState(false);
@@ -96,8 +106,14 @@ function LoginPageContent({ searchParams }: { searchParams?: SearchParamsLike })
 
   const [bannerTone, setBannerTone] = useState<"neutral" | "success" | "danger">("neutral");
   const [bannerText, setBannerText] = useState(
-    "Sign in securely with your email address and one-time code to continue to your workspace."
+    detectedReferral
+      ? "Referral code detected. Continue with sign-up to apply it to your new account."
+      : "Create your account with email OTP."
   );
+
+  useEffect(() => {
+    setReferralCode((current) => current || detectedReferral);
+  }, [detectedReferral]);
 
   useEffect(() => {
     const saved =
@@ -168,6 +184,7 @@ function LoginPageContent({ searchParams }: { searchParams?: SearchParamsLike })
 
   async function handleSendOtp() {
     const trimmedEmail = email.trim().toLowerCase();
+    const trimmedReferral = referralCode.trim().toUpperCase();
 
     if (!trimmedEmail) {
       setBannerTone("danger");
@@ -188,6 +205,9 @@ function LoginPageContent({ searchParams }: { searchParams?: SearchParamsLike })
         },
         body: JSON.stringify({
           email: trimmedEmail,
+          intent: "signup",
+          referral_code: trimmedReferral || undefined,
+          referralCode: trimmedReferral || undefined,
         }),
       });
 
@@ -209,6 +229,7 @@ function LoginPageContent({ searchParams }: { searchParams?: SearchParamsLike })
 
   async function handleVerifyOtp() {
     const trimmedEmail = email.trim().toLowerCase();
+    const trimmedReferral = referralCode.trim().toUpperCase();
     const trimmedOtp = otp.trim();
 
     if (!trimmedEmail || !trimmedOtp) {
@@ -219,7 +240,7 @@ function LoginPageContent({ searchParams }: { searchParams?: SearchParamsLike })
 
     setVerifyingOtp(true);
     setBannerTone("neutral");
-    setBannerText("Verifying your code...");
+    setBannerText("Verifying your code and creating your account...");
 
     try {
       const response = await fetch("/api/web/auth/verify-otp", {
@@ -231,6 +252,10 @@ function LoginPageContent({ searchParams }: { searchParams?: SearchParamsLike })
         body: JSON.stringify({
           email: trimmedEmail,
           otp: trimmedOtp,
+          intent: "signup",
+          referral_code: trimmedReferral || undefined,
+          referralCode: trimmedReferral || undefined,
+          code: trimmedReferral || undefined,
         }),
       });
 
@@ -246,14 +271,20 @@ function LoginPageContent({ searchParams }: { searchParams?: SearchParamsLike })
       );
 
       setBannerTone("success");
-      setBannerText("Sign-in successful. Opening your workspace...");
+      setBannerText("Account created successfully. Opening your workspace...");
       router.replace(destination);
     } catch {
       setBannerTone("danger");
-      setBannerText("We could not verify that code. Check the code and try again.");
+      setBannerText("We could not complete sign-up with that code. Please try again.");
     } finally {
       setVerifyingOtp(false);
     }
+  }
+
+  function handleClearReferral() {
+    setReferralCode("");
+    setBannerTone("neutral");
+    setBannerText("Referral code cleared. You can continue without one or paste a different code.");
   }
 
   const themeVars =
@@ -301,11 +332,11 @@ function LoginPageContent({ searchParams }: { searchParams?: SearchParamsLike })
             <AuthLogo />
 
             <div className="heroText">
-              <h1>Welcome Back</h1>
-              <div className="brandLine">{BRAND_NAME} Sign In</div>
+              <h1>Create Account</h1>
+              <div className="brandLine">{BRAND_NAME} Sign Up</div>
               <p>
-                Sign in securely with your email address and one-time code to continue to your
-                workspace.
+                Start your account securely with email OTP. Referral code support is available here
+                so account creation can remain separated from normal sign-in.
               </p>
             </div>
           </div>
@@ -335,12 +366,8 @@ function LoginPageContent({ searchParams }: { searchParams?: SearchParamsLike })
           </div>
 
           <div className="buttonRow">
-            <button
-              type="button"
-              className="primaryAction"
-              onClick={() => router.push(signupHref)}
-            >
-              New here? Create account
+            <button type="button" className="primaryAction" onClick={() => router.push(loginHref)}>
+              Already have an account? Sign in
             </button>
 
             <button type="button" className="secondaryAction" onClick={() => router.push("/")}>
@@ -372,6 +399,20 @@ function LoginPageContent({ searchParams }: { searchParams?: SearchParamsLike })
                 onChange={(e) => setEmail(e.target.value)}
               />
 
+              <label className="fieldLabel topGap">Referral Code (Optional)</label>
+              <input
+                type="text"
+                value={referralCode}
+                placeholder="Referral code"
+                className="input"
+                onChange={(e) => setReferralCode(e.target.value.toUpperCase())}
+              />
+
+              <p className="fieldHint">
+                If you opened a referral link, the code is applied automatically. You can also paste
+                a code manually before verification.
+              </p>
+
               <div className="inlineButtons">
                 <button
                   type="button"
@@ -380,6 +421,15 @@ function LoginPageContent({ searchParams }: { searchParams?: SearchParamsLike })
                   disabled={sendingOtp}
                 >
                   {sendingOtp ? "Sending..." : "Send OTP"}
+                </button>
+
+                <button
+                  type="button"
+                  className="smallAction secondarySmall"
+                  onClick={handleClearReferral}
+                  disabled={!referralCode}
+                >
+                  Clear Referral
                 </button>
               </div>
 
@@ -413,21 +463,29 @@ function LoginPageContent({ searchParams }: { searchParams?: SearchParamsLike })
 
             <div className="sideStack">
               <div className="infoCard">
-                <h3>New user?</h3>
-                <p>Go to the separate sign-up page to start account creation properly.</p>
-                <button type="button" className="fullAction" onClick={() => router.push(signupHref)}>
-                  Open Sign Up
+                <h3>Already registered?</h3>
+                <p>
+                  Go to the separate sign-in page if you already have an account and only need
+                  workspace access.
+                </p>
+                <button type="button" className="fullAction" onClick={() => router.push(loginHref)}>
+                  Open Sign In
                 </button>
               </div>
 
               <div className="infoCard">
-                <h3>Referral handling</h3>
-                <p>Sign-in preserves access flow, but only sign-up should apply a referral code.</p>
+                <h3>Referral support</h3>
+                <p>Sign-up is the only page that should apply a referral code to a new account.</p>
+              </div>
+
+              <div className="infoCard">
+                <h3>Secure access method</h3>
+                <p>Account access is initialized through email OTP verification using your current backend flow.</p>
               </div>
 
               <div className="infoCard">
                 <h3>Need help?</h3>
-                <p>If sign-in fails after a proper attempt, use Support and try again after a short wait.</p>
+                <p>If sign-up fails after a valid attempt, use Support and try again after a short wait.</p>
                 <button type="button" className="fullAction" onClick={() => router.push("/support")}>
                   Open Support
                 </button>
@@ -513,7 +571,7 @@ function LoginPageContent({ searchParams }: { searchParams?: SearchParamsLike })
 
         .heroText p {
           margin: 18px 0 0;
-          max-width: 880px;
+          max-width: 900px;
           color: var(--text-muted);
           font-size: clamp(20px, 2.2vw, 22px);
           line-height: 1.55;
@@ -621,6 +679,17 @@ function LoginPageContent({ searchParams }: { searchParams?: SearchParamsLike })
           color: var(--text);
         }
 
+        .fieldLabel.topGap {
+          margin-top: 24px;
+        }
+
+        .fieldHint {
+          margin: 12px 0 0;
+          color: var(--text-muted);
+          font-size: 16px;
+          line-height: 1.65;
+        }
+
         .input {
           width: 100%;
           min-height: 72px;
@@ -650,6 +719,10 @@ function LoginPageContent({ searchParams }: { searchParams?: SearchParamsLike })
           background: var(--accent-soft);
           color: var(--text);
           font-size: 18px;
+        }
+
+        .secondarySmall {
+          background: var(--surface-soft);
         }
 
         .smallAction:disabled,
@@ -749,13 +822,14 @@ function LoginPageContent({ searchParams }: { searchParams?: SearchParamsLike })
             font-size: 16px;
           }
 
-          .infoCard h3 {
-            font-size: 20px;
-          }
-
+          .fieldHint,
           .infoCard p,
           .banner {
             font-size: 16px;
+          }
+
+          .infoCard h3 {
+            font-size: 20px;
           }
         }
       `}</style>
@@ -763,15 +837,15 @@ function LoginPageContent({ searchParams }: { searchParams?: SearchParamsLike })
   );
 }
 
-function LoginSearchPage() {
+function SignupSearchPage() {
   const searchParams = useSearchParams();
-  return <LoginPageContent searchParams={searchParams} />;
+  return <SignupPageContent searchParams={searchParams} />;
 }
 
-export default function LoginPage() {
+export default function SignupPage() {
   return (
-    <Suspense fallback={<LoginPageContent />}>
-      <LoginSearchPage />
+    <Suspense fallback={<SignupPageContent />}>
+      <SignupSearchPage />
     </Suspense>
   );
 }
