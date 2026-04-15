@@ -1,851 +1,817 @@
 "use client";
 
-import React, { Suspense, useEffect, useMemo, useState } from "react";
+import React, { Suspense, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { apiJson } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
+import { themeChipStyle, themeVars, useSharedTheme } from "@/lib/theme";
+import { getWelcomeSeen } from "@/lib/preferences-storage";
+import WorkspaceActionBar from "@/components/workspace-action-bar";
+import WorkspaceSectionCard from "@/components/workspace-section-card";
+import {
+  WorkspaceField,
+  workspaceInputStyle,
+} from "@/components/workspace-form";
 
-type ThemeChoice = "dark" | "light" | "system";
-type SearchParamsLike = { get(name: string): string | null };
+type RequestOtpResp = {
+  ok?: boolean;
+  ttl_minutes?: number;
+  email_to?: string;
+  message?: string;
+};
 
-const BRAND_NAME = "Naija Tax Guide";
-const BRAND_TAGLINE = "From Deep Roots, We Soar.";
-const THEME_STORAGE_KEY = "ntg-theme-preference";
+type VerifyOtpResp = {
+  ok?: boolean;
+  token?: string;
+  account_id?: string;
+  message?: string;
+};
 
-const BRAND_LOGO_CANDIDATES = [
-  "/logo.png",
-  "/logo.jpg",
-  "/logo.jpeg",
-  "/ntg-logo.png",
-  "/ntg-logo.jpg",
-  "/images/logo.png",
-  "/images/logo.jpg",
-  "/brand/logo.png",
-];
+type NoticeTone = "default" | "good" | "warn" | "danger";
 
-function sanitizePath(value: string | null | undefined, fallback: string) {
-  if (!value) return fallback;
-  const trimmed = value.trim();
+type NoticeState = {
+  tone: NoticeTone;
+  text: string;
+};
 
-  if (!trimmed.startsWith("/")) return fallback;
-  if (trimmed.startsWith("//")) return fallback;
+const REFERRAL_STORAGE_KEY = "ntg_referral_code";
+const NEXT_PATH_STORAGE_KEY = "ntg_next_path";
 
-  return trimmed;
-}
-
-function getSystemResolvedTheme(): "dark" | "light" {
-  if (typeof window === "undefined") return "light";
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-}
-
-function resolveTheme(choice: ThemeChoice): "dark" | "light" {
-  return choice === "system" ? getSystemResolvedTheme() : choice;
-}
-
-function AuthLogo() {
-  const [logoIndex, setLogoIndex] = useState(0);
-  const [logoBroken, setLogoBroken] = useState(false);
-
-  const logoSrc =
-    BRAND_LOGO_CANDIDATES[Math.min(logoIndex, BRAND_LOGO_CANDIDATES.length - 1)];
-
-  function handleLogoError() {
-    if (logoIndex < BRAND_LOGO_CANDIDATES.length - 1) {
-      setLogoIndex((prev) => prev + 1);
-      return;
-    }
-    setLogoBroken(true);
-  }
-
+function Panel({ children }: { children: React.ReactNode }) {
   return (
-    <div className="logoBox">
-      {!logoBroken ? (
-        <img
-          key={logoSrc}
-          src={logoSrc}
-          alt={BRAND_NAME}
-          className="logoImage"
-          onError={handleLogoError}
-        />
-      ) : (
-        <div className="logoFallback">NTG</div>
-      )}
+    <div
+      style={{
+        width: "100%",
+        maxWidth: 980,
+        borderRadius: 26,
+        border: "1px solid var(--border)",
+        background: "var(--panel-bg)",
+        padding: 24,
+        backdropFilter: "blur(12px)",
+        boxShadow: "0 10px 30px rgba(0,0,0,0.10)",
+      }}
+    >
+      {children}
     </div>
   );
 }
 
-function SignupPageContent({ searchParams }: { searchParams?: SearchParamsLike }) {
-  const router = useRouter();
+function safeDecodeNext(nextValue: string | null): string | null {
+  let raw = String(nextValue || "").trim();
+  if (!raw) return null;
 
-  const nextPath = useMemo(
-    () => sanitizePath(searchParams?.get("next"), "/dashboard"),
-    [searchParams]
-  );
+  for (let i = 0; i < 3; i++) {
+    try {
+      const decoded = decodeURIComponent(raw).trim();
+      if (decoded === raw) break;
+      raw = decoded;
+    } catch {
+      break;
+    }
+  }
 
-  const detectedReferral = useMemo(() => {
+  if (!raw) return null;
+  if (!raw.startsWith("/")) return null;
+  if (raw.startsWith("//")) return null;
+  if (raw === "/login" || raw.startsWith("/login?")) return null;
+  if (raw === "/signup" || raw.startsWith("/signup?")) return null;
+  return raw;
+}
+
+function readStoredNextPath(): string {
+  if (typeof window === "undefined") return "";
+  try {
     return (
-      searchParams?.get("ref") ||
-      searchParams?.get("referral") ||
-      searchParams?.get("code") ||
-      ""
-    ).trim();
-  }, [searchParams]);
+      safeDecodeNext(
+        window.sessionStorage.getItem(NEXT_PATH_STORAGE_KEY) ||
+          window.localStorage.getItem(NEXT_PATH_STORAGE_KEY)
+      ) || ""
+    );
+  } catch {
+    return "";
+  }
+}
 
-  const loginHref = useMemo(() => {
-    if (!nextPath || nextPath === "/dashboard") return "/login";
-    return `/login?next=${encodeURIComponent(nextPath)}`;
-  }, [nextPath]);
+function persistNextPath(nextPath: string) {
+  if (typeof window === "undefined") return;
+  try {
+    if (nextPath) {
+      window.sessionStorage.setItem(NEXT_PATH_STORAGE_KEY, nextPath);
+      window.localStorage.setItem(NEXT_PATH_STORAGE_KEY, nextPath);
+    } else {
+      window.sessionStorage.removeItem(NEXT_PATH_STORAGE_KEY);
+      window.localStorage.removeItem(NEXT_PATH_STORAGE_KEY);
+    }
+  } catch {
+    // ignore
+  }
+}
 
-  const [themeChoice, setThemeChoice] = useState<ThemeChoice>("system");
-  const [resolvedTheme, setResolvedTheme] = useState<"dark" | "light">("light");
+function clearStoredNextPath() {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.removeItem(NEXT_PATH_STORAGE_KEY);
+    window.localStorage.removeItem(NEXT_PATH_STORAGE_KEY);
+  } catch {
+    // ignore
+  }
+}
 
-  const [email, setEmail] = useState("");
-  const [referralCode, setReferralCode] = useState(detectedReferral);
+function resolvePostLoginPath(sp: ReturnType<typeof useSearchParams>) {
+  const queryNext = safeDecodeNext(sp?.get("next"));
+  if (queryNext) return queryNext;
+
+  const storedNext = readStoredNextPath();
+  if (storedNext) return storedNext;
+
+  return getWelcomeSeen() ? "/dashboard" : "/welcome";
+}
+
+function normalizeReferralCode(value: string | null | undefined): string {
+  return String(value || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9_-]/g, "");
+}
+
+function readStoredReferralCode(): string {
+  if (typeof window === "undefined") return "";
+  try {
+    return normalizeReferralCode(
+      window.sessionStorage.getItem(REFERRAL_STORAGE_KEY) ||
+        window.localStorage.getItem(REFERRAL_STORAGE_KEY)
+    );
+  } catch {
+    return "";
+  }
+}
+
+function persistReferralCode(code: string) {
+  if (typeof window === "undefined") return;
+  try {
+    if (code) {
+      window.sessionStorage.setItem(REFERRAL_STORAGE_KEY, code);
+      window.localStorage.setItem(REFERRAL_STORAGE_KEY, code);
+    } else {
+      window.sessionStorage.removeItem(REFERRAL_STORAGE_KEY);
+      window.localStorage.removeItem(REFERRAL_STORAGE_KEY);
+    }
+  } catch {
+    // ignore
+  }
+}
+
+function sectionCardStyle(): React.CSSProperties {
+  return {
+    borderRadius: 18,
+    border: "1px solid var(--border)",
+    background: "var(--surface-soft)",
+    padding: 16,
+  };
+}
+
+function sectionTitleStyle(): React.CSSProperties {
+  return {
+    color: "var(--text)",
+    fontWeight: 900,
+    fontSize: 15,
+  };
+}
+
+function sectionTextStyle(): React.CSSProperties {
+  return {
+    marginTop: 8,
+    color: "var(--text-faint)",
+    lineHeight: 1.6,
+  };
+}
+
+function linkBtnStyle(primary = false): React.CSSProperties {
+  return {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 44,
+    padding: "10px 16px",
+    borderRadius: 14,
+    border: primary
+      ? "1px solid var(--accent-border)"
+      : "1px solid var(--border)",
+    background: primary ? "var(--accent-soft)" : "var(--surface-soft)",
+    color: "var(--text)",
+    textDecoration: "none",
+    fontWeight: 900,
+    fontSize: 14,
+  };
+}
+
+function noticeStyle(tone: NoticeTone): React.CSSProperties {
+  if (tone === "good") {
+    return {
+      border: "1px solid var(--success-border)",
+      background: "var(--success-bg)",
+    };
+  }
+
+  if (tone === "warn") {
+    return {
+      border: "1px solid var(--warn-border)",
+      background: "var(--warn-bg)",
+    };
+  }
+
+  if (tone === "danger") {
+    return {
+      border: "1px solid var(--danger-border)",
+      background: "var(--danger-bg)",
+    };
+  }
+
+  return {
+    border: "1px solid var(--border)",
+    background: "var(--surface-soft)",
+  };
+}
+
+function appendParams(base: string, referralCode: string, nextPath: string): string {
+  const params = new URLSearchParams();
+  if (referralCode) params.set("ref", referralCode);
+  if (nextPath) params.set("next", nextPath);
+  const qs = params.toString();
+  return qs ? `${base}?${qs}` : base;
+}
+
+function buildInitialNotice(referralCode: string, nextPath: string): NoticeState {
+  if (referralCode && nextPath) {
+    return {
+      tone: "default",
+      text: `Referral code ${referralCode} detected. If you are a new user, create your account first. After sign-in, you will continue to ${nextPath}.`,
+    };
+  }
+
+  if (referralCode) {
+    return {
+      tone: "default",
+      text: `Referral code ${referralCode} detected. If you are a new user, create your account first so the referral can be applied correctly.`,
+    };
+  }
+
+  if (nextPath) {
+    return {
+      tone: "default",
+      text: `Secure sign-in with email OTP. After access is completed, you will continue to ${nextPath}.`,
+    };
+  }
+
+  return {
+    tone: "default",
+    text: "Secure sign-in with email OTP to continue to your workspace.",
+  };
+}
+
+function requestOtpMessage(): string {
+  return "Could not send OTP right now. Please confirm your email address and try again.";
+}
+
+function verifyOtpMessage(): string {
+  return "That OTP could not be accepted. Request a new code and try again.";
+}
+
+function LoginPageContent() {
+  const router = useRouter();
+  const sp = useSearchParams();
+  const { themeMode, resolvedMode, setThemeMode } = useSharedTheme();
+  const { setToken, setHasSession, refreshSession, logout, hasSession, authReady } =
+    useAuth();
+
+  const [email, setEmail] = useState("bms.concept@hotmail.com");
   const [otp, setOtp] = useState("");
+  const [notice, setNotice] = useState<NoticeState>({
+    tone: "default",
+    text: "Secure sign-in with email OTP to continue to your workspace.",
+  });
+  const [busy, setBusy] = useState(false);
+  const [checkingSession, setCheckingSession] = useState(true);
 
-  const [sendingOtp, setSendingOtp] = useState(false);
-  const [verifyingOtp, setVerifyingOtp] = useState(false);
+  const redirectingRef = useRef(false);
+  const initDoneRef = useRef(false);
+  const otpInputRef = useRef<HTMLInputElement | null>(null);
 
-  const [bannerTone, setBannerTone] = useState<"neutral" | "success" | "danger">("neutral");
-  const [bannerText, setBannerText] = useState(
-    detectedReferral
-      ? "Referral code detected. Continue with sign-up to apply it to your new account."
-      : "Create your account with email OTP."
-  );
+  const queryReferralCode = normalizeReferralCode(sp?.get("ref"));
+  const queryNextPath = safeDecodeNext(sp?.get("next")) || "";
+  const storedReferralCode = readStoredReferralCode();
+  const storedNextPath = readStoredNextPath();
+
+  const effectiveReferralCode = queryReferralCode || storedReferralCode || "";
+  const effectiveNextPath = queryNextPath || storedNextPath || "";
 
   useEffect(() => {
-    setReferralCode((current) => current || detectedReferral);
-  }, [detectedReferral]);
+    if (initDoneRef.current) return;
+
+    if (effectiveReferralCode) {
+      persistReferralCode(effectiveReferralCode);
+    }
+
+    if (effectiveNextPath) {
+      persistNextPath(effectiveNextPath);
+    }
+
+    setNotice(buildInitialNotice(effectiveReferralCode, effectiveNextPath));
+    initDoneRef.current = true;
+  }, [effectiveReferralCode, effectiveNextPath]);
 
   useEffect(() => {
-    const saved =
-      typeof window !== "undefined"
-        ? (window.localStorage.getItem(THEME_STORAGE_KEY) as ThemeChoice | null)
-        : null;
+    if (!authReady) return;
 
-    const initialChoice: ThemeChoice =
-      saved === "dark" || saved === "light" || saved === "system" ? saved : "system";
+    let alive = true;
 
-    const apply = (choice: ThemeChoice) => {
-      const resolved = resolveTheme(choice);
-      setThemeChoice(choice);
-      setResolvedTheme(resolved);
+    const run = async () => {
+      setCheckingSession(true);
 
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem(THEME_STORAGE_KEY, choice);
-      }
+      try {
+        const ok = hasSession ? true : await refreshSession();
 
-      if (typeof document !== "undefined") {
-        document.documentElement.setAttribute("data-theme", resolved);
-      }
-    };
+        if (!alive) return;
 
-    apply(initialChoice);
-
-    if (typeof window === "undefined") return;
-
-    const media = window.matchMedia("(prefers-color-scheme: dark)");
-    const handleChange = () => {
-      if (themeChoice === "system") {
-        const resolved = getSystemResolvedTheme();
-        setResolvedTheme(resolved);
-        document.documentElement.setAttribute("data-theme", resolved);
-      }
-    };
-
-    if (typeof media.addEventListener === "function") {
-      media.addEventListener("change", handleChange);
-      return () => media.removeEventListener("change", handleChange);
-    }
-
-    media.addListener(handleChange);
-    return () => media.removeListener(handleChange);
-  }, [themeChoice]);
-
-  function applyTheme(choice: ThemeChoice) {
-    const resolved = resolveTheme(choice);
-    setThemeChoice(choice);
-    setResolvedTheme(resolved);
-
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(THEME_STORAGE_KEY, choice);
-    }
-
-    if (typeof document !== "undefined") {
-      document.documentElement.setAttribute("data-theme", resolved);
-    }
-  }
-
-  async function parseJson(response: Response) {
-    try {
-      return await response.json();
-    } catch {
-      return {};
-    }
-  }
-
-  async function handleSendOtp() {
-    const trimmedEmail = email.trim().toLowerCase();
-    const trimmedReferral = referralCode.trim().toUpperCase();
-
-    if (!trimmedEmail) {
-      setBannerTone("danger");
-      setBannerText("Enter your email address first.");
-      return;
-    }
-
-    setSendingOtp(true);
-    setBannerTone("neutral");
-    setBannerText("Sending your one-time code...");
-
-    try {
-      const response = await fetch("/api/web/auth/request-otp", {
-        method: "POST",
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          email: trimmedEmail,
-          intent: "signup",
-          referral_code: trimmedReferral || undefined,
-          referralCode: trimmedReferral || undefined,
-        }),
-      });
-
-      const data = await parseJson(response);
-
-      if (!response.ok || data?.ok === false) {
-        throw new Error();
-      }
-
-      setBannerTone("success");
-      setBannerText("OTP sent successfully. Check your email inbox and enter the code below.");
-    } catch {
-      setBannerTone("danger");
-      setBannerText("We could not send the one-time code right now. Please try again.");
-    } finally {
-      setSendingOtp(false);
-    }
-  }
-
-  async function handleVerifyOtp() {
-    const trimmedEmail = email.trim().toLowerCase();
-    const trimmedReferral = referralCode.trim().toUpperCase();
-    const trimmedOtp = otp.trim();
-
-    if (!trimmedEmail || !trimmedOtp) {
-      setBannerTone("danger");
-      setBannerText("Enter both your email address and the one-time code.");
-      return;
-    }
-
-    setVerifyingOtp(true);
-    setBannerTone("neutral");
-    setBannerText("Verifying your code and creating your account...");
-
-    try {
-      const response = await fetch("/api/web/auth/verify-otp", {
-        method: "POST",
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          email: trimmedEmail,
-          otp: trimmedOtp,
-          intent: "signup",
-          referral_code: trimmedReferral || undefined,
-          referralCode: trimmedReferral || undefined,
-          code: trimmedReferral || undefined,
-        }),
-      });
-
-      const data = await parseJson(response);
-
-      if (!response.ok || data?.ok === false) {
-        throw new Error();
-      }
-
-      const destination = sanitizePath(
-        typeof data?.redirect_to === "string" ? data.redirect_to : nextPath,
-        "/dashboard"
-      );
-
-      setBannerTone("success");
-      setBannerText("Account created successfully. Opening your workspace...");
-      router.replace(destination);
-    } catch {
-      setBannerTone("danger");
-      setBannerText("We could not complete sign-up with that code. Please try again.");
-    } finally {
-      setVerifyingOtp(false);
-    }
-  }
-
-  function handleClearReferral() {
-    setReferralCode("");
-    setBannerTone("neutral");
-    setBannerText("Referral code cleared. You can continue without one or paste a different code.");
-  }
-
-  const themeVars =
-    resolvedTheme === "dark"
-      ? {
-          "--page-bg": "#07101f",
-          "--surface": "#0d1830",
-          "--surface-soft": "#101d39",
-          "--surface-muted": "#0b1730",
-          "--border": "rgba(148, 163, 184, 0.22)",
-          "--text": "#f8fafc",
-          "--text-muted": "#cbd5e1",
-          "--accent": "#818cf8",
-          "--accent-strong": "#6366f1",
-          "--accent-soft": "rgba(129, 140, 248, 0.14)",
-          "--success-bg": "rgba(34, 197, 94, 0.10)",
-          "--success-border": "rgba(34, 197, 94, 0.22)",
-          "--danger-bg": "rgba(239, 68, 68, 0.12)",
-          "--danger-border": "rgba(239, 68, 68, 0.24)",
-          "--shadow": "0 18px 50px rgba(2, 6, 23, 0.36)",
+        if (ok) {
+          setHasSession(true);
+          setNotice({
+            tone: "good",
+            text: effectiveNextPath
+              ? `Active session found in this browser. You can continue to ${effectiveNextPath} now.`
+              : "Active session found in this browser.",
+          });
+        } else {
+          setNotice(buildInitialNotice(effectiveReferralCode, effectiveNextPath));
         }
-      : {
-          "--page-bg": "#eef2f7",
-          "--surface": "#ffffff",
-          "--surface-soft": "#f8fafc",
-          "--surface-muted": "#f5f7fb",
-          "--border": "rgba(15, 23, 42, 0.10)",
-          "--text": "#0f172a",
-          "--text-muted": "#475569",
-          "--accent": "#818cf8",
-          "--accent-strong": "#6366f1",
-          "--accent-soft": "rgba(129, 140, 248, 0.10)",
-          "--success-bg": "rgba(34, 197, 94, 0.08)",
-          "--success-border": "rgba(34, 197, 94, 0.20)",
-          "--danger-bg": "rgba(239, 68, 68, 0.08)",
-          "--danger-border": "rgba(239, 68, 68, 0.18)",
-          "--shadow": "0 18px 50px rgba(15, 23, 42, 0.08)",
-        };
+      } catch {
+        if (!alive) return;
+        setNotice(buildInitialNotice(effectiveReferralCode, effectiveNextPath));
+      } finally {
+        if (!alive) return;
+        setCheckingSession(false);
+      }
+    };
+
+    void run();
+
+    return () => {
+      alive = false;
+    };
+  }, [
+    authReady,
+    hasSession,
+    refreshSession,
+    setHasSession,
+    effectiveReferralCode,
+    effectiveNextPath,
+  ]);
+
+  const sendOtp = async () => {
+    const e = email.trim().toLowerCase();
+    if (!e) return;
+
+    setBusy(true);
+    setNotice({
+      tone: "default",
+      text: "Sending sign-in OTP...",
+    });
+
+    try {
+      const data = await apiJson<RequestOtpResp>("/web/auth/request-otp", {
+        method: "POST",
+        timeoutMs: 25000,
+        body: { contact: e, purpose: "web_login" },
+        useAuthToken: false,
+      });
+
+      if (data?.ok) {
+        setNotice({
+          tone: "good",
+          text: "OTP sent successfully. Check your email inbox and enter the code below.",
+        });
+
+        window.setTimeout(() => {
+          otpInputRef.current?.focus();
+        }, 120);
+      } else {
+        setNotice({
+          tone: "warn",
+          text: "OTP could not be sent right now. Please confirm the email address and try again.",
+        });
+      }
+    } catch {
+      setNotice({
+        tone: "danger",
+        text: requestOtpMessage(),
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const verifyOtp = async () => {
+    const e = email.trim().toLowerCase();
+    const code = otp.trim();
+    if (!e || !code) return;
+
+    setBusy(true);
+    setNotice({
+      tone: "default",
+      text: "Verifying sign-in OTP...",
+    });
+
+    try {
+      const data = await apiJson<VerifyOtpResp>("/web/auth/verify-otp", {
+        method: "POST",
+        timeoutMs: 25000,
+        body: {
+          contact: e,
+          otp: code,
+          purpose: "web_login",
+        },
+        useAuthToken: false,
+      });
+
+      if (!data?.ok) {
+        setNotice({
+          tone: "warn",
+          text: "That OTP could not be accepted. Request a new code and try again.",
+        });
+        return;
+      }
+
+      if (data?.token) {
+        setToken(data.token);
+      }
+
+      try {
+        await refreshSession();
+      } catch {
+        // ignore
+      }
+
+      setHasSession(true);
+
+      const finalPath = resolvePostLoginPath(sp);
+      clearStoredNextPath();
+
+      setNotice({
+        tone: "good",
+        text: "OTP verified successfully. Redirecting...",
+      });
+
+      if (!redirectingRef.current) {
+        redirectingRef.current = true;
+        window.setTimeout(() => {
+          router.replace(finalPath);
+        }, 250);
+      }
+    } catch {
+      setNotice({
+        tone: "danger",
+        text: verifyOtpMessage(),
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    setBusy(true);
+
+    try {
+      await logout();
+      setHasSession(false);
+      setOtp("");
+      setNotice({
+        tone: "good",
+        text: "Session closed successfully. You can sign in again whenever you are ready.",
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const goDashboard = () => router.replace(effectiveNextPath || "/dashboard");
+  const goWelcome = () => router.replace("/welcome?force=1");
+  const signupHref = appendParams("/signup", effectiveReferralCode, effectiveNextPath);
 
   return (
-    <div className="pageRoot" style={themeVars as React.CSSProperties}>
-      <div className="shell">
-        <div className="heroCard">
-          <div className="heroTop">
-            <AuthLogo />
-
-            <div className="heroText">
-              <h1>Create Account</h1>
-              <div className="brandLine">{BRAND_NAME} Sign Up</div>
-              <p>
-                Start your account securely with email OTP. Referral code support is available here
-                so account creation can remain separated from normal sign-in.
-              </p>
-            </div>
-          </div>
-
-          <div className="buttonRow">
-            <button
-              type="button"
-              className={`themeButton ${themeChoice === "dark" ? "active" : ""}`}
-              onClick={() => applyTheme("dark")}
-            >
-              Dark
-            </button>
-            <button
-              type="button"
-              className={`themeButton ${themeChoice === "light" ? "active" : ""}`}
-              onClick={() => applyTheme("light")}
-            >
-              Light
-            </button>
-            <button
-              type="button"
-              className={`themeButton ${themeChoice === "system" ? "active" : ""}`}
-              onClick={() => applyTheme("system")}
-            >
-              System
-            </button>
-          </div>
-
-          <div className="buttonRow">
-            <button type="button" className="primaryAction" onClick={() => router.push(loginHref)}>
-              Already have an account? Sign in
-            </button>
-
-            <button type="button" className="secondaryAction" onClick={() => router.push("/")}>
-              Open Welcome Page
-            </button>
-          </div>
-
+    <div
+      style={{
+        minHeight: "100vh",
+        display: "grid",
+        placeItems: "center",
+        padding: 24,
+        background: "var(--app-bg)",
+        color: "var(--text)",
+        ...themeVars(resolvedMode),
+      }}
+    >
+      <Panel>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "88px minmax(0,1fr)",
+            gap: 18,
+            alignItems: "center",
+          }}
+        >
           <div
-            className={`banner ${
-              bannerTone === "success"
-                ? "success"
-                : bannerTone === "danger"
-                ? "danger"
-                : "neutral"
-            }`}
+            style={{
+              width: 88,
+              height: 88,
+              borderRadius: 22,
+              overflow: "hidden",
+              border: "1px solid var(--accent-border)",
+              background: "var(--surface)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
           >
-            {bannerText}
+            <img
+              src="/bms-logo.jpg"
+              alt="BMS logo"
+              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+            />
           </div>
 
-          <div className="contentGrid">
-            <div className="mainCard">
-              <label className="fieldLabel">Email Address</label>
-              <input
-                type="email"
-                value={email}
-                autoComplete="email"
-                placeholder="Email address"
-                className="input"
-                onChange={(e) => setEmail(e.target.value)}
-              />
-
-              <label className="fieldLabel topGap">Referral Code (Optional)</label>
-              <input
-                type="text"
-                value={referralCode}
-                placeholder="Referral code"
-                className="input"
-                onChange={(e) => setReferralCode(e.target.value.toUpperCase())}
-              />
-
-              <p className="fieldHint">
-                If you opened a referral link, the code is applied automatically. You can also paste
-                a code manually before verification.
-              </p>
-
-              <div className="inlineButtons">
-                <button
-                  type="button"
-                  className="smallAction"
-                  onClick={handleSendOtp}
-                  disabled={sendingOtp}
-                >
-                  {sendingOtp ? "Sending..." : "Send OTP"}
-                </button>
-
-                <button
-                  type="button"
-                  className="smallAction secondarySmall"
-                  onClick={handleClearReferral}
-                  disabled={!referralCode}
-                >
-                  Clear Referral
-                </button>
-              </div>
-
-              <label className="fieldLabel">OTP Code</label>
-              <input
-                type="text"
-                value={otp}
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                placeholder="OTP code"
-                className="input"
-                onChange={(e) => setOtp(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    void handleVerifyOtp();
-                  }
-                }}
-              />
-
-              <div className="inlineButtons">
-                <button
-                  type="button"
-                  className="smallAction"
-                  onClick={handleVerifyOtp}
-                  disabled={verifyingOtp}
-                >
-                  {verifyingOtp ? "Verifying..." : "Verify OTP"}
-                </button>
-              </div>
+          <div style={{ minWidth: 0 }}>
+            <div
+              style={{
+                fontSize: 38,
+                fontWeight: 950,
+                letterSpacing: -0.8,
+                color: "var(--text)",
+                lineHeight: 1.05,
+              }}
+            >
+              Welcome Back
             </div>
-
-            <div className="sideStack">
-              <div className="infoCard">
-                <h3>Already registered?</h3>
-                <p>
-                  Go to the separate sign-in page if you already have an account and only need
-                  workspace access.
-                </p>
-                <button type="button" className="fullAction" onClick={() => router.push(loginHref)}>
-                  Open Sign In
-                </button>
-              </div>
-
-              <div className="infoCard">
-                <h3>Referral support</h3>
-                <p>Sign-up is the only page that should apply a referral code to a new account.</p>
-              </div>
-
-              <div className="infoCard">
-                <h3>Secure access method</h3>
-                <p>Account access is initialized through email OTP verification using your current backend flow.</p>
-              </div>
-
-              <div className="infoCard">
-                <h3>Need help?</h3>
-                <p>If sign-up fails after a valid attempt, use Support and try again after a short wait.</p>
-                <button type="button" className="fullAction" onClick={() => router.push("/support")}>
-                  Open Support
-                </button>
-              </div>
+            <div
+              style={{
+                marginTop: 8,
+                color: "var(--gold)",
+                fontSize: 15,
+                fontWeight: 800,
+              }}
+            >
+              Naija Tax Guide Sign In
+            </div>
+            <div
+              style={{
+                marginTop: 10,
+                color: "var(--text-muted)",
+                lineHeight: 1.6,
+                fontSize: 15,
+                maxWidth: 560,
+              }}
+            >
+              Sign in securely with your email address and one-time code to continue to your workspace.
             </div>
           </div>
         </div>
-      </div>
 
-      <style jsx>{`
-        .pageRoot {
-          min-height: 100vh;
-          background: var(--page-bg);
-          padding: 32px 16px;
-          color: var(--text);
-        }
+        <div
+          style={{
+            marginTop: 20,
+            display: "flex",
+            gap: 10,
+            flexWrap: "wrap",
+          }}
+        >
+          <button onClick={() => setThemeMode("dark")} style={themeChipStyle(themeMode === "dark")}>
+            Dark
+          </button>
+          <button onClick={() => setThemeMode("light")} style={themeChipStyle(themeMode === "light")}>
+            Light
+          </button>
+          <button onClick={() => setThemeMode("system")} style={themeChipStyle(themeMode === "system")}>
+            System
+          </button>
+        </div>
 
-        .shell {
-          width: 100%;
-          max-width: 1280px;
-          margin: 0 auto;
-        }
+        <div
+          style={{
+            marginTop: 18,
+            display: "flex",
+            gap: 12,
+            flexWrap: "wrap",
+            alignItems: "center",
+          }}
+        >
+          <Link href={signupHref} style={linkBtnStyle(true)}>
+            New here? Create account
+          </Link>
+          <Link href="/welcome" style={linkBtnStyle(false)}>
+            Open Welcome Page
+          </Link>
+        </div>
 
-        .heroCard {
-          background: var(--surface);
-          border: 1px solid var(--border);
-          border-radius: 32px;
-          box-shadow: var(--shadow);
-          padding: 36px;
-          display: grid;
-          gap: 24px;
-        }
+        <div
+          style={{
+            marginTop: 18,
+            padding: "14px 16px",
+            borderRadius: 16,
+            color: "var(--text-soft)",
+            fontSize: 15,
+            lineHeight: 1.6,
+            ...noticeStyle(checkingSession && !hasSession ? "default" : notice.tone),
+          }}
+        >
+          {checkingSession && !hasSession
+            ? "Checking secure access state..."
+            : notice.text}
+        </div>
 
-        .heroTop {
-          display: grid;
-          grid-template-columns: auto minmax(0, 1fr);
-          gap: 28px;
-          align-items: start;
-        }
+        {hasSession ? (
+          <div style={{ marginTop: 22, display: "grid", gap: 14 }}>
+            <div
+              style={{
+                padding: "14px 16px",
+                borderRadius: 16,
+                border: "1px solid var(--success-border)",
+                background: "var(--success-bg)",
+                color: "var(--text)",
+                fontSize: 15,
+                lineHeight: 1.6,
+              }}
+            >
+              Active session found in this browser.
+            </div>
 
-        .logoBox {
-          width: 132px;
-          height: 132px;
-          border-radius: 28px;
-          overflow: hidden;
-          border: 1px solid var(--border);
-          background: var(--surface-soft);
-          flex-shrink: 0;
-        }
+            <WorkspaceActionBar
+              items={[
+                {
+                  label: effectiveNextPath
+                    ? "Continue to Requested Page"
+                    : "Continue to Dashboard",
+                  onClick: goDashboard,
+                  tone: "primary",
+                  disabled: busy,
+                },
+                {
+                  label: "Open Welcome Page",
+                  onClick: goWelcome,
+                  tone: "secondary",
+                  disabled: busy,
+                },
+                {
+                  label: busy ? "Closing Session..." : "Logout",
+                  onClick: () => {
+                    void handleLogout();
+                  },
+                  tone: "danger",
+                  disabled: busy,
+                },
+              ]}
+            />
+          </div>
+        ) : (
+          <div
+            style={{
+              marginTop: 22,
+              display: "grid",
+              gap: 18,
+              gridTemplateColumns: "minmax(0,1.15fr) minmax(280px,0.85fr)",
+            }}
+          >
+            <WorkspaceSectionCard
+              title="Sign In"
+              subtitle="Use your email address and one-time code to enter the workspace."
+            >
+              <WorkspaceField label="Email Address" htmlFor="login-email">
+                <input
+                  id="login-email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Email address"
+                  style={workspaceInputStyle()}
+                  autoComplete="email"
+                />
+              </WorkspaceField>
 
-        .logoImage {
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
-          display: block;
-        }
+              <WorkspaceActionBar
+                items={[
+                  {
+                    label: busy ? "Sending..." : "Send OTP",
+                    onClick: () => {
+                      void sendOtp();
+                    },
+                    tone: "secondary",
+                    disabled: busy || checkingSession || !email.trim(),
+                  },
+                ]}
+              />
 
-        .logoFallback {
-          width: 100%;
-          height: 100%;
-          display: grid;
-          place-items: center;
-          font-size: 24px;
-          font-weight: 900;
-          color: var(--text);
-          background: var(--surface);
-        }
+              <WorkspaceField label="OTP Code" htmlFor="login-otp">
+                <input
+                  id="login-otp"
+                  ref={otpInputRef}
+                  value={otp}
+                  onChange={(e) => setOtp(e.target.value)}
+                  placeholder="OTP code"
+                  style={workspaceInputStyle()}
+                  autoComplete="one-time-code"
+                />
+              </WorkspaceField>
 
-        .heroText h1 {
-          margin: 0;
-          font-size: clamp(48px, 8vw, 92px);
-          line-height: 0.95;
-          letter-spacing: -0.04em;
-          font-weight: 950;
-        }
+              <WorkspaceActionBar
+                items={[
+                  {
+                    label: busy ? "Verifying..." : "Verify OTP",
+                    onClick: () => {
+                      void verifyOtp();
+                    },
+                    tone: "primary",
+                    disabled: busy || checkingSession || !email.trim() || !otp.trim(),
+                  },
+                ]}
+              />
+            </WorkspaceSectionCard>
 
-        .brandLine {
-          margin-top: 10px;
-          font-size: clamp(20px, 2.7vw, 28px);
-          font-weight: 900;
-          color: #b2692e;
-        }
+            <div style={{ display: "grid", gap: 14 }}>
+              <div style={sectionCardStyle()}>
+                <div style={sectionTitleStyle()}>New user?</div>
+                <div style={sectionTextStyle()}>
+                  Go to the separate sign-up page to start account creation and apply referral details correctly.
+                </div>
+                <div style={{ marginTop: 12 }}>
+                  <Link href={signupHref} style={linkBtnStyle(true)}>
+                    Open Sign Up
+                  </Link>
+                </div>
+              </div>
 
-        .heroText p {
-          margin: 18px 0 0;
-          max-width: 900px;
-          color: var(--text-muted);
-          font-size: clamp(20px, 2.2vw, 22px);
-          line-height: 1.55;
-        }
+              <div style={sectionCardStyle()}>
+                <div style={sectionTitleStyle()}>Referral handling</div>
+                <div style={sectionTextStyle()}>
+                  Sign-in preserves detected referral codes for new users, but only sign-up should apply the code to account creation.
+                </div>
+              </div>
 
-        .buttonRow {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 14px;
-        }
+              <div style={sectionCardStyle()}>
+                <div style={sectionTitleStyle()}>Redirect support</div>
+                <div style={sectionTextStyle()}>
+                  If a target page was requested before sign-in, it will be preserved and used after access is completed.
+                </div>
+              </div>
 
-        .themeButton,
-        .primaryAction,
-        .secondaryAction,
-        .smallAction,
-        .fullAction {
-          border-radius: 20px;
-          border: 1px solid var(--border);
-          font-weight: 900;
-          cursor: pointer;
-          transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease;
-        }
-
-        .themeButton:hover,
-        .primaryAction:hover,
-        .secondaryAction:hover,
-        .smallAction:hover,
-        .fullAction:hover {
-          transform: translateY(-1px);
-        }
-
-        .themeButton {
-          min-height: 64px;
-          padding: 0 24px;
-          background: var(--surface-soft);
-          color: var(--text);
-          font-size: 18px;
-        }
-
-        .themeButton.active {
-          background: var(--accent-soft);
-          border-color: rgba(129, 140, 248, 0.35);
-        }
-
-        .primaryAction {
-          min-height: 72px;
-          padding: 0 24px;
-          background: var(--accent-soft);
-          color: var(--text);
-          font-size: 20px;
-        }
-
-        .secondaryAction {
-          min-height: 72px;
-          padding: 0 24px;
-          background: var(--surface-soft);
-          color: var(--text);
-          font-size: 20px;
-        }
-
-        .banner {
-          border-radius: 22px;
-          border: 1px solid var(--border);
-          background: var(--surface-soft);
-          padding: 22px 24px;
-          font-size: 18px;
-          line-height: 1.55;
-        }
-
-        .banner.success {
-          background: var(--success-bg);
-          border-color: var(--success-border);
-        }
-
-        .banner.danger {
-          background: var(--danger-bg);
-          border-color: var(--danger-border);
-        }
-
-        .contentGrid {
-          display: grid;
-          grid-template-columns: minmax(0, 1.2fr) minmax(300px, 0.8fr);
-          gap: 20px;
-          align-items: start;
-        }
-
-        .mainCard,
-        .infoCard {
-          background: var(--surface);
-          border: 1px solid var(--border);
-          border-radius: 26px;
-          padding: 28px;
-        }
-
-        .sideStack {
-          display: grid;
-          gap: 20px;
-        }
-
-        .fieldLabel {
-          display: block;
-          margin-bottom: 12px;
-          font-size: 18px;
-          font-weight: 900;
-          color: var(--text);
-        }
-
-        .fieldLabel.topGap {
-          margin-top: 24px;
-        }
-
-        .fieldHint {
-          margin: 12px 0 0;
-          color: var(--text-muted);
-          font-size: 16px;
-          line-height: 1.65;
-        }
-
-        .input {
-          width: 100%;
-          min-height: 72px;
-          border-radius: 20px;
-          border: 1px solid var(--border);
-          background: var(--surface-soft);
-          color: var(--text);
-          padding: 0 22px;
-          font-size: 18px;
-          outline: none;
-        }
-
-        .input::placeholder {
-          color: var(--text-muted);
-        }
-
-        .inlineButtons {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 12px;
-          margin: 20px 0 28px;
-        }
-
-        .smallAction {
-          min-height: 64px;
-          padding: 0 26px;
-          background: var(--accent-soft);
-          color: var(--text);
-          font-size: 18px;
-        }
-
-        .secondarySmall {
-          background: var(--surface-soft);
-        }
-
-        .smallAction:disabled,
-        .fullAction:disabled {
-          opacity: 0.7;
-          cursor: not-allowed;
-          transform: none;
-        }
-
-        .infoCard h3 {
-          margin: 0 0 12px;
-          font-size: 22px;
-          font-weight: 950;
-        }
-
-        .infoCard p {
-          margin: 0;
-          color: var(--text-muted);
-          font-size: 18px;
-          line-height: 1.6;
-        }
-
-        .fullAction {
-          width: 100%;
-          min-height: 66px;
-          margin-top: 18px;
-          padding: 0 20px;
-          background: var(--accent-soft);
-          color: var(--text);
-          font-size: 18px;
-        }
-
-        @media (max-width: 980px) {
-          .contentGrid {
-            grid-template-columns: 1fr;
-          }
-        }
-
-        @media (max-width: 780px) {
-          .pageRoot {
-            padding: 16px 10px;
-          }
-
-          .heroCard {
-            padding: 20px;
-            border-radius: 24px;
-          }
-
-          .heroTop {
-            grid-template-columns: 1fr;
-            gap: 18px;
-          }
-
-          .logoBox {
-            width: 96px;
-            height: 96px;
-            border-radius: 22px;
-          }
-
-          .heroText h1 {
-            font-size: clamp(40px, 14vw, 64px);
-          }
-
-          .brandLine {
-            font-size: 18px;
-          }
-
-          .heroText p {
-            font-size: 16px;
-          }
-
-          .themeButton,
-          .primaryAction,
-          .secondaryAction,
-          .smallAction,
-          .fullAction {
-            width: 100%;
-          }
-
-          .buttonRow {
-            display: grid;
-            grid-template-columns: 1fr;
-          }
-
-          .mainCard,
-          .infoCard {
-            padding: 20px;
-            border-radius: 22px;
-          }
-
-          .input {
-            min-height: 64px;
-            font-size: 16px;
-          }
-
-          .fieldLabel {
-            font-size: 16px;
-          }
-
-          .fieldHint,
-          .infoCard p,
-          .banner {
-            font-size: 16px;
-          }
-
-          .infoCard h3 {
-            font-size: 20px;
-          }
-        }
-      `}</style>
+              <div style={sectionCardStyle()}>
+                <div style={sectionTitleStyle()}>Need help?</div>
+                <div style={sectionTextStyle()}>
+                  If sign-in fails after a proper attempt, use Support and try again after a short wait.
+                </div>
+                <div style={{ marginTop: 12 }}>
+                  <Link href="/support" style={linkBtnStyle(false)}>
+                    Open Support
+                  </Link>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </Panel>
     </div>
   );
 }
 
-function SignupSearchPage() {
-  const searchParams = useSearchParams();
-  return <SignupPageContent searchParams={searchParams} />;
+function LoginPageFallback() {
+  return (
+    <div
+      style={{
+        minHeight: "100vh",
+        display: "grid",
+        placeItems: "center",
+        padding: 24,
+        background: "var(--app-bg)",
+        color: "var(--text)",
+      }}
+    >
+      <div
+        style={{
+          width: "100%",
+          maxWidth: 560,
+          borderRadius: 24,
+          border: "1px solid rgba(255,255,255,0.08)",
+          background: "rgba(255,255,255,0.03)",
+          padding: 24,
+          textAlign: "center",
+        }}
+      >
+        Loading sign-in...
+      </div>
+    </div>
+  );
 }
 
-export default function SignupPage() {
+export default function LoginPage() {
   return (
-    <Suspense fallback={<SignupPageContent />}>
-      <SignupSearchPage />
+    <Suspense fallback={<LoginPageFallback />}>
+      <LoginPageContent />
     </Suspense>
   );
 }
