@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { apiJson, isApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 
@@ -183,9 +183,18 @@ function extractFriendlyError(error: unknown, fallback: string) {
   return fallback;
 }
 
+function AuthShell({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={pageBgStyle()}>
+      <div style={shellStyle()}>
+        <div style={contentWrapStyle()}>{children}</div>
+      </div>
+    </div>
+  );
+}
+
 export default function SignupPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const { refreshSession } = useAuth();
 
   const [width, setWidth] = useState(1200);
@@ -201,6 +210,7 @@ export default function SignupPage() {
 
   const [noticeTone, setNoticeTone] = useState<NoticeTone>("default");
   const [noticeText, setNoticeText] = useState("Create your account with email OTP.");
+  const [redirectTo, setRedirectTo] = useState("/dashboard");
 
   useEffect(() => {
     const onResize = () => setWidth(window.innerWidth);
@@ -237,33 +247,43 @@ export default function SignupPage() {
   }, [theme]);
 
   useEffect(() => {
-    const detected =
-      searchParams.get("ref") ||
-      searchParams.get("referral") ||
-      searchParams.get("referral_code") ||
+    const params = new URLSearchParams(window.location.search);
+
+    const detectedReferral =
+      params.get("ref") ||
+      params.get("referral") ||
+      params.get("referral_code") ||
       "";
 
-    if (detected) {
-      const cleanDetected = safeText(detected, "");
-      setReferralCode(cleanDetected);
+    const detectedRedirect =
+      params.get("redirect") ||
+      params.get("next") ||
+      params.get("continue") ||
+      params.get("continueTo") ||
+      "/dashboard";
+
+    setRedirectTo(normalizePath(detectedRedirect, "/dashboard"));
+
+    if (detectedReferral) {
+      const cleanReferral = safeText(detectedReferral, "").toUpperCase();
+      setReferralCode(cleanReferral);
       setNoticeTone("good");
-      setNoticeText(`Referral code ${cleanDetected} detected. Continue with sign-up to apply it.`);
+      setNoticeText(`Referral code ${cleanReferral} detected. Continue with sign-up to apply it.`);
     }
-  }, [searchParams]);
+  }, []);
 
   const isMobile = width < 900;
   const isCompact = width < 640;
 
-  const redirectTo = useMemo(() => {
-    const value =
-      searchParams.get("redirect") ||
-      searchParams.get("next") ||
-      searchParams.get("continue") ||
-      searchParams.get("continueTo") ||
-      "/dashboard";
-
-    return normalizePath(value, "/dashboard");
-  }, [searchParams]);
+  const formGridStyle = useMemo<React.CSSProperties>(
+    () => ({
+      display: "grid",
+      gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1.35fr) minmax(280px, 0.95fr)",
+      gap: 20,
+      alignItems: "start",
+    }),
+    [isMobile]
+  );
 
   async function handleSendOtp() {
     const cleanEmail = email.trim().toLowerCase();
@@ -308,7 +328,7 @@ export default function SignupPage() {
   async function handleVerifyOtp() {
     const cleanEmail = email.trim().toLowerCase();
     const cleanOtp = otpCode.trim();
-    const cleanReferral = referralCode.trim();
+    const cleanReferral = referralCode.trim().toUpperCase();
 
     if (!looksLikeEmail(cleanEmail)) {
       setNoticeTone("warn");
@@ -341,7 +361,9 @@ export default function SignupPage() {
         },
       });
 
-      await refreshSession?.();
+      if (refreshSession) {
+        await refreshSession();
+      }
 
       const finalRedirect = normalizePath(
         safeText(response?.redirect_to, redirectTo),
@@ -370,345 +392,337 @@ export default function SignupPage() {
   }
 
   return (
-    <div style={pageBgStyle()}>
-      <div style={shellStyle()}>
-        <div style={contentWrapStyle()}>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: isCompact ? "1fr" : "auto 1fr",
-              gap: isCompact ? 18 : 22,
-              alignItems: "start",
-            }}
-          >
+    <AuthShell>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: isCompact ? "1fr" : "auto 1fr",
+          gap: isCompact ? 18 : 22,
+          alignItems: "start",
+        }}
+      >
+        <div
+          style={{
+            width: isCompact ? 88 : 108,
+            height: isCompact ? 88 : 108,
+            borderRadius: 26,
+            border: "1px solid var(--border)",
+            background: "var(--surface)",
+            display: "grid",
+            placeItems: "center",
+            overflow: "hidden",
+            flexShrink: 0,
+          }}
+        >
+          {!logoBroken ? (
+            <img
+              src={BRAND_LOGO_SRC}
+              alt="Naija Tax Guide"
+              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+              onError={() => setLogoBroken(true)}
+            />
+          ) : (
             <div
               style={{
-                width: isCompact ? 88 : 108,
-                height: isCompact ? 88 : 108,
-                borderRadius: 26,
-                border: "1px solid var(--border)",
-                background: "var(--surface)",
-                display: "grid",
-                placeItems: "center",
-                overflow: "hidden",
-              }}
-            >
-              {!logoBroken ? (
-                <img
-                  src={BRAND_LOGO_SRC}
-                  alt="Naija Tax Guide"
-                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                  onError={() => setLogoBroken(true)}
-                />
-              ) : (
-                <div
-                  style={{
-                    fontSize: 22,
-                    fontWeight: 950,
-                    color: "var(--text)",
-                  }}
-                >
-                  NTG
-                </div>
-              )}
-            </div>
-
-            <div style={{ display: "grid", gap: 10 }}>
-              <div
-                style={{
-                  fontSize: isCompact ? 44 : 66,
-                  lineHeight: 1,
-                  fontWeight: 950,
-                  letterSpacing: -1.2,
-                  color: "var(--text)",
-                }}
-              >
-                Create Account
-              </div>
-
-              <div
-                style={{
-                  fontSize: isCompact ? 20 : 24,
-                  fontWeight: 900,
-                  color: "var(--brand-accent)",
-                }}
-              >
-                Naija Tax Guide Sign Up
-              </div>
-
-              <div
-                style={{
-                  maxWidth: 820,
-                  color: "var(--text-muted)",
-                  fontSize: isCompact ? 16 : 18,
-                  lineHeight: 1.75,
-                }}
-              >
-                Start your account securely with email OTP. Referral code support is available here so account creation can remain separated from normal sign-in.
-              </div>
-            </div>
-          </div>
-
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
-            <button style={themeButtonStyle(theme === "dark")} onClick={() => setTheme("dark")}>
-              Dark
-            </button>
-            <button style={themeButtonStyle(theme === "light")} onClick={() => setTheme("light")}>
-              Light
-            </button>
-            <button style={themeButtonStyle(theme === "system")} onClick={() => setTheme("system")}>
-              System
-            </button>
-          </div>
-
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 14 }}>
-            <button style={primaryButtonStyle(false)} onClick={() => router.push("/login")}>
-              Already have an account? Sign in
-            </button>
-
-            <button style={secondaryButtonStyle(false)} onClick={() => router.push("/welcome")}>
-              Open Welcome Page
-            </button>
-          </div>
-
-          <div
-            style={{
-              ...sectionCardStyle(),
-              ...toneStyle(noticeTone),
-              padding: "20px 22px",
-            }}
-          >
-            <div
-              style={{
+                fontSize: 22,
+                fontWeight: 950,
                 color: "var(--text)",
-                fontSize: isCompact ? 16 : 17,
-                lineHeight: 1.7,
               }}
             >
-              {noticeText}
+              NTG
             </div>
+          )}
+        </div>
+
+        <div style={{ display: "grid", gap: 10, minWidth: 0 }}>
+          <div
+            style={{
+              fontSize: isCompact ? 44 : 66,
+              lineHeight: 1,
+              fontWeight: 950,
+              letterSpacing: -1.2,
+              color: "var(--text)",
+              wordBreak: "break-word",
+            }}
+          >
+            Create Account
           </div>
 
           <div
             style={{
-              display: "grid",
-              gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1.35fr) minmax(280px, 0.95fr)",
-              gap: 20,
-              alignItems: "start",
+              fontSize: isCompact ? 20 : 24,
+              fontWeight: 900,
+              color: "var(--brand-accent)",
             }}
           >
-            <div style={sectionCardStyle()}>
-              <div style={{ display: "grid", gap: 18 }}>
-                <div style={{ display: "grid", gap: 8 }}>
-                  <label
-                    style={{
-                      color: "var(--text)",
-                      fontWeight: 900,
-                      fontSize: 16,
-                    }}
-                  >
-                    Email Address
-                  </label>
+            Naija Tax Guide Sign Up
+          </div>
 
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="Email address"
-                    style={inputStyle()}
-                    autoComplete="email"
-                  />
-                </div>
-
-                <div style={{ display: "grid", gap: 8 }}>
-                  <label
-                    style={{
-                      color: "var(--text)",
-                      fontWeight: 900,
-                      fontSize: 16,
-                    }}
-                  >
-                    Referral Code (Optional)
-                  </label>
-
-                  <input
-                    type="text"
-                    value={referralCode}
-                    onChange={(e) => setReferralCode(e.target.value.toUpperCase())}
-                    placeholder="Referral code"
-                    style={inputStyle()}
-                    autoComplete="off"
-                  />
-
-                  <div
-                    style={{
-                      color: "var(--text-muted)",
-                      fontSize: 14,
-                      lineHeight: 1.7,
-                    }}
-                  >
-                    If you opened a referral link, the code is applied automatically. You can also paste a code manually before verification.
-                  </div>
-                </div>
-
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
-                  <button
-                    style={secondaryButtonStyle(sendingOtp || verifyingOtp)}
-                    onClick={() => void handleSendOtp()}
-                    disabled={sendingOtp || verifyingOtp}
-                  >
-                    {sendingOtp ? "Sending..." : "Send OTP"}
-                  </button>
-
-                  <button
-                    style={secondaryButtonStyle(sendingOtp || verifyingOtp)}
-                    onClick={handleClearReferral}
-                    disabled={sendingOtp || verifyingOtp}
-                  >
-                    Clear Referral
-                  </button>
-                </div>
-
-                <div style={{ display: "grid", gap: 8 }}>
-                  <label
-                    style={{
-                      color: "var(--text)",
-                      fontWeight: 900,
-                      fontSize: 16,
-                    }}
-                  >
-                    OTP Code
-                  </label>
-
-                  <input
-                    type="text"
-                    value={otpCode}
-                    onChange={(e) => setOtpCode(e.target.value)}
-                    placeholder="OTP code"
-                    style={inputStyle()}
-                    inputMode="numeric"
-                    autoComplete="one-time-code"
-                  />
-                </div>
-
-                <div>
-                  <button
-                    style={primaryButtonStyle(verifyingOtp || sendingOtp)}
-                    onClick={() => void handleVerifyOtp()}
-                    disabled={verifyingOtp || sendingOtp}
-                  >
-                    {verifyingOtp ? "Verifying..." : "Verify OTP"}
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div style={{ display: "grid", gap: 16 }}>
-              <div style={sectionCardStyle()}>
-                <div
-                  style={{
-                    color: "var(--text)",
-                    fontWeight: 950,
-                    fontSize: 18,
-                    marginBottom: 10,
-                  }}
-                >
-                  Already registered?
-                </div>
-
-                <div
-                  style={{
-                    color: "var(--text-muted)",
-                    fontSize: 16,
-                    lineHeight: 1.7,
-                    marginBottom: 18,
-                  }}
-                >
-                  Go to the separate sign-in page if you already have an account and only need workspace access.
-                </div>
-
-                <button style={primaryButtonStyle(false)} onClick={() => router.push("/login")}>
-                  Open Sign In
-                </button>
-              </div>
-
-              <div style={sectionCardStyle()}>
-                <div
-                  style={{
-                    color: "var(--text)",
-                    fontWeight: 950,
-                    fontSize: 18,
-                    marginBottom: 10,
-                  }}
-                >
-                  Referral support
-                </div>
-
-                <div
-                  style={{
-                    color: "var(--text-muted)",
-                    fontSize: 16,
-                    lineHeight: 1.7,
-                  }}
-                >
-                  Sign-up is the only page that should apply a referral code to a new account.
-                </div>
-              </div>
-
-              <div style={sectionCardStyle()}>
-                <div
-                  style={{
-                    color: "var(--text)",
-                    fontWeight: 950,
-                    fontSize: 18,
-                    marginBottom: 10,
-                  }}
-                >
-                  Secure access method
-                </div>
-
-                <div
-                  style={{
-                    color: "var(--text-muted)",
-                    fontSize: 16,
-                    lineHeight: 1.7,
-                  }}
-                >
-                  Account access is initialized through email OTP verification using your current backend flow.
-                </div>
-              </div>
-
-              <div style={sectionCardStyle()}>
-                <div
-                  style={{
-                    color: "var(--text)",
-                    fontWeight: 950,
-                    fontSize: 18,
-                    marginBottom: 10,
-                  }}
-                >
-                  Need help?
-                </div>
-
-                <div
-                  style={{
-                    color: "var(--text-muted)",
-                    fontSize: 16,
-                    lineHeight: 1.7,
-                    marginBottom: 16,
-                  }}
-                >
-                  If sign-up fails after a valid attempt, use Support and try again after a short wait.
-                </div>
-
-                <button style={secondaryButtonStyle(false)} onClick={() => router.push("/support")}>
-                  Open Support
-                </button>
-              </div>
-            </div>
+          <div
+            style={{
+              maxWidth: 820,
+              color: "var(--text-muted)",
+              fontSize: isCompact ? 16 : 18,
+              lineHeight: 1.75,
+            }}
+          >
+            Start your account securely with email OTP. Referral code support is available here so account creation can remain separated from normal sign-in.
           </div>
         </div>
       </div>
-    </div>
+
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+        <button style={themeButtonStyle(theme === "dark")} onClick={() => setTheme("dark")}>
+          Dark
+        </button>
+        <button style={themeButtonStyle(theme === "light")} onClick={() => setTheme("light")}>
+          Light
+        </button>
+        <button style={themeButtonStyle(theme === "system")} onClick={() => setTheme("system")}>
+          System
+        </button>
+      </div>
+
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 14 }}>
+        <button style={primaryButtonStyle(false)} onClick={() => router.push("/login")}>
+          Already have an account? Sign in
+        </button>
+
+        <button style={secondaryButtonStyle(false)} onClick={() => router.push("/welcome")}>
+          Open Welcome Page
+        </button>
+      </div>
+
+      <div
+        style={{
+          ...sectionCardStyle(),
+          ...toneStyle(noticeTone),
+          padding: "20px 22px",
+        }}
+      >
+        <div
+          style={{
+            color: "var(--text)",
+            fontSize: isCompact ? 16 : 17,
+            lineHeight: 1.7,
+            wordBreak: "break-word",
+          }}
+        >
+          {noticeText}
+        </div>
+      </div>
+
+      <div style={formGridStyle}>
+        <div style={sectionCardStyle({ minWidth: 0 })}>
+          <div style={{ display: "grid", gap: 18 }}>
+            <div style={{ display: "grid", gap: 8 }}>
+              <label
+                style={{
+                  color: "var(--text)",
+                  fontWeight: 900,
+                  fontSize: 16,
+                }}
+              >
+                Email Address
+              </label>
+
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Email address"
+                style={inputStyle()}
+                autoComplete="email"
+              />
+            </div>
+
+            <div style={{ display: "grid", gap: 8 }}>
+              <label
+                style={{
+                  color: "var(--text)",
+                  fontWeight: 900,
+                  fontSize: 16,
+                }}
+              >
+                Referral Code (Optional)
+              </label>
+
+              <input
+                type="text"
+                value={referralCode}
+                onChange={(e) => setReferralCode(e.target.value.toUpperCase())}
+                placeholder="Referral code"
+                style={inputStyle()}
+                autoComplete="off"
+              />
+
+              <div
+                style={{
+                  color: "var(--text-muted)",
+                  fontSize: 14,
+                  lineHeight: 1.7,
+                }}
+              >
+                If you opened a referral link, the code is applied automatically. You can also paste a code manually before verification.
+              </div>
+            </div>
+
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+              <button
+                style={secondaryButtonStyle(sendingOtp || verifyingOtp)}
+                onClick={() => void handleSendOtp()}
+                disabled={sendingOtp || verifyingOtp}
+              >
+                {sendingOtp ? "Sending..." : "Send OTP"}
+              </button>
+
+              <button
+                style={secondaryButtonStyle(sendingOtp || verifyingOtp)}
+                onClick={handleClearReferral}
+                disabled={sendingOtp || verifyingOtp}
+              >
+                Clear Referral
+              </button>
+            </div>
+
+            <div style={{ display: "grid", gap: 8 }}>
+              <label
+                style={{
+                  color: "var(--text)",
+                  fontWeight: 900,
+                  fontSize: 16,
+                }}
+              >
+                OTP Code
+              </label>
+
+              <input
+                type="text"
+                value={otpCode}
+                onChange={(e) => setOtpCode(e.target.value)}
+                placeholder="OTP code"
+                style={inputStyle()}
+                inputMode="numeric"
+                autoComplete="one-time-code"
+              />
+            </div>
+
+            <div>
+              <button
+                style={primaryButtonStyle(verifyingOtp || sendingOtp)}
+                onClick={() => void handleVerifyOtp()}
+                disabled={verifyingOtp || sendingOtp}
+              >
+                {verifyingOtp ? "Verifying..." : "Verify OTP"}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gap: 16, minWidth: 0 }}>
+          <div style={sectionCardStyle()}>
+            <div
+              style={{
+                color: "var(--text)",
+                fontWeight: 950,
+                fontSize: 18,
+                marginBottom: 10,
+              }}
+            >
+              Already registered?
+            </div>
+
+            <div
+              style={{
+                color: "var(--text-muted)",
+                fontSize: 16,
+                lineHeight: 1.7,
+                marginBottom: 18,
+              }}
+            >
+              Go to the separate sign-in page if you already have an account and only need workspace access.
+            </div>
+
+            <button style={primaryButtonStyle(false)} onClick={() => router.push("/login")}>
+              Open Sign In
+            </button>
+          </div>
+
+          <div style={sectionCardStyle()}>
+            <div
+              style={{
+                color: "var(--text)",
+                fontWeight: 950,
+                fontSize: 18,
+                marginBottom: 10,
+              }}
+            >
+              Referral support
+            </div>
+
+            <div
+              style={{
+                color: "var(--text-muted)",
+                fontSize: 16,
+                lineHeight: 1.7,
+              }}
+            >
+              Sign-up is the only page that should apply a referral code to a new account.
+            </div>
+          </div>
+
+          <div style={sectionCardStyle()}>
+            <div
+              style={{
+                color: "var(--text)",
+                fontWeight: 950,
+                fontSize: 18,
+                marginBottom: 10,
+              }}
+            >
+              Secure access method
+            </div>
+
+            <div
+              style={{
+                color: "var(--text-muted)",
+                fontSize: 16,
+                lineHeight: 1.7,
+              }}
+            >
+              Account access is initialized through email OTP verification using your current backend flow.
+            </div>
+          </div>
+
+          <div style={sectionCardStyle()}>
+            <div
+              style={{
+                color: "var(--text)",
+                fontWeight: 950,
+                fontSize: 18,
+                marginBottom: 10,
+              }}
+            >
+              Need help?
+            </div>
+
+            <div
+              style={{
+                color: "var(--text-muted)",
+                fontSize: 16,
+                lineHeight: 1.7,
+                marginBottom: 16,
+              }}
+            >
+              If sign-up fails after a valid attempt, use Support and try again after a short wait.
+            </div>
+
+            <button style={secondaryButtonStyle(false)} onClick={() => router.push("/support")}>
+              Open Support
+            </button>
+          </div>
+        </div>
+      </div>
+    </AuthShell>
   );
 }
