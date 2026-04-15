@@ -14,8 +14,6 @@ type AskResp = {
   error?: string;
   fix?: string;
   root_cause?: string;
-  details?: unknown;
-  debug?: unknown;
   citations?: string[];
   clarification_prompt?: string;
 };
@@ -762,7 +760,11 @@ function AskPageContent() {
                     </div>
                   </div>
 
-                  <div style={metricCardStyle(channelSummary === "No channel linked" ? "default" : "good")}>
+                  <div
+                    style={metricCardStyle(
+                      channelSummary === "No channel linked" ? "default" : "good"
+                    )}
+                  >
                     <div
                       style={{
                         fontSize: 13,
