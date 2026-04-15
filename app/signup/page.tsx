@@ -1,700 +1,866 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { apiJson, isApiError } from "@/lib/api";
+import React, { Suspense, useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import { apiJson } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
+import { themeChipStyle, themeVars, useSharedTheme } from "@/lib/theme";
+import { getWelcomeSeen } from "@/lib/preferences-storage";
+import WorkspaceActionBar from "@/components/workspace-action-bar";
+import WorkspaceSectionCard from "@/components/workspace-section-card";
+import {
+  WorkspaceField,
+  workspaceInputStyle,
+} from "@/components/workspace-form";
+
+type RequestOtpResp = {
+  ok?: boolean;
+  ttl_minutes?: number;
+  email_to?: string;
+  message?: string;
+};
+
+type VerifyOtpResp = {
+  ok?: boolean;
+  token?: string;
+  account_id?: string;
+  message?: string;
+};
 
 type NoticeTone = "default" | "good" | "warn" | "danger";
 
-const BRAND_LOGO_SRC = "/logo.png";
+type NoticeState = {
+  tone: NoticeTone;
+  text: string;
+};
 
-function safeText(value: unknown, fallback = "") {
-  if (value === null || value === undefined) return fallback;
-  const text = String(value).trim();
-  return text || fallback;
+const REFERRAL_STORAGE_KEY = "ntg_referral_code";
+const NEXT_PATH_STORAGE_KEY = "ntg_next_path";
+
+function Panel({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      style={{
+        width: "100%",
+        maxWidth: 980,
+        borderRadius: 26,
+        border: "1px solid var(--border)",
+        background: "var(--panel-bg)",
+        padding: 24,
+        backdropFilter: "blur(12px)",
+        boxShadow: "0 10px 30px rgba(0,0,0,0.10)",
+      }}
+    >
+      {children}
+    </div>
+  );
 }
 
-function normalizePath(value: string, fallback: string) {
-  const raw = safeText(value, "");
-  if (!raw) return fallback;
-  return raw.startsWith("/") ? raw : `/${raw}`;
-}
+function safeDecodeNext(nextValue: string | null): string | null {
+  let raw = String(nextValue || "").trim();
+  if (!raw) return null;
 
-function looksLikeEmail(value: string) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
-}
-
-function extractFriendlyError(error: unknown, fallback: string) {
-  if (isApiError(error)) {
-    const data = (error as { data?: Record<string, unknown>; message?: string }).data || {};
-    const rawError = safeText(data.error, "").toLowerCase();
-    const rawMessage = safeText(data.message, "").toLowerCase();
-
-    if (rawError.includes("expired") || rawMessage.includes("expired")) {
-      return "This one-time code has expired. Request a new code and try again.";
+  for (let i = 0; i < 3; i++) {
+    try {
+      const decoded = decodeURIComponent(raw).trim();
+      if (decoded === raw) break;
+      raw = decoded;
+    } catch {
+      break;
     }
-
-    if (rawError.includes("invalid") || rawMessage.includes("invalid")) {
-      return "The one-time code is not valid. Check the code and try again.";
-    }
-
-    if (rawError.includes("rate") || rawMessage.includes("too many")) {
-      return "Too many attempts were made. Please wait a little and try again.";
-    }
-
-    if (rawError.includes("exists") || rawMessage.includes("already")) {
-      return "An account may already exist for that email. Try signing in instead.";
-    }
-
-    return fallback;
   }
 
-  return fallback;
+  if (!raw) return null;
+  if (!raw.startsWith("/")) return null;
+  if (raw.startsWith("//")) return null;
+  if (raw === "/login" || raw.startsWith("/login?")) return null;
+  if (raw === "/signup" || raw.startsWith("/signup?")) return null;
+  return raw;
 }
 
-export default function SignupPage() {
-  const router = useRouter();
+function readStoredNextPath(): string {
+  if (typeof window === "undefined") return "";
+  try {
+    return (
+      safeDecodeNext(
+        window.sessionStorage.getItem(NEXT_PATH_STORAGE_KEY) ||
+          window.localStorage.getItem(NEXT_PATH_STORAGE_KEY)
+      ) || ""
+    );
+  } catch {
+    return "";
+  }
+}
 
-  const [theme, setTheme] = useState<"dark" | "light" | "system">("system");
-  const [logoBroken, setLogoBroken] = useState(false);
+function persistNextPath(nextPath: string) {
+  if (typeof window === "undefined") return;
+  try {
+    if (nextPath) {
+      window.sessionStorage.setItem(NEXT_PATH_STORAGE_KEY, nextPath);
+      window.localStorage.setItem(NEXT_PATH_STORAGE_KEY, nextPath);
+    } else {
+      window.sessionStorage.removeItem(NEXT_PATH_STORAGE_KEY);
+      window.localStorage.removeItem(NEXT_PATH_STORAGE_KEY);
+    }
+  } catch {
+    // ignore
+  }
+}
+
+function clearStoredNextPath() {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.removeItem(NEXT_PATH_STORAGE_KEY);
+    window.localStorage.removeItem(NEXT_PATH_STORAGE_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+function resolvePostSignupPath(sp: ReturnType<typeof useSearchParams>) {
+  const queryNext = safeDecodeNext(sp?.get("next"));
+  if (queryNext) return queryNext;
+
+  const storedNext = readStoredNextPath();
+  if (storedNext) return storedNext;
+
+  return getWelcomeSeen() ? "/dashboard" : "/welcome";
+}
+
+function normalizeReferralCode(value: string | null | undefined): string {
+  return String(value || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9_-]/g, "");
+}
+
+function readStoredReferralCode(): string {
+  if (typeof window === "undefined") return "";
+  try {
+    return normalizeReferralCode(
+      window.sessionStorage.getItem(REFERRAL_STORAGE_KEY) ||
+        window.localStorage.getItem(REFERRAL_STORAGE_KEY)
+    );
+  } catch {
+    return "";
+  }
+}
+
+function persistReferralCode(code: string) {
+  if (typeof window === "undefined") return;
+  try {
+    if (code) {
+      window.sessionStorage.setItem(REFERRAL_STORAGE_KEY, code);
+      window.localStorage.setItem(REFERRAL_STORAGE_KEY, code);
+    } else {
+      window.sessionStorage.removeItem(REFERRAL_STORAGE_KEY);
+      window.localStorage.removeItem(REFERRAL_STORAGE_KEY);
+    }
+  } catch {
+    // ignore
+  }
+}
+
+function clearStoredReferralCode() {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.removeItem(REFERRAL_STORAGE_KEY);
+    window.localStorage.removeItem(REFERRAL_STORAGE_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+function sectionCardStyle(): React.CSSProperties {
+  return {
+    borderRadius: 18,
+    border: "1px solid var(--border)",
+    background: "var(--surface-soft)",
+    padding: 16,
+  };
+}
+
+function sectionTitleStyle(): React.CSSProperties {
+  return {
+    color: "var(--text)",
+    fontWeight: 900,
+    fontSize: 15,
+  };
+}
+
+function sectionTextStyle(): React.CSSProperties {
+  return {
+    marginTop: 8,
+    color: "var(--text-faint)",
+    lineHeight: 1.6,
+  };
+}
+
+function linkBtnStyle(primary = false): React.CSSProperties {
+  return {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 44,
+    padding: "10px 16px",
+    borderRadius: 14,
+    border: primary
+      ? "1px solid var(--accent-border)"
+      : "1px solid var(--border)",
+    background: primary ? "var(--accent-soft)" : "var(--surface-soft)",
+    color: "var(--text)",
+    textDecoration: "none",
+    fontWeight: 900,
+    fontSize: 14,
+  };
+}
+
+function noticeStyle(tone: NoticeTone): React.CSSProperties {
+  if (tone === "good") {
+    return {
+      border: "1px solid var(--success-border)",
+      background: "var(--success-bg)",
+    };
+  }
+
+  if (tone === "warn") {
+    return {
+      border: "1px solid var(--warn-border)",
+      background: "var(--warn-bg)",
+    };
+  }
+
+  if (tone === "danger") {
+    return {
+      border: "1px solid var(--danger-border)",
+      background: "var(--danger-bg)",
+    };
+  }
+
+  return {
+    border: "1px solid var(--border)",
+    background: "var(--surface-soft)",
+  };
+}
+
+function appendNext(url: string, nextPath: string): string {
+  if (!nextPath) return url;
+  const joiner = url.includes("?") ? "&" : "?";
+  return `${url}${joiner}next=${encodeURIComponent(nextPath)}`;
+}
+
+function buildInitialNotice(referralCode: string, nextPath: string): NoticeState {
+  if (referralCode && nextPath) {
+    return {
+      tone: "default",
+      text: `Referral code ${referralCode} detected. Continue with sign-up and you will continue to ${nextPath} after verification.`,
+    };
+  }
+
+  if (referralCode) {
+    return {
+      tone: "default",
+      text: `Referral code ${referralCode} detected. Continue with sign-up to apply it to your new account.`,
+    };
+  }
+
+  if (nextPath) {
+    return {
+      tone: "default",
+      text: `Create your account with email OTP. After verification, you will continue to ${nextPath}.`,
+    };
+  }
+
+  return {
+    tone: "default",
+    text: "Create your account with email OTP.",
+  };
+}
+
+function requestOtpMessage(): string {
+  return "Could not send OTP right now. Please confirm your email address and try again.";
+}
+
+function verifyOtpMessage(): string {
+  return "That OTP could not be accepted. Request a new code and try again.";
+}
+
+function SignupPageContent() {
+  const router = useRouter();
+  const sp = useSearchParams();
+  const { themeMode, resolvedMode, setThemeMode } = useSharedTheme();
+  const { setToken, setHasSession, refreshSession, hasSession, authReady } =
+    useAuth();
 
   const [email, setEmail] = useState("");
+  const [otp, setOtp] = useState("");
   const [referralCode, setReferralCode] = useState("");
-  const [otpCode, setOtpCode] = useState("");
-  const [redirectTo, setRedirectTo] = useState("/dashboard");
+  const [notice, setNotice] = useState<NoticeState>({
+    tone: "default",
+    text: "Create your account with email OTP.",
+  });
+  const [busy, setBusy] = useState(false);
+  const [checkingSession, setCheckingSession] = useState(true);
 
-  const [sendingOtp, setSendingOtp] = useState(false);
-  const [verifyingOtp, setVerifyingOtp] = useState(false);
+  const redirectingRef = useRef(false);
+  const initDoneRef = useRef(false);
+  const otpInputRef = useRef<HTMLInputElement | null>(null);
 
-  const [noticeTone, setNoticeTone] = useState<NoticeTone>("default");
-  const [noticeText, setNoticeText] = useState("Create your account with email OTP.");
+  const queryReferralCode = normalizeReferralCode(sp?.get("ref"));
+  const queryNextPath = safeDecodeNext(sp?.get("next")) || "";
+  const storedReferralCode = readStoredReferralCode();
+  const storedNextPath = readStoredNextPath();
 
-  useEffect(() => {
-    const saved =
-      safeText(window.localStorage.getItem("ntg-theme")) ||
-      safeText(window.localStorage.getItem("naija-tax-guide-theme")) ||
-      safeText(window.localStorage.getItem("theme")) ||
-      "system";
-
-    if (saved === "dark" || saved === "light" || saved === "system") {
-      setTheme(saved);
-    }
-
-    const params = new URLSearchParams(window.location.search);
-
-    const detectedReferral =
-      params.get("ref") ||
-      params.get("referral") ||
-      params.get("referral_code") ||
-      "";
-
-    const detectedRedirect =
-      params.get("redirect") ||
-      params.get("next") ||
-      params.get("continue") ||
-      params.get("continueTo") ||
-      "/dashboard";
-
-    setRedirectTo(normalizePath(detectedRedirect, "/dashboard"));
-
-    if (detectedReferral) {
-      const cleanReferral = safeText(detectedReferral, "").toUpperCase();
-      setReferralCode(cleanReferral);
-      setNoticeTone("good");
-      setNoticeText(`Referral code ${cleanReferral} detected. Continue with sign-up to apply it.`);
-    }
-  }, []);
+  const effectiveReferralCode = queryReferralCode || storedReferralCode || "";
+  const effectiveNextPath = queryNextPath || storedNextPath || "";
 
   useEffect(() => {
-    const root = document.documentElement;
-    const resolved =
-      theme === "system"
-        ? window.matchMedia("(prefers-color-scheme: dark)").matches
-          ? "dark"
-          : "light"
-        : theme;
+    if (initDoneRef.current) return;
 
-    root.dataset.theme = resolved;
-    window.localStorage.setItem("ntg-theme", theme);
-    window.localStorage.setItem("naija-tax-guide-theme", theme);
-    window.localStorage.setItem("theme", theme);
-  }, [theme]);
-
-  async function handleSendOtp() {
-    const cleanEmail = email.trim().toLowerCase();
-    const cleanReferral = referralCode.trim().toUpperCase();
-
-    if (!looksLikeEmail(cleanEmail)) {
-      setNoticeTone("warn");
-      setNoticeText("Enter a valid email address before requesting a one-time code.");
-      return;
+    if (effectiveReferralCode) {
+      setReferralCode(effectiveReferralCode);
+      persistReferralCode(effectiveReferralCode);
     }
 
-    setSendingOtp(true);
+    if (effectiveNextPath) {
+      persistNextPath(effectiveNextPath);
+    }
+
+    setNotice(buildInitialNotice(effectiveReferralCode, effectiveNextPath));
+    initDoneRef.current = true;
+  }, [effectiveReferralCode, effectiveNextPath]);
+
+  useEffect(() => {
+    if (!authReady) return;
+
+    let alive = true;
+
+    const run = async () => {
+      setCheckingSession(true);
+
+      try {
+        const ok = hasSession ? true : await refreshSession();
+
+        if (!alive) return;
+
+        if (ok) {
+          setHasSession(true);
+          setNotice({
+            tone: "good",
+            text: "Active session already exists in this browser. You can continue normally.",
+          });
+        } else {
+          setNotice(buildInitialNotice(effectiveReferralCode, effectiveNextPath));
+        }
+      } catch {
+        if (!alive) return;
+        setNotice(buildInitialNotice(effectiveReferralCode, effectiveNextPath));
+      } finally {
+        if (!alive) return;
+        setCheckingSession(false);
+      }
+    };
+
+    void run();
+
+    return () => {
+      alive = false;
+    };
+  }, [
+    authReady,
+    hasSession,
+    refreshSession,
+    setHasSession,
+    effectiveReferralCode,
+    effectiveNextPath,
+  ]);
+
+  useEffect(() => {
+    persistReferralCode(referralCode);
+  }, [referralCode]);
+
+  const sendOtp = async () => {
+    const e = email.trim().toLowerCase();
+    const normalizedReferral = normalizeReferralCode(referralCode);
+    if (!e) return;
+
+    setBusy(true);
+    setNotice({
+      tone: "default",
+      text: "Sending sign-up OTP...",
+    });
 
     try {
-      await apiJson("/web/auth/request-otp", {
+      const data = await apiJson<RequestOtpResp>("/web/auth/request-otp", {
         method: "POST",
-        useAuthToken: false,
-        timeoutMs: 15000,
+        timeoutMs: 25000,
         body: {
-          email: cleanEmail,
-          purpose: "signup",
-          flow: "signup",
-          channel: "web",
-          referral_code: cleanReferral || undefined,
+          contact: e,
+          purpose: "web_login",
         },
+        useAuthToken: false,
       });
 
-      setNoticeTone("good");
-      setNoticeText("OTP sent successfully. Check your email inbox and enter the code below.");
-    } catch (error: unknown) {
-      setNoticeTone("danger");
-      setNoticeText(
-        extractFriendlyError(
-          error,
-          "We could not send the one-time code right now. Please try again shortly."
-        )
-      );
+      if (data?.ok) {
+        if (normalizedReferral && effectiveNextPath) {
+          setNotice({
+            tone: "good",
+            text: `OTP sent successfully. Referral code ${normalizedReferral} is ready and you will continue to ${effectiveNextPath} after verification.`,
+          });
+        } else if (normalizedReferral) {
+          setNotice({
+            tone: "good",
+            text: `OTP sent successfully. Referral code ${normalizedReferral} is ready for account creation.`,
+          });
+        } else {
+          setNotice({
+            tone: "good",
+            text: "OTP sent successfully. Check your email inbox and enter the code below.",
+          });
+        }
+
+        window.setTimeout(() => {
+          otpInputRef.current?.focus();
+        }, 120);
+      } else {
+        setNotice({
+          tone: "warn",
+          text: "OTP could not be sent right now. Please confirm the email address and try again.",
+        });
+      }
+    } catch {
+      setNotice({
+        tone: "danger",
+        text: requestOtpMessage(),
+      });
     } finally {
-      setSendingOtp(false);
+      setBusy(false);
     }
-  }
+  };
 
-  async function handleVerifyOtp() {
-    const cleanEmail = email.trim().toLowerCase();
-    const cleanReferral = referralCode.trim().toUpperCase();
-    const cleanOtp = otpCode.trim();
+  const verifyOtp = async () => {
+    const e = email.trim().toLowerCase();
+    const code = otp.trim();
+    const normalizedReferral = normalizeReferralCode(referralCode);
+    if (!e || !code) return;
 
-    if (!looksLikeEmail(cleanEmail)) {
-      setNoticeTone("warn");
-      setNoticeText("Enter a valid email address before continuing.");
-      return;
-    }
-
-    if (!cleanOtp) {
-      setNoticeTone("warn");
-      setNoticeText("Enter the one-time code that was sent to your email.");
-      return;
-    }
-
-    setVerifyingOtp(true);
+    setBusy(true);
+    setNotice({
+      tone: "default",
+      text: "Verifying sign-up OTP...",
+    });
 
     try {
-      const response = await apiJson<{ redirect_to?: string }>("/web/auth/verify-otp", {
+      const data = await apiJson<VerifyOtpResp>("/web/auth/verify-otp", {
         method: "POST",
-        useAuthToken: false,
-        timeoutMs: 15000,
+        timeoutMs: 25000,
         body: {
-          email: cleanEmail,
-          purpose: "signup",
-          flow: "signup",
-          code: cleanOtp,
-          otp: cleanOtp,
-          otp_code: cleanOtp,
-          referral_code: cleanReferral || undefined,
-          redirect_to: redirectTo,
+          contact: e,
+          otp: code,
+          purpose: "web_login",
+          referral_code: normalizedReferral || undefined,
         },
+        useAuthToken: false,
       });
 
-      const finalRedirect = normalizePath(
-        safeText(response?.redirect_to, redirectTo),
-        redirectTo
-      );
+      if (!data?.ok) {
+        setNotice({
+          tone: "warn",
+          text: "That OTP could not be accepted. Request a new code and try again.",
+        });
+        return;
+      }
 
-      router.replace(finalRedirect);
-      router.refresh();
-    } catch (error: unknown) {
-      setNoticeTone("danger");
-      setNoticeText(
-        extractFriendlyError(
-          error,
-          "We could not complete account creation right now. Request a fresh code and try again."
-        )
-      );
+      if (data?.token) {
+        setToken(data.token);
+      }
+
+      try {
+        await refreshSession();
+      } catch {
+        // ignore
+      }
+
+      setHasSession(true);
+
+      if (normalizedReferral) {
+        clearStoredReferralCode();
+      }
+
+      const finalPath = resolvePostSignupPath(sp);
+      clearStoredNextPath();
+
+      setNotice({
+        tone: "good",
+        text: "Account flow completed successfully. Redirecting...",
+      });
+
+      if (!redirectingRef.current) {
+        redirectingRef.current = true;
+        window.setTimeout(() => {
+          router.replace(finalPath);
+        }, 250);
+      }
+    } catch {
+      setNotice({
+        tone: "danger",
+        text: verifyOtpMessage(),
+      });
     } finally {
-      setVerifyingOtp(false);
+      setBusy(false);
     }
-  }
+  };
 
-  function handleClearReferral() {
+  const clearReferral = () => {
     setReferralCode("");
-    setNoticeTone("default");
-    setNoticeText("Create your account with email OTP.");
-  }
+    clearStoredReferralCode();
+    setNotice({
+      tone: "default",
+      text: effectiveNextPath
+        ? `Referral code cleared. After verification, you will continue to ${effectiveNextPath}.`
+        : "Referral code cleared.",
+    });
+  };
+
+  const nextPathForLinks = resolvePostSignupPath(sp);
+  const loginHref = appendNext(
+    "/login",
+    nextPathForLinks === "/welcome" ? "" : nextPathForLinks
+  );
 
   return (
-    <div className="auth-page">
-      <div className="auth-shell">
-        <div className="auth-content">
-          <div className="hero">
-            <div className="logo-box">
-              {!logoBroken ? (
-                <img
-                  src={BRAND_LOGO_SRC}
-                  alt="Naija Tax Guide"
-                  className="logo-image"
-                  onError={() => setLogoBroken(true)}
-                />
-              ) : (
-                <div className="logo-fallback">NTG</div>
-              )}
-            </div>
-
-            <div className="hero-copy">
-              <h1>Create Account</h1>
-              <div className="eyebrow">Naija Tax Guide Sign Up</div>
-              <p>
-                Start your account securely with email OTP. Referral code support is available here
-                so account creation can remain separated from normal sign-in.
-              </p>
-            </div>
+    <div
+      style={{
+        minHeight: "100vh",
+        display: "grid",
+        placeItems: "center",
+        padding: 24,
+        background: "var(--app-bg)",
+        color: "var(--text)",
+        ...themeVars(resolvedMode),
+      }}
+    >
+      <Panel>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "88px minmax(0,1fr)",
+            gap: 18,
+            alignItems: "center",
+          }}
+        >
+          <div
+            style={{
+              width: 88,
+              height: 88,
+              borderRadius: 22,
+              overflow: "hidden",
+              border: "1px solid var(--accent-border)",
+              background: "var(--surface)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <img
+              src="/bms-logo.jpg"
+              alt="BMS logo"
+              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+            />
           </div>
 
-          <div className="theme-row">
-            <button
-              type="button"
-              className={`theme-btn ${theme === "dark" ? "active" : ""}`}
-              onClick={() => setTheme("dark")}
+          <div style={{ minWidth: 0 }}>
+            <div
+              style={{
+                fontSize: 38,
+                fontWeight: 950,
+                letterSpacing: -0.8,
+                color: "var(--text)",
+                lineHeight: 1.05,
+              }}
             >
-              Dark
-            </button>
-            <button
-              type="button"
-              className={`theme-btn ${theme === "light" ? "active" : ""}`}
-              onClick={() => setTheme("light")}
-            >
-              Light
-            </button>
-            <button
-              type="button"
-              className={`theme-btn ${theme === "system" ? "active" : ""}`}
-              onClick={() => setTheme("system")}
-            >
-              System
-            </button>
-          </div>
-
-          <div className="top-actions">
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={() => router.push("/login")}
-            >
-              Already have an account? Sign in
-            </button>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={() => router.push("/welcome")}
-            >
-              Open Welcome Page
-            </button>
-          </div>
-
-          <div className={`notice notice-${noticeTone}`}>{noticeText}</div>
-
-          <div className="main-grid">
-            <div className="card form-card">
-              <div className="field-group">
-                <label>Email Address</label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Email address"
-                  autoComplete="email"
-                />
-              </div>
-
-              <div className="field-group">
-                <label>Referral Code (Optional)</label>
-                <input
-                  type="text"
-                  value={referralCode}
-                  onChange={(e) => setReferralCode(e.target.value.toUpperCase())}
-                  placeholder="Referral code"
-                  autoComplete="off"
-                />
-                <div className="helper-text">
-                  If you opened a referral link, the code is applied automatically. You can also paste a code manually before verification.
-                </div>
-              </div>
-
-              <div className="field-actions">
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => void handleSendOtp()}
-                  disabled={sendingOtp || verifyingOtp}
-                >
-                  {sendingOtp ? "Sending..." : "Send OTP"}
-                </button>
-
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={handleClearReferral}
-                  disabled={sendingOtp || verifyingOtp}
-                >
-                  Clear Referral
-                </button>
-              </div>
-
-              <div className="field-group">
-                <label>OTP Code</label>
-                <input
-                  type="text"
-                  value={otpCode}
-                  onChange={(e) => setOtpCode(e.target.value)}
-                  placeholder="OTP code"
-                  autoComplete="one-time-code"
-                  inputMode="numeric"
-                />
-              </div>
-
-              <div className="field-actions">
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  onClick={() => void handleVerifyOtp()}
-                  disabled={sendingOtp || verifyingOtp}
-                >
-                  {verifyingOtp ? "Verifying..." : "Verify OTP"}
-                </button>
-              </div>
+              Create Account
             </div>
-
-            <div className="side-stack">
-              <div className="card info-card">
-                <h3>Already registered?</h3>
-                <p>
-                  Go to the separate sign-in page if you already have an account and only need workspace access.
-                </p>
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  onClick={() => router.push("/login")}
-                >
-                  Open Sign In
-                </button>
-              </div>
-
-              <div className="card info-card">
-                <h3>Referral support</h3>
-                <p>Sign-up is the only page that should apply a referral code to a new account.</p>
-              </div>
-
-              <div className="card info-card">
-                <h3>Secure access method</h3>
-                <p>Account access is initialized through email OTP verification using your current backend flow.</p>
-              </div>
-
-              <div className="card info-card">
-                <h3>Need help?</h3>
-                <p>If sign-up fails after a valid attempt, use Support and try again after a short wait.</p>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => router.push("/support")}
-                >
-                  Open Support
-                </button>
-              </div>
+            <div
+              style={{
+                marginTop: 8,
+                color: "var(--gold)",
+                fontSize: 15,
+                fontWeight: 800,
+              }}
+            >
+              Naija Tax Guide Sign Up
+            </div>
+            <div
+              style={{
+                marginTop: 10,
+                color: "var(--text-muted)",
+                lineHeight: 1.6,
+                fontSize: 15,
+                maxWidth: 620,
+              }}
+            >
+              Start your account securely with email OTP. Referral code support is available here so account creation can remain separated from normal sign-in.
             </div>
           </div>
         </div>
-      </div>
 
-      <style jsx>{`
-        .auth-page {
-          min-height: 100vh;
-          background: var(--page-bg, #f4f6fb);
-          padding: 20px 14px 36px;
-        }
+        <div
+          style={{
+            marginTop: 20,
+            display: "flex",
+            gap: 10,
+            flexWrap: "wrap",
+          }}
+        >
+          <button
+            onClick={() => setThemeMode("dark")}
+            style={themeChipStyle(themeMode === "dark")}
+          >
+            Dark
+          </button>
+          <button
+            onClick={() => setThemeMode("light")}
+            style={themeChipStyle(themeMode === "light")}
+          >
+            Light
+          </button>
+          <button
+            onClick={() => setThemeMode("system")}
+            style={themeChipStyle(themeMode === "system")}
+          >
+            System
+          </button>
+        </div>
 
-        .auth-shell {
-          width: 100%;
-          max-width: 1180px;
-          margin: 0 auto;
-          background: var(--panel-bg, #ffffff);
-          border: 1px solid var(--border, #d9deea);
-          border-radius: 34px;
-          box-shadow: 0 12px 40px rgba(15, 23, 42, 0.05);
-          overflow: hidden;
-        }
+        <div
+          style={{
+            marginTop: 18,
+            display: "flex",
+            gap: 12,
+            flexWrap: "wrap",
+            alignItems: "center",
+          }}
+        >
+          <Link href={loginHref} style={linkBtnStyle(true)}>
+            Already have an account? Sign in
+          </Link>
+          <Link href="/welcome" style={linkBtnStyle(false)}>
+            Open Welcome Page
+          </Link>
+        </div>
 
-        .auth-content {
-          padding: 26px;
-          display: grid;
-          gap: 20px;
-        }
+        <div
+          style={{
+            marginTop: 18,
+            padding: "14px 16px",
+            borderRadius: 16,
+            color: "var(--text-soft)",
+            fontSize: 15,
+            lineHeight: 1.6,
+            ...noticeStyle(checkingSession && !hasSession ? "default" : notice.tone),
+          }}
+        >
+          {checkingSession && !hasSession
+            ? "Checking secure access state..."
+            : notice.text}
+        </div>
 
-        .hero {
-          display: grid;
-          grid-template-columns: auto minmax(0, 1fr);
-          gap: 22px;
-          align-items: start;
-        }
+        {hasSession ? (
+          <div style={{ marginTop: 22 }}>
+            <WorkspaceSectionCard
+              title="Session already active"
+              subtitle="This browser already has an authenticated session."
+            >
+              <WorkspaceActionBar
+                items={[
+                  {
+                    label: "Continue to Dashboard",
+                    onClick: () => router.replace("/dashboard"),
+                    tone: "primary",
+                    disabled: busy,
+                  },
+                  {
+                    label: "Continue to Welcome",
+                    onClick: () => router.replace("/welcome"),
+                    tone: "secondary",
+                    disabled: busy,
+                  },
+                ]}
+              />
+            </WorkspaceSectionCard>
+          </div>
+        ) : (
+          <div
+            style={{
+              marginTop: 22,
+              display: "grid",
+              gap: 18,
+              gridTemplateColumns: "minmax(0,1.15fr) minmax(280px,0.85fr)",
+            }}
+          >
+            <WorkspaceSectionCard
+              title="Sign Up"
+              subtitle="Use your email address, optional referral code, and one-time code to create or initialize account access."
+            >
+              <WorkspaceField label="Email Address" htmlFor="signup-email">
+                <input
+                  id="signup-email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Email address"
+                  style={workspaceInputStyle()}
+                  autoComplete="email"
+                />
+              </WorkspaceField>
 
-        .logo-box {
-          width: 108px;
-          height: 108px;
-          border-radius: 26px;
-          overflow: hidden;
-          border: 1px solid var(--border, #d9deea);
-          background: var(--surface, #ffffff);
-          display: grid;
-          place-items: center;
-          flex-shrink: 0;
-        }
+              <WorkspaceField label="Referral Code (Optional)" htmlFor="signup-referral">
+                <input
+                  id="signup-referral"
+                  value={referralCode}
+                  onChange={(e) => setReferralCode(normalizeReferralCode(e.target.value))}
+                  placeholder="Referral code"
+                  style={workspaceInputStyle()}
+                  autoComplete="off"
+                />
+              </WorkspaceField>
 
-        .logo-image {
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
-        }
+              <div
+                style={{
+                  marginTop: 8,
+                  color: "var(--text-faint)",
+                  fontSize: 13,
+                  lineHeight: 1.6,
+                }}
+              >
+                If you opened a referral link, the code is applied automatically. You can also paste a code manually before verification.
+              </div>
 
-        .logo-fallback {
-          font-size: 24px;
-          font-weight: 900;
-          color: var(--text, #0f172a);
-        }
+              <WorkspaceActionBar
+                items={[
+                  {
+                    label: busy ? "Sending..." : "Send OTP",
+                    onClick: () => {
+                      void sendOtp();
+                    },
+                    tone: "secondary",
+                    disabled: busy || checkingSession || !email.trim(),
+                  },
+                  {
+                    label: "Clear Referral",
+                    onClick: clearReferral,
+                    tone: "secondary",
+                    disabled: busy || !referralCode,
+                  },
+                ]}
+              />
 
-        .hero-copy {
-          min-width: 0;
-          display: grid;
-          gap: 10px;
-        }
+              <WorkspaceField label="OTP Code" htmlFor="signup-otp">
+                <input
+                  id="signup-otp"
+                  ref={otpInputRef}
+                  value={otp}
+                  onChange={(e) => setOtp(e.target.value)}
+                  placeholder="OTP code"
+                  style={workspaceInputStyle()}
+                  autoComplete="one-time-code"
+                />
+              </WorkspaceField>
 
-        .hero-copy h1 {
-          margin: 0;
-          font-size: clamp(48px, 7vw, 74px);
-          line-height: 0.95;
-          letter-spacing: -1.3px;
-          color: var(--text, #0f172a);
-          word-break: break-word;
-        }
+              <WorkspaceActionBar
+                items={[
+                  {
+                    label: busy ? "Verifying..." : "Verify OTP",
+                    onClick: () => {
+                      void verifyOtp();
+                    },
+                    tone: "primary",
+                    disabled: busy || checkingSession || !email.trim() || !otp.trim(),
+                  },
+                ]}
+              />
+            </WorkspaceSectionCard>
 
-        .eyebrow {
-          font-size: 24px;
-          font-weight: 900;
-          color: var(--brand-accent, #a85b1f);
-        }
+            <div style={{ display: "grid", gap: 14 }}>
+              <div style={sectionCardStyle()}>
+                <div style={sectionTitleStyle()}>Already registered?</div>
+                <div style={sectionTextStyle()}>
+                  Go to the separate sign-in page if you already have an account and only need workspace access.
+                </div>
+                <div style={{ marginTop: 12 }}>
+                  <Link href={loginHref} style={linkBtnStyle(true)}>
+                    Open Sign In
+                  </Link>
+                </div>
+              </div>
 
-        .hero-copy p {
-          margin: 0;
-          color: var(--text-muted, #5e687b);
-          font-size: 18px;
-          line-height: 1.75;
-          max-width: 860px;
-        }
+              <div style={sectionCardStyle()}>
+                <div style={sectionTitleStyle()}>Referral support</div>
+                <div style={sectionTextStyle()}>
+                  Sign-up is the only page that should apply a referral code to a new account.
+                </div>
+              </div>
 
-        .theme-row,
-        .top-actions,
-        .field-actions {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 12px;
-        }
+              <div style={sectionCardStyle()}>
+                <div style={sectionTitleStyle()}>Secure access method</div>
+                <div style={sectionTextStyle()}>
+                  Account access is initialized through email OTP verification using your current backend flow.
+                </div>
+              </div>
 
-        .theme-btn,
-        .btn {
-          min-height: 54px;
-          padding: 0 20px;
-          border-radius: 18px;
-          font-size: 16px;
-          font-weight: 900;
-          cursor: pointer;
-          transition: 0.2s ease;
-        }
-
-        .theme-btn {
-          border: 1px solid var(--border, #d9deea);
-          background: var(--surface, #ffffff);
-          color: var(--text, #0f172a);
-        }
-
-        .theme-btn.active {
-          border-color: var(--accent-border, #c7c9ff);
-          background: var(--accent-soft, #eef0ff);
-        }
-
-        .btn {
-          border: 1px solid var(--border-strong, #ccd2e2);
-          background: var(--button-bg, #f5f7fb);
-          color: var(--text, #0f172a);
-        }
-
-        .btn-primary {
-          border-color: var(--accent-border, #c7c9ff);
-          background: var(--button-bg-strong, #eef0ff);
-        }
-
-        .btn:disabled {
-          opacity: 0.72;
-          cursor: not-allowed;
-        }
-
-        .notice {
-          border-radius: 22px;
-          padding: 18px 20px;
-          border: 1px solid var(--border, #d9deea);
-          background: var(--surface-soft, #f8f9fd);
-          color: var(--text, #0f172a);
-          font-size: 17px;
-          line-height: 1.7;
-          word-break: break-word;
-        }
-
-        .notice-good {
-          background: var(--success-bg, rgba(34, 197, 94, 0.08));
-          border-color: var(--success-border, rgba(34, 197, 94, 0.22));
-        }
-
-        .notice-warn {
-          background: var(--warn-bg, rgba(245, 158, 11, 0.08));
-          border-color: var(--warn-border, rgba(245, 158, 11, 0.22));
-        }
-
-        .notice-danger {
-          background: var(--danger-bg, rgba(239, 68, 68, 0.08));
-          border-color: var(--danger-border, rgba(239, 68, 68, 0.22));
-        }
-
-        .main-grid {
-          display: grid;
-          grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.95fr);
-          gap: 20px;
-          align-items: start;
-        }
-
-        .card {
-          border-radius: 26px;
-          border: 1px solid var(--border, #d9deea);
-          background: var(--surface, #ffffff);
-          padding: 22px;
-          min-width: 0;
-        }
-
-        .form-card {
-          display: grid;
-          gap: 18px;
-        }
-
-        .field-group {
-          display: grid;
-          gap: 8px;
-        }
-
-        .field-group label {
-          color: var(--text, #0f172a);
-          font-size: 16px;
-          font-weight: 900;
-        }
-
-        .field-group input {
-          width: 100%;
-          min-height: 58px;
-          border-radius: 18px;
-          border: 1px solid var(--border-strong, #ccd2e2);
-          background: var(--surface, #ffffff);
-          color: var(--text, #0f172a);
-          padding: 0 18px;
-          font-size: 18px;
-          outline: none;
-          box-sizing: border-box;
-        }
-
-        .helper-text {
-          color: var(--text-muted, #5e687b);
-          font-size: 14px;
-          line-height: 1.7;
-        }
-
-        .side-stack {
-          display: grid;
-          gap: 16px;
-          min-width: 0;
-        }
-
-        .info-card {
-          display: grid;
-          gap: 12px;
-        }
-
-        .info-card h3 {
-          margin: 0;
-          color: var(--text, #0f172a);
-          font-size: 18px;
-          font-weight: 900;
-        }
-
-        .info-card p {
-          margin: 0;
-          color: var(--text-muted, #5e687b);
-          font-size: 16px;
-          line-height: 1.7;
-        }
-
-        @media (max-width: 960px) {
-          .main-grid {
-            grid-template-columns: 1fr;
-          }
-        }
-
-        @media (max-width: 720px) {
-          .auth-content {
-            padding: 18px;
-            gap: 16px;
-          }
-
-          .hero {
-            grid-template-columns: 1fr;
-            gap: 16px;
-          }
-
-          .logo-box {
-            width: 88px;
-            height: 88px;
-          }
-
-          .eyebrow {
-            font-size: 20px;
-          }
-
-          .hero-copy p {
-            font-size: 16px;
-          }
-
-          .theme-row,
-          .top-actions,
-          .field-actions {
-            display: grid;
-            grid-template-columns: 1fr;
-          }
-
-          .theme-btn,
-          .btn {
-            width: 100%;
-          }
-
-          .card {
-            padding: 18px;
-            border-radius: 22px;
-          }
-
-          .field-group input {
-            min-height: 54px;
-            font-size: 17px;
-          }
-
-          .notice {
-            font-size: 16px;
-            padding: 16px 18px;
-          }
-        }
-      `}</style>
+              <div style={sectionCardStyle()}>
+                <div style={sectionTitleStyle()}>Need help?</div>
+                <div style={sectionTextStyle()}>
+                  If sign-up fails after a valid attempt, use Support and try again after a short wait.
+                </div>
+                <div style={{ marginTop: 12 }}>
+                  <Link href="/support" style={linkBtnStyle(false)}>
+                    Open Support
+                  </Link>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </Panel>
     </div>
+  );
+}
+
+function SignupPageFallback() {
+  return (
+    <div
+      style={{
+        minHeight: "100vh",
+        display: "grid",
+        placeItems: "center",
+        padding: 24,
+        background: "var(--app-bg)",
+        color: "var(--text)",
+      }}
+    >
+      <div
+        style={{
+          width: "100%",
+          maxWidth: 560,
+          borderRadius: 24,
+          border: "1px solid rgba(255,255,255,0.08)",
+          background: "rgba(255,255,255,0.03)",
+          padding: 24,
+          textAlign: "center",
+        }}
+      >
+        Loading sign-up...
+      </div>
+    </div>
+  );
+}
+
+export default function SignupPage() {
+  return (
+    <Suspense fallback={<SignupPageFallback />}>
+      <SignupPageContent />
+    </Suspense>
   );
 }
