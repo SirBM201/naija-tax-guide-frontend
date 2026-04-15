@@ -4,7 +4,6 @@ import React, { Suspense, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { apiJson, isApiError } from "@/lib/api";
-import { CONFIG } from "@/lib/config";
 import { useAuth } from "@/lib/auth";
 import { themeChipStyle, themeVars, useSharedTheme } from "@/lib/theme";
 import { getWelcomeSeen } from "@/lib/preferences-storage";
@@ -21,7 +20,6 @@ type RequestOtpResp = {
   why?: string;
   ttl_minutes?: number;
   email_to?: string;
-  debug?: unknown;
   message?: string;
 };
 
@@ -30,29 +28,14 @@ type VerifyOtpResp = {
   token?: string;
   account_id?: string;
   error?: string;
-  debug?: unknown;
   message?: string;
 };
 
-type WebMeResp = {
-  ok?: boolean;
-  account_id?: string;
-  error?: string;
-  debug?: unknown;
-};
+type NoticeTone = "default" | "good" | "warn" | "danger";
 
-type FailureExpose = {
-  stage: "send_otp" | "verify_otp" | "refresh_session" | "unknown";
-  endpoint: string;
-  apiBase: string;
-  method: string;
-  requestBody?: unknown;
-  status?: number | null;
-  message?: string;
-  error?: string;
-  raw?: unknown;
-  likelyCause?: string;
-  at: string;
+type NoticeState = {
+  tone: NoticeTone;
+  text: string;
 };
 
 const REFERRAL_STORAGE_KEY = "ntg_referral_code";
@@ -178,30 +161,8 @@ function persistReferralCode(code: string) {
       window.localStorage.removeItem(REFERRAL_STORAGE_KEY);
     }
   } catch {
-    // ignore storage failures
+    // ignore
   }
-}
-
-function likelyCauseFromError(status?: number | null, payload?: unknown, message?: string) {
-  const text = `${message || ""} ${JSON.stringify(payload || {})}`.toLowerCase();
-
-  if (!status) {
-    if (text.includes("failed to fetch")) {
-      return "Frontend could not reach backend. Check backend URL, backend server status, CORS, or network refusal.";
-    }
-    if (text.includes("timeout")) {
-      return "Request timed out before backend responded.";
-    }
-    return "Network-level or browser fetch failure before a normal backend response was returned.";
-  }
-
-  if (status === 404) return "Backend route not found. Check that the auth endpoint exists on the backend.";
-  if (status === 400) return "Backend rejected the request payload or validation failed.";
-  if (status === 401 || status === 403) return "Backend blocked the request due to auth, security, or environment checks.";
-  if (status === 429) return "Rate limit triggered for OTP or auth requests.";
-  if (status >= 500) return "Backend internal error, provider failure, missing env vars, or unhandled exception.";
-
-  return "Backend responded with an error that needs inspection from the raw payload below.";
 }
 
 function sectionCardStyle(): React.CSSProperties {
@@ -248,6 +209,34 @@ function linkBtnStyle(primary = false): React.CSSProperties {
   };
 }
 
+function noticeStyle(tone: NoticeTone): React.CSSProperties {
+  if (tone === "good") {
+    return {
+      border: "1px solid var(--success-border)",
+      background: "var(--success-bg)",
+    };
+  }
+
+  if (tone === "warn") {
+    return {
+      border: "1px solid var(--warn-border)",
+      background: "var(--warn-bg)",
+    };
+  }
+
+  if (tone === "danger") {
+    return {
+      border: "1px solid var(--danger-border)",
+      background: "var(--danger-bg)",
+    };
+  }
+
+  return {
+    border: "1px solid var(--border)",
+    background: "var(--surface-soft)",
+  };
+}
+
 function appendParams(base: string, referralCode: string, nextPath: string): string {
   const params = new URLSearchParams();
   if (referralCode) params.set("ref", referralCode);
@@ -256,22 +245,100 @@ function appendParams(base: string, referralCode: string, nextPath: string): str
   return qs ? `${base}?${qs}` : base;
 }
 
+function buildInitialNotice(referralCode: string, nextPath: string): NoticeState {
+  if (referralCode && nextPath) {
+    return {
+      tone: "default",
+      text: `Referral code ${referralCode} detected. If you are a new user, create your account first. After sign-in, you will continue to ${nextPath}.`,
+    };
+  }
+
+  if (referralCode) {
+    return {
+      tone: "default",
+      text: `Referral code ${referralCode} detected. If you are a new user, create your account first so the referral can be applied correctly.`,
+    };
+  }
+
+  if (nextPath) {
+    return {
+      tone: "default",
+      text: `Secure sign-in with email OTP. After access is completed, you will continue to ${nextPath}.`,
+    };
+  }
+
+  return {
+    tone: "default",
+    text: "Secure sign-in with email OTP to continue to your workspace.",
+  };
+}
+
+function friendlyRequestOtpError(err: unknown): string {
+  if (isApiError(err)) {
+    const code = String(err.data?.error || "").toLowerCase();
+    const why = String(err.data?.why || "").toLowerCase();
+
+    if (err.status === 429 || code.includes("rate")) {
+      return "Too many OTP requests were made recently. Please wait a little and try again.";
+    }
+
+    if (code.includes("invalid") || why.includes("invalid")) {
+      return "The email address could not be accepted. Please check it and try again.";
+    }
+
+    if (err.status >= 500) {
+      return "The sign-in service is temporarily unavailable. Please try again shortly.";
+    }
+  }
+
+  return "Could not send OTP right now. Please try again.";
+}
+
+function friendlyVerifyOtpError(err: unknown): string {
+  if (isApiError(err)) {
+    const code = String(err.data?.error || "").toLowerCase();
+    const why = String(err.data?.why || "").toLowerCase();
+
+    if (
+      code.includes("invalid") ||
+      code.includes("expired") ||
+      why.includes("invalid") ||
+      why.includes("expired")
+    ) {
+      return "That OTP is invalid or expired. Request a new code and try again.";
+    }
+
+    if (err.status === 429 || code.includes("rate")) {
+      return "Too many verification attempts were made. Please wait a little and try again.";
+    }
+
+    if (err.status >= 500) {
+      return "Verification is temporarily unavailable. Please try again shortly.";
+    }
+  }
+
+  return "Could not verify OTP right now. Please try again.";
+}
+
 function LoginPageContent() {
   const router = useRouter();
   const sp = useSearchParams();
   const { themeMode, resolvedMode, setThemeMode } = useSharedTheme();
-  const { setToken, setHasSession, refreshSession, logout, hasSession, authReady } = useAuth();
+  const { setToken, setHasSession, refreshSession, logout, hasSession, authReady } =
+    useAuth();
 
   const [email, setEmail] = useState("sirbmsuper201@hotmail.com");
   const [otp, setOtp] = useState("");
-  const [status, setStatus] = useState<string>("Secure sign-in with email OTP.");
-  const [raw, setRaw] = useState<unknown>(null);
+  const [notice, setNotice] = useState<NoticeState>({
+    tone: "default",
+    text: "Secure sign-in with email OTP to continue to your workspace.",
+  });
   const [busy, setBusy] = useState(false);
-  const [showDebug, setShowDebug] = useState(false);
-  const [failureExpose, setFailureExpose] = useState<FailureExpose | null>(null);
+  const [checkingSession, setCheckingSession] = useState(true);
 
   const redirectingRef = useRef(false);
   const initDoneRef = useRef(false);
+  const otpInputRef = useRef<HTMLInputElement | null>(null);
 
   const queryReferralCode = normalizeReferralCode(sp?.get("ref"));
   const queryNextPath = safeDecodeNext(sp?.get("next")) || "";
@@ -292,139 +359,94 @@ function LoginPageContent() {
       persistNextPath(effectiveNextPath);
     }
 
-    if (effectiveReferralCode && effectiveNextPath) {
-      setStatus(
-        `Referral code ${effectiveReferralCode} detected. If you are a new user, create your account first. After access is completed, you will continue to ${effectiveNextPath}.`
-      );
-    } else if (effectiveReferralCode) {
-      setStatus(
-        `Referral code ${effectiveReferralCode} detected. If you are a new user, create your account first so the referral can be applied.`
-      );
-    } else if (effectiveNextPath) {
-      setStatus(`Secure sign-in with email OTP. After access is completed, you will continue to ${effectiveNextPath}.`);
-    }
-
+    setNotice(buildInitialNotice(effectiveReferralCode, effectiveNextPath));
     initDoneRef.current = true;
   }, [effectiveReferralCode, effectiveNextPath]);
 
   useEffect(() => {
     if (!authReady) return;
-    if (redirectingRef.current) return;
+
+    let alive = true;
 
     const run = async () => {
+      setCheckingSession(true);
+
       try {
-        const ok = await refreshSession();
+        const ok = hasSession ? true : await refreshSession();
+
+        if (!alive) return;
+
         if (ok) {
-          setStatus("Active session detected. Redirecting...");
-          redirectingRef.current = true;
-          router.replace(resolvePostLoginPath(sp));
-          return;
+          setHasSession(true);
+          setNotice({
+            tone: "good",
+            text: effectiveNextPath
+              ? `Active session found in this browser. You can continue to ${effectiveNextPath} now.`
+              : "Active session found in this browser.",
+          });
+        } else {
+          setNotice(buildInitialNotice(effectiveReferralCode, effectiveNextPath));
         }
-
-        if (!effectiveReferralCode && !effectiveNextPath) {
-          setStatus("Secure sign-in with email OTP.");
-        }
-      } catch (err: unknown) {
-        setFailureExpose({
-          stage: "refresh_session",
-          endpoint: "/web/auth/me",
-          apiBase: CONFIG.apiBase || "",
-          method: "GET",
-          status: isApiError(err) ? err.status : null,
-          message: isApiError(err) ? err.message : String(err instanceof Error ? err.message : err),
-          error: isApiError(err) ? (err.data?.error as string | undefined) || "refresh_failed" : "refresh_failed",
-          raw: isApiError(err) ? err.data : String(err instanceof Error ? err.message : err),
-          likelyCause: likelyCauseFromError(
-            isApiError(err) ? err.status : null,
-            isApiError(err) ? err.data : null,
-            String(err instanceof Error ? err.message : err)
-          ),
-          at: new Date().toISOString(),
-        });
-
-        if (!effectiveReferralCode && !effectiveNextPath) {
-          setStatus("Secure sign-in with email OTP.");
-        }
+      } catch {
+        if (!alive) return;
+        setNotice(buildInitialNotice(effectiveReferralCode, effectiveNextPath));
+      } finally {
+        if (!alive) return;
+        setCheckingSession(false);
       }
     };
 
     void run();
-  }, [authReady, refreshSession, router, sp, effectiveReferralCode, effectiveNextPath]);
+
+    return () => {
+      alive = false;
+    };
+  }, [
+    authReady,
+    hasSession,
+    refreshSession,
+    setHasSession,
+    effectiveReferralCode,
+    effectiveNextPath,
+  ]);
 
   const sendOtp = async () => {
     const e = email.trim().toLowerCase();
     if (!e) return;
 
     setBusy(true);
-    setStatus("Sending sign-in OTP...");
-    setRaw(null);
-    setFailureExpose(null);
-
-    const requestBody = { contact: e, purpose: "web_login" };
+    setNotice({
+      tone: "default",
+      text: "Sending sign-in OTP...",
+    });
 
     try {
       const data = await apiJson<RequestOtpResp>("/web/auth/request-otp", {
         method: "POST",
         timeoutMs: 25000,
-        body: requestBody,
+        body: { contact: e, purpose: "web_login" },
         useAuthToken: false,
       });
 
-      setRaw(data);
-
       if (data?.ok) {
-        setStatus("OTP sent successfully. Check your inbox or test mailbox.");
+        setNotice({
+          tone: "good",
+          text: "OTP sent successfully. Check your email inbox and enter the code below.",
+        });
+        window.setTimeout(() => {
+          otpInputRef.current?.focus();
+        }, 120);
       } else {
-        setStatus(`Send OTP failed (${data?.error || "unknown_error"})`);
-        setFailureExpose({
-          stage: "send_otp",
-          endpoint: "/web/auth/request-otp",
-          apiBase: CONFIG.apiBase || "",
-          method: "POST",
-          requestBody,
-          status: 200,
-          message: data?.message || "Backend returned non-ok payload",
-          error: data?.error || "unknown_error",
-          raw: data,
-          likelyCause: likelyCauseFromError(200, data, data?.message),
-          at: new Date().toISOString(),
+        setNotice({
+          tone: "warn",
+          text: "OTP could not be sent right now. Please confirm the email address and try again.",
         });
       }
     } catch (err: unknown) {
-      if (isApiError(err)) {
-        setStatus(`Send OTP failed (${err.status})`);
-        setRaw(err.data ?? null);
-        setFailureExpose({
-          stage: "send_otp",
-          endpoint: "/web/auth/request-otp",
-          apiBase: CONFIG.apiBase || "",
-          method: "POST",
-          requestBody,
-          status: err.status,
-          message: err.message,
-          error: (err.data?.error as string | undefined) || "api_error",
-          raw: err.data ?? null,
-          likelyCause: likelyCauseFromError(err.status, err.data, err.message),
-          at: new Date().toISOString(),
-        });
-      } else {
-        const msg = String(err instanceof Error ? err.message : err);
-        setStatus("Send OTP failed.");
-        setRaw(msg);
-        setFailureExpose({
-          stage: "send_otp",
-          endpoint: "/web/auth/request-otp",
-          apiBase: CONFIG.apiBase || "",
-          method: "POST",
-          requestBody,
-          status: null,
-          message: msg,
-          error: "fetch_failure",
-          raw: msg,
-          likelyCause: likelyCauseFromError(null, null, msg),
-          at: new Date().toISOString(),
-        });
-      }
+      setNotice({
+        tone: "danger",
+        text: friendlyRequestOtpError(err),
+      });
     } finally {
       setBusy(false);
     }
@@ -436,40 +458,27 @@ function LoginPageContent() {
     if (!e || !code) return;
 
     setBusy(true);
-    setStatus("Verifying sign-in OTP...");
-    setRaw(null);
-    setFailureExpose(null);
-
-    const requestBody = {
-      contact: e,
-      otp: code,
-      purpose: "web_login",
-    };
+    setNotice({
+      tone: "default",
+      text: "Verifying sign-in OTP...",
+    });
 
     try {
       const data = await apiJson<VerifyOtpResp>("/web/auth/verify-otp", {
         method: "POST",
         timeoutMs: 25000,
-        body: requestBody,
+        body: {
+          contact: e,
+          otp: code,
+          purpose: "web_login",
+        },
         useAuthToken: false,
       });
 
-      setRaw(data);
-
       if (!data?.ok) {
-        setStatus(`Verify OTP failed (${data?.error || "unknown_error"})`);
-        setFailureExpose({
-          stage: "verify_otp",
-          endpoint: "/web/auth/verify-otp",
-          apiBase: CONFIG.apiBase || "",
-          method: "POST",
-          requestBody: { ...requestBody, otp: "***hidden***" },
-          status: 200,
-          message: data?.message || "Backend returned non-ok payload",
-          error: data?.error || "unknown_error",
-          raw: data,
-          likelyCause: likelyCauseFromError(200, data, data?.message),
-          at: new Date().toISOString(),
+        setNotice({
+          tone: "warn",
+          text: "That OTP could not be accepted. Request a new code and try again.",
         });
         return;
       }
@@ -478,25 +487,21 @@ function LoginPageContent() {
         setToken(data.token);
       }
 
-      setHasSession(true);
-
       try {
-        const me = await apiJson<WebMeResp>("/web/auth/me", {
-          method: "GET",
-          timeoutMs: 20000,
-          useAuthToken: false,
-        });
-        if (me?.ok && me?.account_id) {
-          setHasSession(true);
-        }
+        await refreshSession();
       } catch {
         // ignore
       }
 
+      setHasSession(true);
+
       const finalPath = resolvePostLoginPath(sp);
       clearStoredNextPath();
 
-      setStatus("OTP verified. Redirecting...");
+      setNotice({
+        tone: "good",
+        text: "OTP verified successfully. Redirecting...",
+      });
 
       if (!redirectingRef.current) {
         redirectingRef.current = true;
@@ -505,46 +510,31 @@ function LoginPageContent() {
         }, 250);
       }
     } catch (err: unknown) {
-      if (isApiError(err)) {
-        setStatus(`Verify OTP failed (${err.status})`);
-        setRaw(err.data ?? null);
-        setFailureExpose({
-          stage: "verify_otp",
-          endpoint: "/web/auth/verify-otp",
-          apiBase: CONFIG.apiBase || "",
-          method: "POST",
-          requestBody: { ...requestBody, otp: "***hidden***" },
-          status: err.status,
-          message: err.message,
-          error: (err.data?.error as string | undefined) || "api_error",
-          raw: err.data ?? null,
-          likelyCause: likelyCauseFromError(err.status, err.data, err.message),
-          at: new Date().toISOString(),
-        });
-      } else {
-        const msg = String(err instanceof Error ? err.message : err);
-        setStatus("Verify OTP failed.");
-        setRaw(msg);
-        setFailureExpose({
-          stage: "verify_otp",
-          endpoint: "/web/auth/verify-otp",
-          apiBase: CONFIG.apiBase || "",
-          method: "POST",
-          requestBody: { ...requestBody, otp: "***hidden***" },
-          status: null,
-          message: msg,
-          error: "fetch_failure",
-          raw: msg,
-          likelyCause: likelyCauseFromError(null, null, msg),
-          at: new Date().toISOString(),
-        });
-      }
+      setNotice({
+        tone: "danger",
+        text: friendlyVerifyOtpError(err),
+      });
     } finally {
       setBusy(false);
     }
   };
 
-  const goDashboard = () => router.replace("/dashboard");
+  const handleLogout = async () => {
+    setBusy(true);
+    try {
+      await logout();
+      setHasSession(false);
+      setOtp("");
+      setNotice({
+        tone: "good",
+        text: "Session closed successfully. You can sign in again whenever you are ready.",
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const goDashboard = () => router.replace(effectiveNextPath || "/dashboard");
   const goWelcome = () => router.replace("/welcome?force=1");
   const signupHref = appendParams("/signup", effectiveReferralCode, effectiveNextPath);
 
@@ -666,49 +656,18 @@ function LoginPageContent() {
             marginTop: 18,
             padding: "14px 16px",
             borderRadius: 16,
-            border: hasSession
-              ? "1px solid var(--success-border)"
-              : effectiveReferralCode || effectiveNextPath
-              ? "1px solid var(--accent-border)"
-              : "1px solid var(--border)",
-            background: hasSession
-              ? "var(--success-bg)"
-              : effectiveReferralCode || effectiveNextPath
-              ? "var(--accent-soft)"
-              : "var(--surface-soft)",
             color: "var(--text-soft)",
             fontSize: 15,
             lineHeight: 1.6,
+            ...noticeStyle(
+              checkingSession && !hasSession ? "default" : notice.tone
+            ),
           }}
         >
-          {status}
+          {checkingSession && !hasSession
+            ? "Checking secure access state..."
+            : notice.text}
         </div>
-
-        {failureExpose ? (
-          <div
-            style={{
-              marginTop: 16,
-              padding: "14px 16px",
-              borderRadius: 16,
-              border: "1px solid var(--danger-border)",
-              background: "var(--danger-bg)",
-              color: "var(--text)",
-              fontSize: 14,
-              lineHeight: 1.65,
-            }}
-          >
-            <div style={{ fontWeight: 900, marginBottom: 8 }}>Failure Exposer</div>
-            <div><strong>Stage:</strong> {failureExpose.stage}</div>
-            <div><strong>Method:</strong> {failureExpose.method}</div>
-            <div><strong>Endpoint:</strong> {failureExpose.endpoint}</div>
-            <div><strong>API Base:</strong> {failureExpose.apiBase || "Not set"}</div>
-            <div><strong>Status:</strong> {failureExpose.status ?? "No HTTP status returned"}</div>
-            <div><strong>Error:</strong> {failureExpose.error || "None"}</div>
-            <div><strong>Message:</strong> {failureExpose.message || "None"}</div>
-            <div><strong>Likely Cause:</strong> {failureExpose.likelyCause || "Undetermined"}</div>
-            <div><strong>Time:</strong> {failureExpose.at}</div>
-          </div>
-        ) : null}
 
         {hasSession ? (
           <div style={{ marginTop: 22, display: "grid", gap: 14 }}>
@@ -725,11 +684,29 @@ function LoginPageContent() {
             >
               Active session found in this browser.
             </div>
+
             <WorkspaceActionBar
               items={[
-                { label: "Continue to Dashboard", onClick: goDashboard, tone: "primary", disabled: busy },
-                { label: "Open Welcome Page", onClick: goWelcome, tone: "secondary", disabled: busy },
-                { label: "Logout / Close Session", onClick: () => { void logout(); }, tone: "danger", disabled: busy },
+                {
+                  label: effectiveNextPath ? "Continue to Requested Page" : "Continue to Dashboard",
+                  onClick: goDashboard,
+                  tone: "primary",
+                  disabled: busy,
+                },
+                {
+                  label: "Open Welcome Page",
+                  onClick: goWelcome,
+                  tone: "secondary",
+                  disabled: busy,
+                },
+                {
+                  label: busy ? "Closing Session..." : "Logout",
+                  onClick: () => {
+                    void handleLogout();
+                  },
+                  tone: "danger",
+                  disabled: busy,
+                },
               ]}
             />
           </div>
@@ -753,28 +730,45 @@ function LoginPageContent() {
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="Email address"
                   style={workspaceInputStyle()}
+                  autoComplete="email"
                 />
               </WorkspaceField>
 
               <WorkspaceActionBar
                 items={[
-                  { label: "Send OTP", onClick: () => { void sendOtp(); }, tone: "secondary", disabled: busy },
+                  {
+                    label: busy ? "Sending..." : "Send OTP",
+                    onClick: () => {
+                      void sendOtp();
+                    },
+                    tone: "secondary",
+                    disabled: busy || checkingSession || !email.trim(),
+                  },
                 ]}
               />
 
               <WorkspaceField label="OTP Code" htmlFor="login-otp">
                 <input
                   id="login-otp"
+                  ref={otpInputRef}
                   value={otp}
                   onChange={(e) => setOtp(e.target.value)}
                   placeholder="OTP code"
                   style={workspaceInputStyle()}
+                  autoComplete="one-time-code"
                 />
               </WorkspaceField>
 
               <WorkspaceActionBar
                 items={[
-                  { label: "Verify OTP", onClick: () => { void verifyOtp(); }, tone: "primary", disabled: busy },
+                  {
+                    label: busy ? "Verifying..." : "Verify OTP",
+                    onClick: () => {
+                      void verifyOtp();
+                    },
+                    tone: "primary",
+                    disabled: busy || checkingSession || !email.trim() || !otp.trim(),
+                  },
                 ]}
               />
             </WorkspaceSectionCard>
@@ -809,55 +803,12 @@ function LoginPageContent() {
               <div style={sectionCardStyle()}>
                 <div style={sectionTitleStyle()}>Need help?</div>
                 <div style={sectionTextStyle()}>
-                  If sign-in fails after a proper attempt, use Support after checking the debug response.
+                  If sign-in fails after a proper attempt, use Support and try again after a short wait.
                 </div>
               </div>
             </div>
           </div>
         )}
-
-        <div style={{ marginTop: 24 }}>
-          <WorkspaceActionBar
-            items={[
-              {
-                label: showDebug ? "Hide Debug Response" : "Show Debug Response",
-                onClick: () => setShowDebug((v) => !v),
-                tone: "secondary",
-              },
-            ]}
-          />
-        </div>
-
-        {showDebug ? (
-          <div style={{ marginTop: 18 }}>
-            <div
-              style={{
-                color: "var(--text-soft)",
-                fontWeight: 900,
-                marginBottom: 8,
-              }}
-            >
-              Raw response (debug)
-            </div>
-            <pre
-              style={{
-                margin: 0,
-                padding: 16,
-                borderRadius: 16,
-                border: "1px solid var(--border)",
-                background: "var(--surface-soft)",
-                color: "var(--text-soft)",
-                whiteSpace: "pre-wrap",
-                fontFamily: "ui-monospace, Menlo, monospace",
-                fontSize: 12,
-                lineHeight: 1.5,
-                overflowX: "auto",
-              }}
-            >
-              {JSON.stringify({ failureExpose, raw }, null, 2)}
-            </pre>
-          </div>
-        ) : null}
       </Panel>
     </div>
   );
