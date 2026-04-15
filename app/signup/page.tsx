@@ -290,7 +290,8 @@ function SignupPageContent() {
   const router = useRouter();
   const sp = useSearchParams();
   const { themeMode, resolvedMode, setThemeMode } = useSharedTheme();
-  const { setToken, setHasSession, refreshSession, hasSession, authReady } = useAuth();
+  const { setToken, setHasSession, refreshSession, hasSession, authReady } =
+    useAuth();
 
   const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
@@ -613,13 +614,22 @@ function SignupPageContent() {
             flexWrap: "wrap",
           }}
         >
-          <button onClick={() => setThemeMode("dark")} style={themeChipStyle(themeMode === "dark")}>
+          <button
+            onClick={() => setThemeMode("dark")}
+            style={themeChipStyle(themeMode === "dark")}
+          >
             Dark
           </button>
-          <button onClick={() => setThemeMode("light")} style={themeChipStyle(themeMode === "light")}>
+          <button
+            onClick={() => setThemeMode("light")}
+            style={themeChipStyle(themeMode === "light")}
+          >
             Light
           </button>
-          <button onClick={() => setThemeMode("system")} style={themeChipStyle(themeMode === "system")}>
+          <button
+            onClick={() => setThemeMode("system")}
+            style={themeChipStyle(themeMode === "system")}
+          >
             System
           </button>
         </div>
