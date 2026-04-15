@@ -37,8 +37,6 @@ type ParsedAnswer = {
   source: string;
 };
 
-const SHOW_ASK_DEBUG = process.env.NEXT_PUBLIC_SHOW_ASK_DEBUG === "true";
-
 const LANGUAGE_OPTIONS = ["English", "Pidgin", "Yoruba", "Igbo", "Hausa"];
 
 const STARTER_GROUPS: StarterGroup[] = [
@@ -395,8 +393,6 @@ function AskPageContent() {
     activeNow,
     planCode,
     creditBalance,
-    dailyUsage,
-    dailyLimit,
   } = useWorkspaceState({
     refreshSession,
     autoLoad: true,
@@ -413,7 +409,6 @@ function AskPageContent() {
   const [friendlyError, setFriendlyError] = useState("");
   const [clarificationPrompt, setClarificationPrompt] = useState("");
   const [citations, setCitations] = useState<string[]>([]);
-  const [lastAskDebug, setLastAskDebug] = useState<unknown>(null);
   const [resultOk, setResultOk] = useState<boolean | null>(null);
 
   const busy = workspaceBusy || submitting;
@@ -462,11 +457,6 @@ function AskPageContent() {
     return titleFromCode(String(planCode || ""), "Free");
   }, [planCode]);
 
-  const dailyLeft = useMemo(() => {
-    if (dailyLimit <= 0) return "—";
-    return String(Math.max(dailyLimit - dailyUsage, 0));
-  }, [dailyLimit, dailyUsage]);
-
   const attention = useMemo(() => {
     if (!activeNow && creditBalance <= 0) {
       return {
@@ -484,16 +474,8 @@ function AskPageContent() {
       };
     }
 
-    if (dailyLimit > 0 && dailyUsage >= dailyLimit) {
-      return {
-        title: "Daily limit reached",
-        message:
-          "You have reached your current visible daily question limit. You can still review starter questions, history, and existing answers.",
-      };
-    }
-
     return null;
-  }, [activeNow, creditBalance, dailyLimit, dailyUsage]);
+  }, [activeNow, creditBalance]);
 
   const handleStarterClick = (starterQuestion: string) => {
     setQuestion(starterQuestion);
@@ -515,7 +497,6 @@ function AskPageContent() {
     setFriendlyError("");
     setClarificationPrompt("");
     setCitations([]);
-    setLastAskDebug(null);
     setResultOk(null);
     textareaRef.current?.focus();
   };
@@ -529,17 +510,6 @@ function AskPageContent() {
       setAnswer("");
       setClarificationPrompt("");
       setCitations([]);
-      setLastAskDebug(null);
-      return;
-    }
-
-    if (dailyLimit > 0 && dailyUsage >= dailyLimit) {
-      setResultOk(false);
-      setFriendlyError("You have reached your daily question limit for today.");
-      setAnswer("");
-      setClarificationPrompt("");
-      setCitations([]);
-      setLastAskDebug(null);
       return;
     }
 
@@ -549,7 +519,6 @@ function AskPageContent() {
     setAnswer("");
     setClarificationPrompt("");
     setCitations([]);
-    setLastAskDebug(null);
 
     try {
       const data = await apiJson<AskResp>("/ask", {
@@ -562,10 +531,6 @@ function AskPageContent() {
           channel: "web",
         },
       });
-
-      if (SHOW_ASK_DEBUG) {
-        setLastAskDebug(data?.debug || null);
-      }
 
       await load("Refreshing assistant state...");
 
@@ -626,9 +591,6 @@ function AskPageContent() {
         setFriendlyError(
           "Starter or already-covered questions may still work, but this question needs active plan or credits before live AI can continue."
         );
-      } else if (code === "daily_limit_reached") {
-        setResultOk(false);
-        setFriendlyError("You have reached your daily question limit for today.");
       } else if (clarification) {
         setResultOk(false);
         setFriendlyError("This question needs a little more detail before the answer can continue.");
@@ -650,14 +612,9 @@ function AskPageContent() {
             fix?: string;
             root_cause?: string;
             clarification_prompt?: string;
-            debug?: unknown;
           };
           message?: string;
         };
-
-        if (SHOW_ASK_DEBUG) {
-          setLastAskDebug(apiErr?.data?.debug || apiErr?.data || null);
-        }
 
         const code = String(apiErr?.data?.error || "").trim().toLowerCase();
         const clarification = normalizeText(apiErr?.data?.clarification_prompt || "");
@@ -674,8 +631,6 @@ function AskPageContent() {
           setFriendlyError(
             "Starter or already-covered questions may still work, but this question needs active plan or credits before live AI can continue."
           );
-        } else if (code === "daily_limit_reached") {
-          setFriendlyError("You have reached your daily question limit for today.");
         } else {
           setFriendlyError(
             safeText(apiErr?.data?.fix, "") ||
@@ -807,7 +762,7 @@ function AskPageContent() {
                     </div>
                   </div>
 
-                  <div style={metricCardStyle("default")}>
+                  <div style={metricCardStyle(channelSummary === "No channel linked" ? "default" : "good")}>
                     <div
                       style={{
                         fontSize: 13,
@@ -817,40 +772,18 @@ function AskPageContent() {
                         letterSpacing: 0.5,
                       }}
                     >
-                      DAILY LEFT
+                      CHANNELS
                     </div>
-                    <div style={{ fontSize: 18, fontWeight: 950, color: "var(--text)" }}>
-                      {dailyLeft}
+                    <div
+                      style={{
+                        fontSize: 18,
+                        fontWeight: 950,
+                        color: "var(--text)",
+                        lineHeight: 1.35,
+                      }}
+                    >
+                      {channelSummary}
                     </div>
-                  </div>
-                </div>
-
-                <div
-                  style={{
-                    maxWidth: 300,
-                    ...metricCardStyle(channelSummary === "No channel linked" ? "default" : "good"),
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: 13,
-                      fontWeight: 900,
-                      color: "var(--text-faint)",
-                      textTransform: "uppercase",
-                      letterSpacing: 0.5,
-                    }}
-                  >
-                    CHANNELS
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 18,
-                      fontWeight: 950,
-                      color: "var(--text)",
-                      lineHeight: 1.35,
-                    }}
-                  >
-                    {channelSummary}
                   </div>
                 </div>
 
@@ -1133,40 +1066,6 @@ function AskPageContent() {
                       </div>
                     ) : null}
                   </div>
-                </div>
-              ) : null}
-
-              {SHOW_ASK_DEBUG && lastAskDebug ? (
-                <div style={{ marginTop: 18 }}>
-                  <div
-                    style={{
-                      color: "var(--text)",
-                      fontSize: 15,
-                      fontWeight: 900,
-                      marginBottom: 10,
-                    }}
-                  >
-                    Ask debug
-                  </div>
-
-                  <pre
-                    style={{
-                      margin: 0,
-                      padding: 16,
-                      borderRadius: 18,
-                      border: "1px solid var(--border)",
-                      background: "var(--surface-soft)",
-                      color: "var(--text-muted)",
-                      whiteSpace: "pre-wrap",
-                      overflowX: "auto",
-                      fontFamily:
-                        "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-                      fontSize: 12,
-                      lineHeight: 1.6,
-                    }}
-                  >
-                    {JSON.stringify(lastAskDebug, null, 2)}
-                  </pre>
                 </div>
               ) : null}
             </div>
