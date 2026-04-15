@@ -6,7 +6,6 @@ import AppShell, {
   shellButtonPrimary,
   shellButtonSecondary,
 } from "@/components/app-shell";
-import WorkspaceOverviewMetrics from "@/components/workspace-overview-metrics";
 import {
   Banner,
   Card,
@@ -104,6 +103,7 @@ function SectionHeader({
       >
         {title}
       </div>
+
       {subtitle ? (
         <div
           style={{
@@ -121,6 +121,7 @@ function SectionHeader({
 
 function shouldForceOpen(sp: URLSearchParams | null) {
   if (!sp) return false;
+
   return (
     sp.get("force") === "1" ||
     sp.get("open") === "1" ||
@@ -146,14 +147,12 @@ function WelcomePageContent() {
     activeNow,
     planCode,
     creditBalance,
-    dailyUsage,
-    dailyLimit,
     expiresAt,
   } = useWorkspaceState({
     autoLoad: false,
     includeAccount: true,
     includeBilling: true,
-    includeDebug: true,
+    includeDebug: false,
     loadingMessage: "Loading welcome page...",
   });
 
@@ -178,7 +177,7 @@ function WelcomePageContent() {
     router.replace("/dashboard");
   };
 
-  const handleKeepForLater = () => {
+  const handleAskPage = () => {
     setWelcomeSeen(true);
     router.replace("/ask");
   };
@@ -186,6 +185,16 @@ function WelcomePageContent() {
   const handleRefresh = () => {
     void load("Loading welcome page...");
   };
+
+  const loweredStatus = status.toLowerCase();
+  const statusTone =
+    loweredStatus.includes("ready")
+      ? "good"
+      : loweredStatus.includes("partial") ||
+        loweredStatus.includes("inactive") ||
+        loweredStatus.includes("attention")
+      ? "warn"
+      : "default";
 
   if (!pageReady) {
     return (
@@ -207,21 +216,23 @@ function WelcomePageContent() {
   return (
     <AppShell
       title="Welcome"
-      subtitle="Start using Naija Tax Guide with a clear understanding of how questions, credits, billing, and supported channels work together."
+      subtitle="Start using Naija Tax Guide with a clear understanding of your plan, credits, channels, and the main workspace sections."
       actions={
         <>
           <button onClick={handleContinue} style={shellButtonPrimary()}>
             Continue to Dashboard
           </button>
-          <button onClick={handleKeepForLater} style={shellButtonSecondary()}>
+
+          <button onClick={handleAskPage} style={shellButtonSecondary()}>
             Go to Ask Page
           </button>
+
           <button
             onClick={handleRefresh}
             disabled={busy}
             style={shellButtonSecondary()}
           >
-            Refresh
+            {busy ? "Refreshing..." : "Refresh"}
           </button>
         </>
       }
@@ -230,62 +241,86 @@ function WelcomePageContent() {
         <Banner
           title="Welcome page status"
           subtitle={status}
-          tone={
-            status === "Ready."
-              ? "good"
-              : status.toLowerCase().includes("partial")
-                ? "warn"
-                : "default"
-          }
+          tone={statusTone as "default" | "good" | "warn"}
         />
 
         <Banner
           title="You are now inside the product"
-          subtitle="This page is your onboarding step after login. After the first visit, repeat users can go straight to the dashboard unless they open this page intentionally."
+          subtitle="This page is your first onboarding stop after access is confirmed. Once you continue, future visits can go straight to the dashboard unless you open welcome intentionally."
           tone="good"
         />
 
         {!activeNow ? (
           <Banner
             title="Subscription attention needed"
-            subtitle="Your paid access may be inactive. You can still explore the workspace, but asking new questions may require an active subscription."
+            subtitle="Your current subscription may be inactive. You can still review the workspace, but asking new questions may require active access."
             tone="warn"
           />
         ) : null}
 
-        <WorkspaceOverviewMetrics
-          mode="welcome"
-          accountId={accountId}
-          email={email}
-          activeNow={activeNow}
-          planCode={planCode}
-          creditBalance={creditBalance}
-          dailyUsage={dailyUsage}
-          dailyLimit={dailyLimit}
-          expiresAt={expiresAt}
-        />
+        <Card>
+          <div style={{ display: "grid", gap: 18 }}>
+            <SectionHeader
+              title="Workspace Overview"
+              subtitle="This welcome page now shows subscription-and-credit visibility only. Daily AI usage and daily limit blocks have been removed."
+            />
+
+            <CardsGrid min={220}>
+              <MetricCard
+                label="Current Plan"
+                value={planDisplayName(planCode)}
+                tone="default"
+              />
+
+              <MetricCard
+                label="Credits Available"
+                value={String(creditBalance)}
+                tone={
+                  creditBalance <= 0
+                    ? "danger"
+                    : creditBalance <= 3
+                    ? "warn"
+                    : "good"
+                }
+              />
+
+              <MetricCard
+                label="Access State"
+                value={activeNow ? "Active" : "Inactive"}
+                tone={activeNow ? "good" : "warn"}
+              />
+
+              <MetricCard
+                label="Current Expiry"
+                value={formatDate(expiresAt)}
+                tone="default"
+              />
+            </CardsGrid>
+          </div>
+        </Card>
 
         <Card>
           <div style={{ display: "grid", gap: 18 }}>
             <SectionHeader
               title="Start Here"
-              subtitle="These are the main steps for using Naija Tax Guide confidently."
+              subtitle="Use these steps to begin using the product properly."
             />
+
             <CardsGrid min={260}>
               <WelcomeStep
                 number="1"
-                title="Ask your tax question"
-                description="Use the Ask AI page to submit your question and receive a guided response based on your current access and usage state."
+                title="Open the Ask page"
+                description="Submit one tax question at a time and receive a structured response inside your workspace."
               />
               <WelcomeStep
                 number="2"
-                title="Track your credits and usage"
-                description="Your account uses subscription access, AI credits, and daily usage visibility to manage how the assistant works."
+                title="Track your credits"
+                description="Your account uses subscription access and available AI credits to determine question readiness."
               />
               <WelcomeStep
                 number="3"
-                title="Manage plans and channels"
-                description="Review your plan, billing state, and the supported channels where your account can be used."
+                title="Manage plans and billing"
+                description="Use Plans and Billing to review your current package, renewal state, and payment visibility."
               />
             </CardsGrid>
           </div>
@@ -295,42 +330,60 @@ function WelcomePageContent() {
           <div style={{ display: "grid", gap: 18 }}>
             <SectionHeader
               title="Main Workspace Areas"
-              subtitle="Use these shortcuts to move through the most important parts of the product."
+              subtitle="These are the most important parts of Version 1."
             />
+
             <CardsGrid min={240}>
               <ShortcutCard
                 title="Ask Tax AI"
                 subtitle="Submit your next tax question and receive guided assistance."
-                tone={!activeNow ? "warn" : creditBalance <= 0 ? "danger" : "good"}
+                tone={
+                  !activeNow
+                    ? "warn"
+                    : creditBalance <= 0
+                    ? "danger"
+                    : "good"
+                }
                 onClick={() => router.push("/ask")}
               />
+
               <ShortcutCard
                 title="History"
                 subtitle="Review previous questions and continue from where you stopped."
                 tone="default"
                 onClick={() => router.push("/history")}
               />
+
               <ShortcutCard
                 title="Credits"
-                subtitle="Review current AI credits and daily usage visibility."
-                tone={creditBalance <= 0 ? "danger" : creditBalance <= 3 ? "warn" : "good"}
+                subtitle="Check your current available AI credits."
+                tone={
+                  creditBalance <= 0
+                    ? "danger"
+                    : creditBalance <= 3
+                    ? "warn"
+                    : "good"
+                }
                 onClick={() => router.push("/credits")}
               />
+
               <ShortcutCard
                 title="Billing"
-                subtitle="Check subscription state, provider details, and payment readiness."
+                subtitle="Review subscription state, payment visibility, and billing readiness."
                 tone="default"
                 onClick={() => router.push("/billing")}
               />
+
               <ShortcutCard
                 title="Plans"
-                subtitle="Upgrade, renew, or manage your current subscription plan."
+                subtitle="Upgrade, renew, or review your current subscription plan."
                 tone={!activeNow ? "warn" : "default"}
                 onClick={() => router.push("/plans")}
               />
+
               <ShortcutCard
                 title="Channels"
-                subtitle="See how web, WhatsApp, and Telegram fit into your account access."
+                subtitle="See how web, WhatsApp, and Telegram fit into your account model."
                 tone="default"
                 onClick={() => router.push("/channels")}
               />
@@ -343,24 +396,29 @@ function WelcomePageContent() {
             <div style={{ display: "grid", gap: 18 }}>
               <SectionHeader
                 title="Version 1 Access Channels"
-                subtitle="The first release is centered around these user access surfaces."
+                subtitle="The first release is centered around a single account model across supported access surfaces."
               />
+
               <div style={{ display: "grid", gap: 12 }}>
                 <MetricCard
                   label="Web Portal"
                   value="Active Workspace"
                   tone="good"
-                  helper="Main place for account, billing, usage, and question management."
+                  helper="Main place for account, billing, credits, history, help, and question management."
                 />
+
                 <MetricCard
                   label="WhatsApp"
                   value="Version 1"
-                  helper="Mobile-first guided access planned under the same account and subscription."
+                  tone="default"
+                  helper="Mobile-first guided access under the same account model."
                 />
+
                 <MetricCard
                   label="Telegram"
                   value="Version 1"
-                  helper="Bot-based access planned under the same unified account model."
+                  tone="default"
+                  helper="Bot-based structured access under the same product identity."
                 />
               </div>
             </div>
@@ -370,8 +428,9 @@ function WelcomePageContent() {
             <div style={{ display: "grid", gap: 18 }}>
               <SectionHeader
                 title="Important Notes"
-                subtitle="Keep these usage rules in mind while using the platform."
+                subtitle="Keep these rules in mind while using the platform."
               />
+
               <div
                 style={{
                   display: "grid",
@@ -385,13 +444,13 @@ function WelcomePageContent() {
                   1. Naija Tax Guide provides guided tax help, not official legal representation.
                 </div>
                 <div>
-                  2. Highly sensitive or advanced tax cases may still require a qualified professional.
+                  2. Highly sensitive or advanced cases may still require a qualified professional.
                 </div>
                 <div>
-                  3. Your credits, usage, and billing state determine access readiness for asking questions.
+                  3. Your current plan and available credits determine whether you can continue asking questions smoothly.
                 </div>
                 <div>
-                  4. Supported channels should operate under one account, one plan, and one shared credit balance.
+                  4. Supported channels are intended to work under one account, one plan, and one shared credit balance.
                 </div>
               </div>
             </div>
@@ -405,22 +464,26 @@ function WelcomePageContent() {
                 title="Recommended First Actions"
                 subtitle="Best next steps for a new or returning user."
               />
+
               <div style={{ display: "grid", gap: 12 }}>
                 <button onClick={handleContinue} style={shellButtonPrimary()}>
                   Continue to Dashboard
                 </button>
+
                 <button
                   onClick={() => router.push("/ask")}
                   style={shellButtonSecondary()}
                 >
                   Ask Your First Question
                 </button>
+
                 <button
                   onClick={() => router.push("/plans")}
                   style={shellButtonSecondary()}
                 >
                   Review Plans
                 </button>
+
                 <button
                   onClick={() => router.push("/help")}
                   style={shellButtonSecondary()}
@@ -437,24 +500,36 @@ function WelcomePageContent() {
                 title="Account Snapshot"
                 subtitle="Quick user-facing summary of your current workspace."
               />
+
               <div style={{ display: "grid", gap: 12 }}>
+                <MetricCard
+                  label="Visible Email"
+                  value={email || "Not available"}
+                  tone="default"
+                />
+
+                <MetricCard
+                  label="Account ID"
+                  value={accountId || "Not available"}
+                  tone="default"
+                />
+
                 <MetricCard
                   label="Current Plan"
                   value={planDisplayName(planCode)}
+                  tone="default"
                 />
-                <MetricCard
-                  label="Subscription State"
-                  value={activeNow ? "Active" : "Inactive"}
-                  tone={activeNow ? "good" : "warn"}
-                />
+
                 <MetricCard
                   label="Credits Available"
                   value={String(creditBalance)}
-                  tone={creditBalance <= 0 ? "danger" : "default"}
-                />
-                <MetricCard
-                  label="Current Expiry"
-                  value={formatDate(expiresAt)}
+                  tone={
+                    creditBalance <= 0
+                      ? "danger"
+                      : creditBalance <= 3
+                      ? "warn"
+                      : "good"
+                  }
                 />
               </div>
             </div>
