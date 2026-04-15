@@ -3,7 +3,7 @@
 import React, { Suspense, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { apiJson, isApiError } from "@/lib/api";
+import { apiJson } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { themeChipStyle, themeVars, useSharedTheme } from "@/lib/theme";
 import { getWelcomeSeen } from "@/lib/preferences-storage";
@@ -16,8 +16,6 @@ import {
 
 type RequestOtpResp = {
   ok?: boolean;
-  error?: string;
-  why?: string;
   ttl_minutes?: number;
   email_to?: string;
   message?: string;
@@ -27,7 +25,6 @@ type VerifyOtpResp = {
   ok?: boolean;
   token?: string;
   account_id?: string;
-  error?: string;
   message?: string;
 };
 
@@ -273,51 +270,12 @@ function buildInitialNotice(referralCode: string, nextPath: string): NoticeState
   };
 }
 
-function friendlyRequestOtpError(err: unknown): string {
-  if (isApiError(err)) {
-    const code = String(err.data?.error || "").toLowerCase();
-    const why = String(err.data?.why || "").toLowerCase();
-
-    if (err.status === 429 || code.includes("rate")) {
-      return "Too many OTP requests were made recently. Please wait a little and try again.";
-    }
-
-    if (code.includes("invalid") || why.includes("invalid")) {
-      return "The email address could not be accepted. Please check it and try again.";
-    }
-
-    if (err.status >= 500) {
-      return "The sign-in service is temporarily unavailable. Please try again shortly.";
-    }
-  }
-
-  return "Could not send OTP right now. Please try again.";
+function requestOtpMessage(): string {
+  return "Could not send OTP right now. Please confirm your email address and try again.";
 }
 
-function friendlyVerifyOtpError(err: unknown): string {
-  if (isApiError(err)) {
-    const code = String(err.data?.error || "").toLowerCase();
-    const why = String(err.data?.why || "").toLowerCase();
-
-    if (
-      code.includes("invalid") ||
-      code.includes("expired") ||
-      why.includes("invalid") ||
-      why.includes("expired")
-    ) {
-      return "That OTP is invalid or expired. Request a new code and try again.";
-    }
-
-    if (err.status === 429 || code.includes("rate")) {
-      return "Too many verification attempts were made. Please wait a little and try again.";
-    }
-
-    if (err.status >= 500) {
-      return "Verification is temporarily unavailable. Please try again shortly.";
-    }
-  }
-
-  return "Could not verify OTP right now. Please try again.";
+function verifyOtpMessage(): string {
+  return "That OTP could not be accepted. Request a new code and try again.";
 }
 
 function LoginPageContent() {
@@ -327,7 +285,7 @@ function LoginPageContent() {
   const { setToken, setHasSession, refreshSession, logout, hasSession, authReady } =
     useAuth();
 
-  const [email, setEmail] = useState("sirbmsuper201@hotmail.com");
+  const [email, setEmail] = useState("bms.concept@hotmail.com");
   const [otp, setOtp] = useState("");
   const [notice, setNotice] = useState<NoticeState>({
     tone: "default",
@@ -433,6 +391,7 @@ function LoginPageContent() {
           tone: "good",
           text: "OTP sent successfully. Check your email inbox and enter the code below.",
         });
+
         window.setTimeout(() => {
           otpInputRef.current?.focus();
         }, 120);
@@ -442,10 +401,10 @@ function LoginPageContent() {
           text: "OTP could not be sent right now. Please confirm the email address and try again.",
         });
       }
-    } catch (err: unknown) {
+    } catch {
       setNotice({
         tone: "danger",
-        text: friendlyRequestOtpError(err),
+        text: requestOtpMessage(),
       });
     } finally {
       setBusy(false);
@@ -509,10 +468,10 @@ function LoginPageContent() {
           router.replace(finalPath);
         }, 250);
       }
-    } catch (err: unknown) {
+    } catch {
       setNotice({
         tone: "danger",
-        text: friendlyVerifyOtpError(err),
+        text: verifyOtpMessage(),
       });
     } finally {
       setBusy(false);
@@ -521,6 +480,7 @@ function LoginPageContent() {
 
   const handleLogout = async () => {
     setBusy(true);
+
     try {
       await logout();
       setHasSession(false);
@@ -659,9 +619,7 @@ function LoginPageContent() {
             color: "var(--text-soft)",
             fontSize: 15,
             lineHeight: 1.6,
-            ...noticeStyle(
-              checkingSession && !hasSession ? "default" : notice.tone
-            ),
+            ...noticeStyle(checkingSession && !hasSession ? "default" : notice.tone),
           }}
         >
           {checkingSession && !hasSession
@@ -688,7 +646,9 @@ function LoginPageContent() {
             <WorkspaceActionBar
               items={[
                 {
-                  label: effectiveNextPath ? "Continue to Requested Page" : "Continue to Dashboard",
+                  label: effectiveNextPath
+                    ? "Continue to Requested Page"
+                    : "Continue to Dashboard",
                   onClick: goDashboard,
                   tone: "primary",
                   disabled: busy,
@@ -804,6 +764,11 @@ function LoginPageContent() {
                 <div style={sectionTitleStyle()}>Need help?</div>
                 <div style={sectionTextStyle()}>
                   If sign-in fails after a proper attempt, use Support and try again after a short wait.
+                </div>
+                <div style={{ marginTop: 12 }}>
+                  <Link href="/support" style={linkBtnStyle(false)}>
+                    Open Support
+                  </Link>
                 </div>
               </div>
             </div>
