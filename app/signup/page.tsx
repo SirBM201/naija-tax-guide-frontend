@@ -3,8 +3,7 @@
 import React, { Suspense, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { apiJson, isApiError } from "@/lib/api";
-import { CONFIG } from "@/lib/config";
+import { apiJson } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { themeChipStyle, themeVars, useSharedTheme } from "@/lib/theme";
 import { getWelcomeSeen } from "@/lib/preferences-storage";
@@ -17,11 +16,8 @@ import {
 
 type RequestOtpResp = {
   ok?: boolean;
-  error?: string;
-  why?: string;
   ttl_minutes?: number;
   email_to?: string;
-  debug?: unknown;
   message?: string;
 };
 
@@ -29,30 +25,14 @@ type VerifyOtpResp = {
   ok?: boolean;
   token?: string;
   account_id?: string;
-  error?: string;
-  debug?: unknown;
   message?: string;
 };
 
-type WebMeResp = {
-  ok?: boolean;
-  account_id?: string;
-  error?: string;
-  debug?: unknown;
-};
+type NoticeTone = "default" | "good" | "warn" | "danger";
 
-type FailureExpose = {
-  stage: "send_otp" | "verify_otp" | "refresh_session" | "unknown";
-  endpoint: string;
-  apiBase: string;
-  method: string;
-  requestBody?: unknown;
-  status?: number | null;
-  message?: string;
-  error?: string;
-  raw?: unknown;
-  likelyCause?: string;
-  at: string;
+type NoticeState = {
+  tone: NoticeTone;
+  text: string;
 };
 
 const REFERRAL_STORAGE_KEY = "ntg_referral_code";
@@ -138,7 +118,7 @@ function clearStoredNextPath() {
   }
 }
 
-function resolvePostLoginPath(sp: ReturnType<typeof useSearchParams>) {
+function resolvePostSignupPath(sp: ReturnType<typeof useSearchParams>) {
   const queryNext = safeDecodeNext(sp?.get("next"));
   if (queryNext) return queryNext;
 
@@ -178,7 +158,7 @@ function persistReferralCode(code: string) {
       window.localStorage.removeItem(REFERRAL_STORAGE_KEY);
     }
   } catch {
-    // ignore storage failures
+    // ignore
   }
 }
 
@@ -190,28 +170,6 @@ function clearStoredReferralCode() {
   } catch {
     // ignore
   }
-}
-
-function likelyCauseFromError(status?: number | null, payload?: unknown, message?: string) {
-  const text = `${message || ""} ${JSON.stringify(payload || {})}`.toLowerCase();
-
-  if (!status) {
-    if (text.includes("failed to fetch")) {
-      return "Frontend could not reach backend. Check backend URL, backend server status, CORS, or network refusal.";
-    }
-    if (text.includes("timeout")) {
-      return "Request timed out before backend responded.";
-    }
-    return "Network-level or browser fetch failure before a normal backend response was returned.";
-  }
-
-  if (status === 404) return "Backend route not found. Check that the auth endpoint exists on the backend.";
-  if (status === 400) return "Backend rejected the request payload or validation failed.";
-  if (status === 401 || status === 403) return "Backend blocked the request due to auth, security, or environment checks.";
-  if (status === 429) return "Rate limit triggered for OTP or auth requests.";
-  if (status >= 500) return "Backend internal error, provider failure, missing env vars, or unhandled exception.";
-
-  return "Backend responded with an error that needs inspection from the raw payload below.";
 }
 
 function sectionCardStyle(): React.CSSProperties {
@@ -258,10 +216,74 @@ function linkBtnStyle(primary = false): React.CSSProperties {
   };
 }
 
+function noticeStyle(tone: NoticeTone): React.CSSProperties {
+  if (tone === "good") {
+    return {
+      border: "1px solid var(--success-border)",
+      background: "var(--success-bg)",
+    };
+  }
+
+  if (tone === "warn") {
+    return {
+      border: "1px solid var(--warn-border)",
+      background: "var(--warn-bg)",
+    };
+  }
+
+  if (tone === "danger") {
+    return {
+      border: "1px solid var(--danger-border)",
+      background: "var(--danger-bg)",
+    };
+  }
+
+  return {
+    border: "1px solid var(--border)",
+    background: "var(--surface-soft)",
+  };
+}
+
 function appendNext(url: string, nextPath: string): string {
   if (!nextPath) return url;
   const joiner = url.includes("?") ? "&" : "?";
   return `${url}${joiner}next=${encodeURIComponent(nextPath)}`;
+}
+
+function buildInitialNotice(referralCode: string, nextPath: string): NoticeState {
+  if (referralCode && nextPath) {
+    return {
+      tone: "default",
+      text: `Referral code ${referralCode} detected. Continue with sign-up and you will continue to ${nextPath} after verification.`,
+    };
+  }
+
+  if (referralCode) {
+    return {
+      tone: "default",
+      text: `Referral code ${referralCode} detected. Continue with sign-up to apply it to your new account.`,
+    };
+  }
+
+  if (nextPath) {
+    return {
+      tone: "default",
+      text: `Create your account with email OTP. After verification, you will continue to ${nextPath}.`,
+    };
+  }
+
+  return {
+    tone: "default",
+    text: "Create your account with email OTP.",
+  };
+}
+
+function requestOtpMessage(): string {
+  return "Could not send OTP right now. Please confirm your email address and try again.";
+}
+
+function verifyOtpMessage(): string {
+  return "That OTP could not be accepted. Request a new code and try again.";
 }
 
 function SignupPageContent() {
@@ -273,78 +295,85 @@ function SignupPageContent() {
   const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
   const [referralCode, setReferralCode] = useState("");
-  const [status, setStatus] = useState<string>("Create your account with email OTP.");
-  const [raw, setRaw] = useState<unknown>(null);
+  const [notice, setNotice] = useState<NoticeState>({
+    tone: "default",
+    text: "Create your account with email OTP.",
+  });
   const [busy, setBusy] = useState(false);
-  const [showDebug, setShowDebug] = useState(false);
-  const [failureExpose, setFailureExpose] = useState<FailureExpose | null>(null);
+  const [checkingSession, setCheckingSession] = useState(true);
 
   const redirectingRef = useRef(false);
   const initDoneRef = useRef(false);
+  const otpInputRef = useRef<HTMLInputElement | null>(null);
 
   const queryReferralCode = normalizeReferralCode(sp?.get("ref"));
   const queryNextPath = safeDecodeNext(sp?.get("next")) || "";
-  const hasUrlReferral = Boolean(queryReferralCode);
+  const storedReferralCode = readStoredReferralCode();
+  const storedNextPath = readStoredNextPath();
+
+  const effectiveReferralCode = queryReferralCode || storedReferralCode || "";
+  const effectiveNextPath = queryNextPath || storedNextPath || "";
 
   useEffect(() => {
     if (initDoneRef.current) return;
 
-    const storedReferral = readStoredReferralCode();
-    const storedNext = readStoredNextPath();
-
-    const finalReferral = queryReferralCode || storedReferral || "";
-    const finalNext = queryNextPath || storedNext || "";
-
-    if (finalReferral) {
-      setReferralCode(finalReferral);
-      persistReferralCode(finalReferral);
+    if (effectiveReferralCode) {
+      setReferralCode(effectiveReferralCode);
+      persistReferralCode(effectiveReferralCode);
     }
 
-    if (finalNext) {
-      persistNextPath(finalNext);
+    if (effectiveNextPath) {
+      persistNextPath(effectiveNextPath);
     }
 
-    if (finalReferral && finalNext) {
-      setStatus(
-        `Referral code ${finalReferral} detected. After sign-up, you will continue to ${finalNext}.`
-      );
-    } else if (finalReferral) {
-      setStatus(
-        `Referral code ${finalReferral} detected. Continue with sign-up to apply it to your new account.`
-      );
-    } else if (finalNext) {
-      setStatus(`Continue with sign-up. After verification, you will continue to ${finalNext}.`);
-    }
-
+    setNotice(buildInitialNotice(effectiveReferralCode, effectiveNextPath));
     initDoneRef.current = true;
-  }, [queryReferralCode, queryNextPath]);
+  }, [effectiveReferralCode, effectiveNextPath]);
 
   useEffect(() => {
     if (!authReady) return;
-    if (redirectingRef.current) return;
+
+    let alive = true;
 
     const run = async () => {
-      try {
-        const ok = await refreshSession();
-        if (ok) {
-          setStatus("Active session detected. Redirecting...");
-          redirectingRef.current = true;
-          router.replace(resolvePostLoginPath(sp));
-          return;
-        }
+      setCheckingSession(true);
 
-        if (!referralCode && !queryNextPath && !readStoredNextPath()) {
-          setStatus("Create your account with email OTP.");
+      try {
+        const ok = hasSession ? true : await refreshSession();
+
+        if (!alive) return;
+
+        if (ok) {
+          setHasSession(true);
+          setNotice({
+            tone: "good",
+            text: "Active session already exists in this browser. You can continue normally.",
+          });
+        } else {
+          setNotice(buildInitialNotice(effectiveReferralCode, effectiveNextPath));
         }
       } catch {
-        if (!referralCode && !queryNextPath && !readStoredNextPath()) {
-          setStatus("Create your account with email OTP.");
-        }
+        if (!alive) return;
+        setNotice(buildInitialNotice(effectiveReferralCode, effectiveNextPath));
+      } finally {
+        if (!alive) return;
+        setCheckingSession(false);
       }
     };
 
     void run();
-  }, [authReady, refreshSession, router, sp, referralCode, queryNextPath]);
+
+    return () => {
+      alive = false;
+    };
+  }, [
+    authReady,
+    hasSession,
+    refreshSession,
+    setHasSession,
+    effectiveReferralCode,
+    effectiveNextPath,
+  ]);
 
   useEffect(() => {
     persistReferralCode(referralCode);
@@ -356,89 +385,54 @@ function SignupPageContent() {
     if (!e) return;
 
     setBusy(true);
-    setStatus("Sending sign-up OTP...");
-    setRaw(null);
-    setFailureExpose(null);
-
-    const requestBody = {
-      contact: e,
-      purpose: "web_login",
-    };
+    setNotice({
+      tone: "default",
+      text: "Sending sign-up OTP...",
+    });
 
     try {
       const data = await apiJson<RequestOtpResp>("/web/auth/request-otp", {
         method: "POST",
         timeoutMs: 25000,
-        body: requestBody,
+        body: {
+          contact: e,
+          purpose: "web_login",
+        },
         useAuthToken: false,
       });
 
-      setRaw(data);
-
       if (data?.ok) {
-        const finalPath = resolvePostLoginPath(sp);
-        if (normalizedReferral && finalPath) {
-          setStatus(
-            `OTP sent successfully. Referral code ${normalizedReferral} will be attached during account verification, then you will continue to ${finalPath}.`
-          );
+        if (normalizedReferral && effectiveNextPath) {
+          setNotice({
+            tone: "good",
+            text: `OTP sent successfully. Referral code ${normalizedReferral} is ready and you will continue to ${effectiveNextPath} after verification.`,
+          });
         } else if (normalizedReferral) {
-          setStatus(
-            `OTP sent successfully. Referral code ${normalizedReferral} will be attached during account verification.`
-          );
+          setNotice({
+            tone: "good",
+            text: `OTP sent successfully. Referral code ${normalizedReferral} is ready for account creation.`,
+          });
         } else {
-          setStatus("OTP sent successfully. Check your inbox or test mailbox.");
+          setNotice({
+            tone: "good",
+            text: "OTP sent successfully. Check your email inbox and enter the code below.",
+          });
         }
+
+        window.setTimeout(() => {
+          otpInputRef.current?.focus();
+        }, 120);
       } else {
-        setStatus(`Send OTP failed (${data?.error || "unknown_error"})`);
-        setFailureExpose({
-          stage: "send_otp",
-          endpoint: "/web/auth/request-otp",
-          apiBase: CONFIG.apiBase || "",
-          method: "POST",
-          requestBody,
-          status: 200,
-          message: data?.message || "Backend returned non-ok payload",
-          error: data?.error || "unknown_error",
-          raw: data,
-          likelyCause: likelyCauseFromError(200, data, data?.message),
-          at: new Date().toISOString(),
+        setNotice({
+          tone: "warn",
+          text: "OTP could not be sent right now. Please confirm the email address and try again.",
         });
       }
-    } catch (err: unknown) {
-      if (isApiError(err)) {
-        setStatus(`Send OTP failed (${err.status})`);
-        setRaw(err.data ?? null);
-        setFailureExpose({
-          stage: "send_otp",
-          endpoint: "/web/auth/request-otp",
-          apiBase: CONFIG.apiBase || "",
-          method: "POST",
-          requestBody,
-          status: err.status,
-          message: err.message,
-          error: (err.data?.error as string | undefined) || "api_error",
-          raw: err.data ?? null,
-          likelyCause: likelyCauseFromError(err.status, err.data, err.message),
-          at: new Date().toISOString(),
-        });
-      } else {
-        const msg = String(err instanceof Error ? err.message : err);
-        setStatus("Send OTP failed.");
-        setRaw(msg);
-        setFailureExpose({
-          stage: "send_otp",
-          endpoint: "/web/auth/request-otp",
-          apiBase: CONFIG.apiBase || "",
-          method: "POST",
-          requestBody,
-          status: null,
-          message: msg,
-          error: "fetch_failure",
-          raw: msg,
-          likelyCause: likelyCauseFromError(null, null, msg),
-          at: new Date().toISOString(),
-        });
-      }
+    } catch {
+      setNotice({
+        tone: "danger",
+        text: requestOtpMessage(),
+      });
     } finally {
       setBusy(false);
     }
@@ -451,41 +445,28 @@ function SignupPageContent() {
     if (!e || !code) return;
 
     setBusy(true);
-    setStatus("Verifying sign-up OTP...");
-    setRaw(null);
-    setFailureExpose(null);
-
-    const requestBody = {
-      contact: e,
-      otp: code,
-      purpose: "web_login",
-      referral_code: normalizedReferral || undefined,
-    };
+    setNotice({
+      tone: "default",
+      text: "Verifying sign-up OTP...",
+    });
 
     try {
       const data = await apiJson<VerifyOtpResp>("/web/auth/verify-otp", {
         method: "POST",
         timeoutMs: 25000,
-        body: requestBody,
+        body: {
+          contact: e,
+          otp: code,
+          purpose: "web_login",
+          referral_code: normalizedReferral || undefined,
+        },
         useAuthToken: false,
       });
 
-      setRaw(data);
-
       if (!data?.ok) {
-        setStatus(`Verify OTP failed (${data?.error || "unknown_error"})`);
-        setFailureExpose({
-          stage: "verify_otp",
-          endpoint: "/web/auth/verify-otp",
-          apiBase: CONFIG.apiBase || "",
-          method: "POST",
-          requestBody: { ...requestBody, otp: "***hidden***" },
-          status: 200,
-          message: data?.message || "Backend returned non-ok payload",
-          error: data?.error || "unknown_error",
-          raw: data,
-          likelyCause: likelyCauseFromError(200, data, data?.message),
-          at: new Date().toISOString(),
+        setNotice({
+          tone: "warn",
+          text: "That OTP could not be accepted. Request a new code and try again.",
         });
         return;
       }
@@ -494,29 +475,25 @@ function SignupPageContent() {
         setToken(data.token);
       }
 
-      setHasSession(true);
-
       try {
-        const me = await apiJson<WebMeResp>("/web/auth/me", {
-          method: "GET",
-          timeoutMs: 20000,
-          useAuthToken: false,
-        });
-        if (me?.ok && me?.account_id) {
-          setHasSession(true);
-        }
+        await refreshSession();
       } catch {
         // ignore
       }
+
+      setHasSession(true);
 
       if (normalizedReferral) {
         clearStoredReferralCode();
       }
 
-      const finalPath = resolvePostLoginPath(sp);
+      const finalPath = resolvePostSignupPath(sp);
       clearStoredNextPath();
 
-      setStatus("Account flow completed. Redirecting...");
+      setNotice({
+        tone: "good",
+        text: "Account flow completed successfully. Redirecting...",
+      });
 
       if (!redirectingRef.current) {
         redirectingRef.current = true;
@@ -524,41 +501,11 @@ function SignupPageContent() {
           router.replace(finalPath);
         }, 250);
       }
-    } catch (err: unknown) {
-      if (isApiError(err)) {
-        setStatus(`Verify OTP failed (${err.status})`);
-        setRaw(err.data ?? null);
-        setFailureExpose({
-          stage: "verify_otp",
-          endpoint: "/web/auth/verify-otp",
-          apiBase: CONFIG.apiBase || "",
-          method: "POST",
-          requestBody: { ...requestBody, otp: "***hidden***" },
-          status: err.status,
-          message: err.message,
-          error: (err.data?.error as string | undefined) || "api_error",
-          raw: err.data ?? null,
-          likelyCause: likelyCauseFromError(err.status, err.data, err.message),
-          at: new Date().toISOString(),
-        });
-      } else {
-        const msg = String(err instanceof Error ? err.message : err);
-        setStatus("Verify OTP failed.");
-        setRaw(msg);
-        setFailureExpose({
-          stage: "verify_otp",
-          endpoint: "/web/auth/verify-otp",
-          apiBase: CONFIG.apiBase || "",
-          method: "POST",
-          requestBody: { ...requestBody, otp: "***hidden***" },
-          status: null,
-          message: msg,
-          error: "fetch_failure",
-          raw: msg,
-          likelyCause: likelyCauseFromError(null, null, msg),
-          at: new Date().toISOString(),
-        });
-      }
+    } catch {
+      setNotice({
+        tone: "danger",
+        text: verifyOtpMessage(),
+      });
     } finally {
       setBusy(false);
     }
@@ -567,11 +514,19 @@ function SignupPageContent() {
   const clearReferral = () => {
     setReferralCode("");
     clearStoredReferralCode();
-    setStatus("Referral code cleared.");
+    setNotice({
+      tone: "default",
+      text: effectiveNextPath
+        ? `Referral code cleared. After verification, you will continue to ${effectiveNextPath}.`
+        : "Referral code cleared.",
+    });
   };
 
-  const nextPathForLinks = resolvePostLoginPath(sp);
-  const loginHref = appendNext("/login", nextPathForLinks === "/welcome" ? "" : nextPathForLinks);
+  const nextPathForLinks = resolvePostSignupPath(sp);
+  const loginHref = appendNext(
+    "/login",
+    nextPathForLinks === "/welcome" ? "" : nextPathForLinks
+  );
 
   return (
     <div
@@ -691,49 +646,16 @@ function SignupPageContent() {
             marginTop: 18,
             padding: "14px 16px",
             borderRadius: 16,
-            border: hasSession
-              ? "1px solid var(--success-border)"
-              : hasUrlReferral || referralCode
-              ? "1px solid var(--accent-border)"
-              : "1px solid var(--border)",
-            background: hasSession
-              ? "var(--success-bg)"
-              : hasUrlReferral || referralCode
-              ? "var(--accent-soft)"
-              : "var(--surface-soft)",
             color: "var(--text-soft)",
             fontSize: 15,
             lineHeight: 1.6,
+            ...noticeStyle(checkingSession && !hasSession ? "default" : notice.tone),
           }}
         >
-          {status}
+          {checkingSession && !hasSession
+            ? "Checking secure access state..."
+            : notice.text}
         </div>
-
-        {failureExpose ? (
-          <div
-            style={{
-              marginTop: 16,
-              padding: "14px 16px",
-              borderRadius: 16,
-              border: "1px solid var(--danger-border)",
-              background: "var(--danger-bg)",
-              color: "var(--text)",
-              fontSize: 14,
-              lineHeight: 1.65,
-            }}
-          >
-            <div style={{ fontWeight: 900, marginBottom: 8 }}>Failure Exposer</div>
-            <div><strong>Stage:</strong> {failureExpose.stage}</div>
-            <div><strong>Method:</strong> {failureExpose.method}</div>
-            <div><strong>Endpoint:</strong> {failureExpose.endpoint}</div>
-            <div><strong>API Base:</strong> {failureExpose.apiBase || "Not set"}</div>
-            <div><strong>Status:</strong> {failureExpose.status ?? "No HTTP status returned"}</div>
-            <div><strong>Error:</strong> {failureExpose.error || "None"}</div>
-            <div><strong>Message:</strong> {failureExpose.message || "None"}</div>
-            <div><strong>Likely Cause:</strong> {failureExpose.likelyCause || "Undetermined"}</div>
-            <div><strong>Time:</strong> {failureExpose.at}</div>
-          </div>
-        ) : null}
 
         {hasSession ? (
           <div style={{ marginTop: 22 }}>
@@ -779,6 +701,7 @@ function SignupPageContent() {
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="Email address"
                   style={workspaceInputStyle()}
+                  autoComplete="email"
                 />
               </WorkspaceField>
 
@@ -789,6 +712,7 @@ function SignupPageContent() {
                   onChange={(e) => setReferralCode(normalizeReferralCode(e.target.value))}
                   placeholder="Referral code"
                   style={workspaceInputStyle()}
+                  autoComplete="off"
                 />
               </WorkspaceField>
 
@@ -805,7 +729,14 @@ function SignupPageContent() {
 
               <WorkspaceActionBar
                 items={[
-                  { label: "Send OTP", onClick: () => { void sendOtp(); }, tone: "secondary", disabled: busy },
+                  {
+                    label: busy ? "Sending..." : "Send OTP",
+                    onClick: () => {
+                      void sendOtp();
+                    },
+                    tone: "secondary",
+                    disabled: busy || checkingSession || !email.trim(),
+                  },
                   {
                     label: "Clear Referral",
                     onClick: clearReferral,
@@ -818,16 +749,25 @@ function SignupPageContent() {
               <WorkspaceField label="OTP Code" htmlFor="signup-otp">
                 <input
                   id="signup-otp"
+                  ref={otpInputRef}
                   value={otp}
                   onChange={(e) => setOtp(e.target.value)}
                   placeholder="OTP code"
                   style={workspaceInputStyle()}
+                  autoComplete="one-time-code"
                 />
               </WorkspaceField>
 
               <WorkspaceActionBar
                 items={[
-                  { label: "Verify OTP", onClick: () => { void verifyOtp(); }, tone: "primary", disabled: busy },
+                  {
+                    label: busy ? "Verifying..." : "Verify OTP",
+                    onClick: () => {
+                      void verifyOtp();
+                    },
+                    tone: "primary",
+                    disabled: busy || checkingSession || !email.trim() || !otp.trim(),
+                  },
                 ]}
               />
             </WorkspaceSectionCard>
@@ -862,55 +802,17 @@ function SignupPageContent() {
               <div style={sectionCardStyle()}>
                 <div style={sectionTitleStyle()}>Need help?</div>
                 <div style={sectionTextStyle()}>
-                  If sign-up fails after a valid attempt, use Support with the debug response if needed.
+                  If sign-up fails after a valid attempt, use Support and try again after a short wait.
+                </div>
+                <div style={{ marginTop: 12 }}>
+                  <Link href="/support" style={linkBtnStyle(false)}>
+                    Open Support
+                  </Link>
                 </div>
               </div>
             </div>
           </div>
         )}
-
-        <div style={{ marginTop: 24 }}>
-          <WorkspaceActionBar
-            items={[
-              {
-                label: showDebug ? "Hide Debug Response" : "Show Debug Response",
-                onClick: () => setShowDebug((v) => !v),
-                tone: "secondary",
-              },
-            ]}
-          />
-        </div>
-
-        {showDebug ? (
-          <div style={{ marginTop: 18 }}>
-            <div
-              style={{
-                color: "var(--text-soft)",
-                fontWeight: 900,
-                marginBottom: 8,
-              }}
-            >
-              Raw response (debug)
-            </div>
-            <pre
-              style={{
-                margin: 0,
-                padding: 16,
-                borderRadius: 16,
-                border: "1px solid var(--border)",
-                background: "var(--surface-soft)",
-                color: "var(--text-soft)",
-                whiteSpace: "pre-wrap",
-                fontFamily: "ui-monospace, Menlo, monospace",
-                fontSize: 12,
-                lineHeight: 1.5,
-                overflowX: "auto",
-              }}
-            >
-              {JSON.stringify({ failureExpose, raw }, null, 2)}
-            </pre>
-          </div>
-        ) : null}
       </Panel>
     </div>
   );
