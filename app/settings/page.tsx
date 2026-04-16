@@ -105,6 +105,7 @@ function boxStyle(): React.CSSProperties {
     padding: 18,
     display: "grid",
     gap: 10,
+    minWidth: 0,
   };
 }
 
@@ -126,7 +127,7 @@ function inputStyle(): React.CSSProperties {
     background: "var(--surface-soft)",
     color: "var(--text)",
     padding: "12px 16px",
-    fontSize: 15,
+    fontSize: 16,
     outline: "none",
   };
 }
@@ -140,7 +141,7 @@ function selectStyle(): React.CSSProperties {
     background: "var(--surface-soft)",
     color: "var(--text)",
     padding: "12px 16px",
-    fontSize: 15,
+    fontSize: 16,
     outline: "none",
     appearance: "none",
     WebkitAppearance: "none",
@@ -151,6 +152,7 @@ function selectStyle(): React.CSSProperties {
 function themeOptionStyle(active: boolean): React.CSSProperties {
   return {
     minHeight: 48,
+    width: "100%",
     padding: "0 16px",
     borderRadius: 16,
     border: active
@@ -176,12 +178,13 @@ function toggleCardStyle(): React.CSSProperties {
     gap: 16,
     alignItems: "center",
     flexWrap: "wrap",
+    minWidth: 0,
   };
 }
 
 function toggleButtonStyle(active: boolean): React.CSSProperties {
   return {
-    minWidth: 110,
+    minWidth: 120,
     minHeight: 42,
     padding: "0 16px",
     borderRadius: 999,
@@ -196,6 +199,7 @@ function toggleButtonStyle(active: boolean): React.CSSProperties {
     fontSize: 13,
     cursor: "pointer",
     boxShadow: active ? "0 8px 20px rgba(79,70,229,0.18)" : "none",
+    maxWidth: "100%",
   };
 }
 
@@ -208,6 +212,8 @@ function actionButtonStyle(
       ...baseStyle,
       cursor: "pointer",
       opacity: 1,
+      width: "100%",
+      justifyContent: "center",
     };
   }
 
@@ -215,12 +221,52 @@ function actionButtonStyle(
     ...baseStyle,
     cursor: "not-allowed",
     opacity: 1,
+    width: "100%",
+    justifyContent: "center",
     background: "#e5e7eb",
     color: "#6b7280",
     border: "1px solid #d1d5db",
     boxShadow: "none",
     filter: "grayscale(0.12)",
     transform: "none",
+  };
+}
+
+function responsiveSplitGrid(): React.CSSProperties {
+  return {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))",
+    gap: 18,
+    alignItems: "start",
+  };
+}
+
+function actionGrid(): React.CSSProperties {
+  return {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 170px), 1fr))",
+    gap: 12,
+    width: "100%",
+  };
+}
+
+function compactTextStyle(): React.CSSProperties {
+  return {
+    color: "var(--text-muted)",
+    lineHeight: 1.7,
+    fontSize: 14,
+    overflowWrap: "anywhere",
+    wordBreak: "break-word",
+  };
+}
+
+function valueBlockStyle(): React.CSSProperties {
+  return {
+    color: "var(--text)",
+    lineHeight: 1.85,
+    fontSize: 15,
+    overflowWrap: "anywhere",
+    wordBreak: "break-word",
   };
 }
 
@@ -253,10 +299,7 @@ export default function SettingsPage() {
     ""
   );
 
-  const rawPlanStatus = safeText(
-    subscriptionData.status || billingData.status || "",
-    ""
-  );
+  const rawPlanStatus = safeText(subscriptionData.status || billingData.status || "", "");
 
   const normalizedPlanName = rawPlanName.toLowerCase();
   const normalizedPlanStatus = rawPlanStatus.toLowerCase();
@@ -402,7 +445,7 @@ export default function SettingsPage() {
       title="Settings"
       subtitle="Adjust your visible workspace preferences such as profile details, appearance mode, default channel behavior, and communication settings."
       actions={
-        <>
+        <div style={actionGrid()}>
           <button
             type="button"
             onClick={onSave}
@@ -422,7 +465,7 @@ export default function SettingsPage() {
           >
             Reset Defaults
           </button>
-        </>
+        </div>
       }
     >
       <SectionStack>
@@ -462,19 +505,12 @@ export default function SettingsPage() {
           </CardsGrid>
         </WorkspaceSectionCard>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "minmax(0, 1.1fr) minmax(300px, 0.9fr)",
-            gap: 18,
-            alignItems: "start",
-          }}
-        >
+        <div style={responsiveSplitGrid()}>
           <WorkspaceSectionCard
             title="Profile and appearance"
             subtitle="Keep your visible identity and display behavior clean and predictable."
           >
-            <div style={{ display: "grid", gap: 14 }}>
+            <div style={{ display: "grid", gap: 14, minWidth: 0 }}>
               <div style={boxStyle()}>
                 <label htmlFor="display-name" style={fieldLabelStyle()}>
                   Workspace Display Name
@@ -486,7 +522,7 @@ export default function SettingsPage() {
                   placeholder="Workspace display name"
                   style={inputStyle()}
                 />
-                <div style={{ color: "var(--text-muted)", lineHeight: 1.7, fontSize: 14 }}>
+                <div style={compactTextStyle()}>
                   This helps the workspace feel personal without changing backend account identity.
                 </div>
               </div>
@@ -496,9 +532,9 @@ export default function SettingsPage() {
 
                 <div
                   style={{
-                    display: "flex",
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 140px), 1fr))",
                     gap: 10,
-                    flexWrap: "wrap",
                   }}
                 >
                   <button
@@ -526,14 +562,14 @@ export default function SettingsPage() {
                   </button>
                 </div>
 
-                <div style={{ color: "var(--text-muted)", lineHeight: 1.7, fontSize: 14 }}>
+                <div style={compactTextStyle()}>
                   These buttons replace the unstable dropdown so all modes remain selectable.
                 </div>
               </div>
 
               <div style={boxStyle()}>
                 <div style={fieldLabelStyle()}>Visible Account Snapshot</div>
-                <div style={{ color: "var(--text)", lineHeight: 1.85, fontSize: 15 }}>
+                <div style={valueBlockStyle()}>
                   <div>Email: {visibleEmail}</div>
                   <div>Current Plan: {planName}</div>
                   <div>Visible Credits: {currentCredits}</div>
@@ -546,7 +582,7 @@ export default function SettingsPage() {
             title="Channel and support behavior"
             subtitle="Set how this workspace should behave when support or linking actions are needed."
           >
-            <div style={{ display: "grid", gap: 14 }}>
+            <div style={{ display: "grid", gap: 14, minWidth: 0 }}>
               <div style={boxStyle()}>
                 <label htmlFor="channel-mode" style={fieldLabelStyle()}>
                   Channel Linking Preference
@@ -563,7 +599,7 @@ export default function SettingsPage() {
                   <option value="auto_open_link_flow">Open link flow directly</option>
                   <option value="manual_only">Manual review first</option>
                 </select>
-                <div style={{ color: "var(--text-muted)", lineHeight: 1.7, fontSize: 14 }}>
+                <div style={compactTextStyle()}>
                   Best for users who want predictable channel setup behavior.
                 </div>
               </div>
@@ -584,14 +620,14 @@ export default function SettingsPage() {
                   <option value="email_when_needed">Use email only when necessary</option>
                   <option value="phone_for_general_only">Phone for general contact only</option>
                 </select>
-                <div style={{ color: "var(--text-muted)", lineHeight: 1.7, fontSize: 14 }}>
+                <div style={compactTextStyle()}>
                   This preference guides the visible route you are most likely to use.
                 </div>
               </div>
 
               <div style={boxStyle()}>
                 <div style={fieldLabelStyle()}>Current Channel State</div>
-                <div style={{ color: "var(--text)", lineHeight: 1.85, fontSize: 15 }}>
+                <div style={valueBlockStyle()}>
                   <div>WhatsApp: {whatsappLinked ? "Linked" : "Not linked"}</div>
                   <div>Telegram: {telegramLinked ? "Linked" : "Not linked"}</div>
                 </div>
@@ -627,22 +663,20 @@ export default function SettingsPage() {
             />
           </CardsGrid>
 
-          <div style={{ display: "grid", gap: 12, marginTop: 16 }}>
+          <div style={{ display: "grid", gap: 12, marginTop: 16, minWidth: 0 }}>
             <div style={toggleCardStyle()}>
-              <div style={{ display: "grid", gap: 4, flex: "1 1 260px" }}>
+              <div style={{ display: "grid", gap: 4, flex: "1 1 260px", minWidth: 0 }}>
                 <div style={{ fontWeight: 900, color: "var(--text)", fontSize: 16 }}>
                   Email notifications
                 </div>
-                <div style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.65 }}>
+                <div style={compactTextStyle()}>
                   General browser-saved preference for receiving visible communication prompts.
                 </div>
               </div>
 
               <button
                 type="button"
-                onClick={() =>
-                  updateField("emailNotifications", !settings.emailNotifications)
-                }
+                onClick={() => updateField("emailNotifications", !settings.emailNotifications)}
                 style={toggleButtonStyle(settings.emailNotifications)}
               >
                 {settings.emailNotifications ? "Enabled" : "Disabled"}
@@ -650,11 +684,11 @@ export default function SettingsPage() {
             </div>
 
             <div style={toggleCardStyle()}>
-              <div style={{ display: "grid", gap: 4, flex: "1 1 260px" }}>
+              <div style={{ display: "grid", gap: 4, flex: "1 1 260px", minWidth: 0 }}>
                 <div style={{ fontWeight: 900, color: "var(--text)", fontSize: 16 }}>
                   Support update reminders
                 </div>
-                <div style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.65 }}>
+                <div style={compactTextStyle()}>
                   Keep in-app support follow-up reminders visible when tickets need attention.
                 </div>
               </div>
@@ -669,11 +703,11 @@ export default function SettingsPage() {
             </div>
 
             <div style={toggleCardStyle()}>
-              <div style={{ display: "grid", gap: 4, flex: "1 1 260px" }}>
+              <div style={{ display: "grid", gap: 4, flex: "1 1 260px", minWidth: 0 }}>
                 <div style={{ fontWeight: 900, color: "var(--text)", fontSize: 16 }}>
                   Billing reminders
                 </div>
-                <div style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.65 }}>
+                <div style={compactTextStyle()}>
                   Show renewal and billing follow-up preference in this browser.
                 </div>
               </div>
@@ -693,11 +727,11 @@ export default function SettingsPage() {
           title="Account actions"
           subtitle="Use these actions when you want to navigate safely or leave the workspace."
         >
-          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+          <div style={actionGrid()}>
             <button
               type="button"
               onClick={() => router.push("/workspace")}
-              style={shellButtonSecondary()}
+              style={{ ...shellButtonSecondary(), width: "100%", justifyContent: "center" }}
             >
               Open Workspace
             </button>
@@ -705,7 +739,7 @@ export default function SettingsPage() {
             <button
               type="button"
               onClick={() => router.push("/support")}
-              style={shellButtonSecondary()}
+              style={{ ...shellButtonSecondary(), width: "100%", justifyContent: "center" }}
             >
               Open Support
             </button>
@@ -713,12 +747,16 @@ export default function SettingsPage() {
             <button
               type="button"
               onClick={() => router.push("/channels")}
-              style={shellButtonSecondary()}
+              style={{ ...shellButtonSecondary(), width: "100%", justifyContent: "center" }}
             >
               Open Channels
             </button>
 
-            <button type="button" onClick={onLogout} style={shellButtonPrimary()}>
+            <button
+              type="button"
+              onClick={onLogout}
+              style={{ ...shellButtonPrimary(), width: "100%", justifyContent: "center" }}
+            >
               Logout
             </button>
           </div>
@@ -729,6 +767,8 @@ export default function SettingsPage() {
               color: "var(--text-muted)",
               lineHeight: 1.8,
               fontSize: 15,
+              overflowWrap: "anywhere",
+              wordBreak: "break-word",
             }}
           >
             Use Settings to manage profile details, appearance mode, preferred channel behavior,
