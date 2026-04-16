@@ -13,27 +13,29 @@ import { SectionStack } from "@/components/page-layout";
 function bodyStyle(): React.CSSProperties {
   return {
     display: "grid",
-    gap: 18,
+    gap: 16,
     color: "var(--text)",
-    fontSize: 16,
-    lineHeight: 1.9,
+    fontSize: 15,
+    lineHeight: 1.85,
+    minWidth: 0,
   };
 }
 
-function actionRowStyle(): React.CSSProperties {
+function actionGridStyle(): React.CSSProperties {
   return {
-    display: "flex",
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
     gap: 12,
-    flexWrap: "wrap",
-    alignItems: "center",
+    alignItems: "stretch",
   };
 }
 
 function infoGridStyle(): React.CSSProperties {
   return {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
     gap: 16,
+    minWidth: 0,
   };
 }
 
@@ -42,38 +44,60 @@ function infoCardStyle(): React.CSSProperties {
     border: "1px solid var(--border)",
     borderRadius: 18,
     background: "var(--surface)",
-    padding: 18,
+    padding: 16,
     display: "grid",
     gap: 8,
+    minWidth: 0,
+    wordBreak: "break-word",
+    overflowWrap: "anywhere",
   };
 }
 
 function labelStyle(): React.CSSProperties {
   return {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: 800,
     color: "var(--text-muted)",
     textTransform: "uppercase",
     letterSpacing: 0.4,
     margin: 0,
+    wordBreak: "break-word",
   };
 }
 
 function valueStyle(): React.CSSProperties {
   return {
-    fontSize: 20,
+    fontSize: "clamp(20px, 4.5vw, 22px)",
     fontWeight: 900,
     color: "var(--text)",
     margin: 0,
+    lineHeight: 1.2,
+    wordBreak: "break-word",
+    overflowWrap: "anywhere",
   };
 }
 
 function helperStyle(): React.CSSProperties {
   return {
-    fontSize: 15,
+    fontSize: 14,
     color: "var(--text-muted)",
     lineHeight: 1.7,
     margin: 0,
+    wordBreak: "break-word",
+    overflowWrap: "anywhere",
+  };
+}
+
+function listStyle(): React.CSSProperties {
+  return {
+    margin: 0,
+    paddingLeft: 20,
+    display: "grid",
+    gap: 10,
+    lineHeight: 1.75,
+    minWidth: 0,
+    wordBreak: "break-word",
+    overflowWrap: "anywhere",
   };
 }
 
@@ -85,14 +109,14 @@ export default function UnavailablePage() {
       title="Service Temporarily Unavailable"
       subtitle="The requested feature or page is currently unavailable. This may be caused by maintenance, provider interruption, or a temporary platform-side issue."
       actions={
-        <>
-          <button onClick={() => router.push("/dashboard")} style={shellButtonPrimary()}>
+        <div style={actionGridStyle()}>
+          <button onClick={() => router.push("/dashboard")} style={{ ...shellButtonPrimary(), width: "100%" }}>
             Go to Dashboard
           </button>
-          <button onClick={() => router.push("/support")} style={shellButtonSecondary()}>
+          <button onClick={() => router.push("/support")} style={{ ...shellButtonSecondary(), width: "100%" }}>
             Open Support
           </button>
-        </>
+        </div>
       }
     >
       <SectionStack>
@@ -139,17 +163,17 @@ export default function UnavailablePage() {
           title="Safe next actions"
           subtitle="Choose a stable route so you can continue using the portal."
         >
-          <div style={actionRowStyle()}>
-            <button onClick={() => router.push("/dashboard")} style={shellButtonPrimary()}>
+          <div style={actionGridStyle()}>
+            <button onClick={() => router.push("/dashboard")} style={{ ...shellButtonPrimary(), width: "100%" }}>
               Dashboard
             </button>
-            <button onClick={() => router.push("/help")} style={shellButtonSecondary()}>
+            <button onClick={() => router.push("/help")} style={{ ...shellButtonSecondary(), width: "100%" }}>
               Help
             </button>
-            <button onClick={() => router.push("/billing")} style={shellButtonSecondary()}>
+            <button onClick={() => router.push("/billing")} style={{ ...shellButtonSecondary(), width: "100%" }}>
               Billing
             </button>
-            <button onClick={() => router.push("/support")} style={shellButtonSecondary()}>
+            <button onClick={() => router.push("/support")} style={{ ...shellButtonSecondary(), width: "100%" }}>
               Support
             </button>
           </div>
@@ -160,15 +184,7 @@ export default function UnavailablePage() {
           subtitle="Support is appropriate if the unavailable state affects real account activity or keeps repeating."
         >
           <div style={bodyStyle()}>
-            <ul
-              style={{
-                margin: 0,
-                paddingLeft: 22,
-                display: "grid",
-                gap: 12,
-                lineHeight: 1.8,
-              }}
-            >
+            <ul style={listStyle()}>
               <li>You were trying to access billing, subscription, or credit-related functionality.</li>
               <li>A linked channel action failed and redirected to this unavailable state.</li>
               <li>The same temporary failure appears repeatedly over time and does not clear.</li>
@@ -182,10 +198,9 @@ export default function UnavailablePage() {
           subtitle="Temporary unavailability does not always mean data loss or account damage."
         >
           <div style={bodyStyle()}>
-            <p style={{ margin: 0 }}>
-              In many cases, a temporarily unavailable state is caused by a
-              dependency issue, timeout, deployment event, or short-lived
-              platform interruption rather than a permanent account problem.
+            <p style={{ margin: 0, wordBreak: "break-word", overflowWrap: "anywhere" }}>
+              In many cases, a temporarily unavailable state is caused by a dependency issue, timeout,
+              deployment event, or short-lived platform interruption rather than a permanent account problem.
             </p>
           </div>
         </WorkspaceSectionCard>
