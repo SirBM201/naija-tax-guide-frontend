@@ -37,11 +37,13 @@ function truthyValue(value: unknown): boolean {
   return false;
 }
 
-function infoGridStyle(): React.CSSProperties {
+function infoGridStyle(minWidth = 220): React.CSSProperties {
   return {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+    gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, ${minWidth}px), 1fr))`,
     gap: 16,
+    width: "100%",
+    alignItems: "stretch",
   };
 }
 
@@ -50,58 +52,79 @@ function infoCardStyle(): React.CSSProperties {
     border: "1px solid var(--border)",
     borderRadius: 18,
     background: "var(--surface)",
-    padding: 18,
+    padding: "clamp(14px, 2.8vw, 18px)",
     display: "grid",
     gap: 8,
+    minWidth: 0,
+    width: "100%",
+    overflow: "hidden",
   };
 }
 
 function labelStyle(): React.CSSProperties {
   return {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: 800,
     color: "var(--text-muted)",
     textTransform: "uppercase",
-    letterSpacing: 0.4,
+    letterSpacing: 0.45,
     margin: 0,
+    lineHeight: 1.4,
   };
 }
 
 function valueStyle(): React.CSSProperties {
   return {
-    fontSize: 20,
+    fontSize: "clamp(18px, 4.8vw, 20px)",
     fontWeight: 900,
     color: "var(--text)",
     margin: 0,
+    lineHeight: 1.3,
     wordBreak: "break-word",
+    overflowWrap: "anywhere",
+    minWidth: 0,
   };
 }
 
 function helperStyle(): React.CSSProperties {
   return {
-    fontSize: 15,
+    fontSize: 14,
     color: "var(--text-muted)",
     lineHeight: 1.7,
     margin: 0,
+    wordBreak: "break-word",
+    overflowWrap: "anywhere",
   };
 }
 
 function bodyStyle(): React.CSSProperties {
   return {
     display: "grid",
-    gap: 18,
+    gap: 16,
     color: "var(--text)",
-    fontSize: 16,
-    lineHeight: 1.9,
+    fontSize: 15,
+    lineHeight: 1.8,
+    minWidth: 0,
   };
 }
 
-function actionRowStyle(): React.CSSProperties {
+function actionGridStyle(): React.CSSProperties {
   return {
-    display: "flex",
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 180px), 1fr))",
     gap: 12,
-    flexWrap: "wrap",
-    alignItems: "center",
+    width: "100%",
+    alignItems: "stretch",
+  };
+}
+
+function fullWidthButtonStyle(baseStyle: React.CSSProperties): React.CSSProperties {
+  return {
+    ...baseStyle,
+    width: "100%",
+    minWidth: 0,
+    justifyContent: "center",
+    textAlign: "center",
   };
 }
 
@@ -109,16 +132,18 @@ function buttonStyleWithDisabledState(
   baseStyle: React.CSSProperties,
   disabled: boolean
 ): React.CSSProperties {
+  const resolved = fullWidthButtonStyle(baseStyle);
+
   if (!disabled) {
     return {
-      ...baseStyle,
+      ...resolved,
       cursor: "pointer",
       opacity: 1,
     };
   }
 
   return {
-    ...baseStyle,
+    ...resolved,
     cursor: "not-allowed",
     opacity: 1,
     background: "#e5e7eb",
@@ -169,10 +194,7 @@ export default function ProfilePage() {
     ""
   );
 
-  const rawPlanStatus = safeText(
-    subscriptionData.status || billingData.status || "",
-    ""
-  );
+  const rawPlanStatus = safeText(subscriptionData.status || billingData.status || "", "");
 
   const normalizedPlanName = rawPlanName.toLowerCase();
   const normalizedPlanStatus = rawPlanStatus.toLowerCase();
@@ -238,10 +260,16 @@ export default function ProfilePage() {
       subtitle="Review your account identity, visible session state, linked channels, billing snapshot, and account actions."
       actions={
         <>
-          <button onClick={() => router.push("/support")} style={shellButtonPrimary()}>
+          <button
+            onClick={() => router.push("/support")}
+            style={fullWidthButtonStyle(shellButtonPrimary())}
+          >
             Open Support
           </button>
-          <button onClick={() => router.push("/dashboard")} style={shellButtonSecondary()}>
+          <button
+            onClick={() => router.push("/dashboard")}
+            style={fullWidthButtonStyle(shellButtonSecondary())}
+          >
             Back to Dashboard
           </button>
         </>
@@ -268,15 +296,13 @@ export default function ProfilePage() {
           />
         )}
 
-        {logoutNotice ? (
-          <Banner tone="default" title="Account update" subtitle={logoutNotice} />
-        ) : null}
+        {logoutNotice ? <Banner tone="default" title="Account update" subtitle={logoutNotice} /> : null}
 
         <WorkspaceSectionCard
           title="Account identity"
           subtitle="These are the main visible account details currently available in the portal."
         >
-          <div style={infoGridStyle()}>
+          <div style={infoGridStyle(210)}>
             <div style={infoCardStyle()}>
               <p style={labelStyle()}>Account Name</p>
               <p style={valueStyle()}>{accountName}</p>
@@ -307,13 +333,11 @@ export default function ProfilePage() {
           title="Session and access"
           subtitle="This section helps the user understand whether access is currently active or limited."
         >
-          <div style={infoGridStyle()}>
+          <div style={infoGridStyle(210)}>
             <div style={infoCardStyle()}>
               <p style={labelStyle()}>Session Status</p>
               <p style={valueStyle()}>{hasSession ? "Signed in" : "Not signed in"}</p>
-              <p style={helperStyle()}>
-                Visible browser session state for this workspace.
-              </p>
+              <p style={helperStyle()}>Visible browser session state for this workspace.</p>
             </div>
 
             <div style={infoCardStyle()}>
@@ -338,7 +362,7 @@ export default function ProfilePage() {
           title="Billing and channel snapshot"
           subtitle="A quick operational summary of the visible workspace state."
         >
-          <div style={infoGridStyle()}>
+          <div style={infoGridStyle(210)}>
             <div style={infoCardStyle()}>
               <p style={labelStyle()}>Current Plan</p>
               <p style={valueStyle()}>{planName}</p>
@@ -375,34 +399,40 @@ export default function ProfilePage() {
           title="Account actions"
           subtitle="Use these routes to continue managing the account safely."
         >
-          <div style={actionRowStyle()}>
+          <div style={actionGridStyle()}>
             {!hasSession ? (
-              <button onClick={() => router.push("/login")} style={shellButtonPrimary()}>
+              <button
+                onClick={() => router.push("/login")}
+                style={fullWidthButtonStyle(shellButtonPrimary())}
+              >
                 Go to Login
               </button>
             ) : (
-              <button onClick={() => router.push("/billing")} style={shellButtonPrimary()}>
+              <button
+                onClick={() => router.push("/billing")}
+                style={fullWidthButtonStyle(shellButtonPrimary())}
+              >
                 Open Billing
               </button>
             )}
 
             <button
               onClick={() => router.push("/channels")}
-              style={shellButtonSecondary()}
+              style={fullWidthButtonStyle(shellButtonSecondary())}
             >
               Open Channels
             </button>
 
             <button
               onClick={() => router.push("/privacy")}
-              style={shellButtonSecondary()}
+              style={fullWidthButtonStyle(shellButtonSecondary())}
             >
               Privacy
             </button>
 
             <button
               onClick={() => router.push("/data-deletion")}
-              style={shellButtonSecondary()}
+              style={fullWidthButtonStyle(shellButtonSecondary())}
             >
               Data Deletion
             </button>
@@ -432,10 +462,12 @@ export default function ProfilePage() {
             <ul
               style={{
                 margin: 0,
-                paddingLeft: 22,
+                paddingLeft: 20,
                 display: "grid",
                 gap: 12,
                 lineHeight: 1.8,
+                wordBreak: "break-word",
+                overflowWrap: "anywhere",
               }}
             >
               <li>Your email, account state, or billing snapshot looks incorrect.</li>
