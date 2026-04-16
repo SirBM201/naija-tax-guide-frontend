@@ -9,7 +9,7 @@ import AppShell, {
 } from "@/components/app-shell";
 import WorkspaceSectionCard from "@/components/workspace-section-card";
 import { Banner, MetricCard, ShortcutCard, formatDate } from "@/components/ui";
-import { CardsGrid, SectionStack } from "@/components/page-layout";
+import { CardsGrid, ResponsiveColumns, SectionStack } from "@/components/page-layout";
 import { useWorkspaceState } from "@/hooks/useWorkspaceState";
 import { buildWorkspaceAlerts } from "@/lib/workspace-alerts";
 import { apiJson, isApiError } from "@/lib/api";
@@ -84,22 +84,14 @@ function truthyValue(value: unknown): boolean {
   return false;
 }
 
-function snapshotItemStyle(): React.CSSProperties {
-  return {
-    border: "1px solid var(--border)",
-    borderRadius: 18,
-    background: "var(--surface)",
-    padding: 16,
-    display: "grid",
-    gap: 6,
-  };
-}
-
 function summaryGridStyle(): React.CSSProperties {
   return {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 220px), 1fr))",
     gap: 16,
+    width: "100%",
+    minWidth: 0,
+    alignItems: "stretch",
   };
 }
 
@@ -108,10 +100,12 @@ function summaryCardStyle(): React.CSSProperties {
     border: "1px solid var(--border)",
     borderRadius: 22,
     background: "var(--surface)",
-    padding: 18,
+    padding: 16,
     boxShadow: "0 8px 24px rgba(15, 23, 42, 0.04)",
     display: "grid",
-    gap: 8,
+    gap: 10,
+    minWidth: 0,
+    height: "100%",
   };
 }
 
@@ -127,10 +121,11 @@ function summaryLabelStyle(): React.CSSProperties {
 
 function summaryValueStyle(): React.CSSProperties {
   return {
-    fontSize: 22,
+    fontSize: "clamp(1.25rem, 3vw, 1.5rem)",
     fontWeight: 900,
     color: "var(--text)",
     lineHeight: 1.2,
+    wordBreak: "break-word",
   };
 }
 
@@ -139,15 +134,74 @@ function summarySubStyle(): React.CSSProperties {
     fontSize: 13,
     color: "var(--text-muted)",
     lineHeight: 1.6,
+    wordBreak: "break-word",
   };
 }
 
-function pageColumnsStyle(): React.CSSProperties {
+function buttonRowStyle(): React.CSSProperties {
   return {
     display: "grid",
-    gridTemplateColumns: "minmax(0, 1.3fr) minmax(280px, 0.9fr)",
-    gap: 18,
-    alignItems: "start",
+    gap: 10,
+    width: "100%",
+    minWidth: 0,
+  };
+}
+
+function fullWidthButtonStyle(baseStyle: React.CSSProperties): React.CSSProperties {
+  return {
+    ...baseStyle,
+    width: "100%",
+    maxWidth: "100%",
+    justifyContent: "center",
+  };
+}
+
+function snapshotGridStyle(): React.CSSProperties {
+  return {
+    display: "grid",
+    gap: 12,
+    width: "100%",
+    minWidth: 0,
+  };
+}
+
+function snapshotItemStyle(): React.CSSProperties {
+  return {
+    border: "1px solid var(--border)",
+    borderRadius: 18,
+    background: "var(--surface)",
+    padding: 16,
+    display: "grid",
+    gap: 6,
+    minWidth: 0,
+  };
+}
+
+function snapshotTitleStyle(): React.CSSProperties {
+  return {
+    fontSize: 13,
+    color: "var(--text-muted)",
+    fontWeight: 700,
+  };
+}
+
+function snapshotValueStyle(): React.CSSProperties {
+  return {
+    fontSize: 16,
+    fontWeight: 800,
+    color: "var(--text)",
+    lineHeight: 1.55,
+    wordBreak: "break-word",
+    overflowWrap: "anywhere",
+  };
+}
+
+function snapshotMetaStyle(): React.CSSProperties {
+  return {
+    color: "var(--text-muted)",
+    lineHeight: 1.7,
+    wordBreak: "break-word",
+    overflowWrap: "anywhere",
   };
 }
 
@@ -410,14 +464,22 @@ export default function DashboardPage() {
             onClick={() => void handleRefresh()}
             disabled={refreshing}
             aria-disabled={refreshing}
-            style={buttonStyleWithDisabledState(shellButtonPrimary(), refreshing)}
+            style={fullWidthButtonStyle(
+              buttonStyleWithDisabledState(shellButtonPrimary(), refreshing)
+            )}
           >
             {refreshing ? "Refreshing..." : "Refresh Workspace"}
           </button>
-          <button onClick={() => router.push("/ask")} style={shellButtonSecondary()}>
+          <button
+            onClick={() => router.push("/ask")}
+            style={fullWidthButtonStyle(shellButtonSecondary())}
+          >
             Ask a Question
           </button>
-          <button onClick={() => router.push("/support")} style={shellButtonSecondary()}>
+          <button
+            onClick={() => router.push("/support")}
+            style={fullWidthButtonStyle(shellButtonSecondary())}
+          >
             Support
           </button>
         </>
@@ -447,10 +509,10 @@ export default function DashboardPage() {
               {workspaceUsed} / {workspaceMaxUsers || 0}
             </div>
             <div style={summarySubStyle()}>Available slots: {workspaceAvailable}</div>
-            <div>
+            <div style={buttonRowStyle()}>
               <button
                 onClick={() => router.push("/workspace")}
-                style={shellButtonSecondary()}
+                style={fullWidthButtonStyle(shellButtonSecondary())}
               >
                 Open Workspace
               </button>
@@ -463,13 +525,13 @@ export default function DashboardPage() {
               {linkedChannelsUsed} / {totalChannelLimit}
             </div>
             <div style={summarySubStyle()}>
-              WhatsApp: {whatsappLinked ? "Linked" : "Not linked"} · Telegram:{" "}
+              WhatsApp: {whatsappLinked ? "Linked" : "Not linked"} · Telegram: {" "}
               {telegramLinked ? "Linked" : "Not linked"}
             </div>
-            <div>
+            <div style={buttonRowStyle()}>
               <button
                 onClick={() => router.push("/channels")}
-                style={shellButtonSecondary()}
+                style={fullWidthButtonStyle(shellButtonSecondary())}
               >
                 Open Channels
               </button>
@@ -481,7 +543,7 @@ export default function DashboardPage() {
           title={`Welcome, ${displayName}`}
           subtitle="This dashboard keeps the account summary compact so you can understand the current state quickly and move to the right page."
         >
-          <CardsGrid min={220}>
+          <CardsGrid min={200}>
             <MetricCard
               label="Current Plan"
               value={planName}
@@ -512,12 +574,12 @@ export default function DashboardPage() {
           </CardsGrid>
         </WorkspaceSectionCard>
 
-        <div style={pageColumnsStyle()}>
+        <ResponsiveColumns min={320} gap={18}>
           <WorkspaceSectionCard
             title="Quick actions"
             subtitle="Go directly to the page that matches what you want to do next."
           >
-            <CardsGrid min={220}>
+            <CardsGrid min={190}>
               <ShortcutCard
                 title="Ask"
                 subtitle="Open the assistant and submit a new tax question."
@@ -567,119 +629,40 @@ export default function DashboardPage() {
             title="Account snapshot"
             subtitle="A short operational summary of the current account state."
           >
-            <div style={{ display: "grid", gap: 12 }}>
+            <div style={snapshotGridStyle()}>
               <div style={snapshotItemStyle()}>
-                <div
-                  style={{
-                    fontSize: 13,
-                    color: "var(--text-muted)",
-                    fontWeight: 700,
-                  }}
-                >
-                  Billing Email
-                </div>
-                <div
-                  style={{
-                    fontSize: 16,
-                    fontWeight: 800,
-                    color: "var(--text)",
-                    wordBreak: "break-word",
-                  }}
-                >
-                  {billingEmail}
-                </div>
+                <div style={snapshotTitleStyle()}>Billing Email</div>
+                <div style={snapshotValueStyle()}>{billingEmail}</div>
               </div>
 
               <div style={snapshotItemStyle()}>
-                <div
-                  style={{
-                    fontSize: 13,
-                    color: "var(--text-muted)",
-                    fontWeight: 700,
-                  }}
-                >
-                  Expires
-                </div>
-                <div
-                  style={{
-                    fontSize: 16,
-                    fontWeight: 800,
-                    color: "var(--text)",
-                  }}
-                >
+                <div style={snapshotTitleStyle()}>Expires</div>
+                <div style={snapshotValueStyle()}>
                   {expiresAt ? formatDate(expiresAt) : isFreePlan ? "Free plan" : "Not shown"}
                 </div>
               </div>
 
               <div style={snapshotItemStyle()}>
-                <div
-                  style={{
-                    fontSize: 13,
-                    color: "var(--text-muted)",
-                    fontWeight: 700,
-                  }}
-                >
-                  Channels
-                </div>
-                <div
-                  style={{
-                    fontSize: 16,
-                    fontWeight: 800,
-                    color: "var(--text)",
-                  }}
-                >
-                  {channelsSummary}
-                </div>
-                <div style={{ color: "var(--text-muted)", lineHeight: 1.7 }}>
-                  WhatsApp: {whatsappLinked ? "Linked" : "Not linked"} • Telegram:{" "}
+                <div style={snapshotTitleStyle()}>Channels</div>
+                <div style={snapshotValueStyle()}>{channelsSummary}</div>
+                <div style={snapshotMetaStyle()}>
+                  WhatsApp: {whatsappLinked ? "Linked" : "Not linked"} • Telegram: {" "}
                   {telegramLinked ? "Linked" : "Not linked"}
                 </div>
               </div>
 
               <div style={snapshotItemStyle()}>
-                <div
-                  style={{
-                    fontSize: 13,
-                    color: "var(--text-muted)",
-                    fontWeight: 700,
-                  }}
-                >
-                  Workspace
-                </div>
-                <div
-                  style={{
-                    fontSize: 16,
-                    fontWeight: 800,
-                    color: "var(--text)",
-                  }}
-                >
+                <div style={snapshotTitleStyle()}>Workspace</div>
+                <div style={snapshotValueStyle()}>
                   {workspaceUsed} / {workspaceMaxUsers || 0}
                 </div>
-                <div style={{ color: "var(--text-muted)", lineHeight: 1.7 }}>
-                  Available slots: {workspaceAvailable}
-                </div>
+                <div style={snapshotMetaStyle()}>Available slots: {workspaceAvailable}</div>
               </div>
 
               <div style={snapshotItemStyle()}>
-                <div
-                  style={{
-                    fontSize: 13,
-                    color: "var(--text-muted)",
-                    fontWeight: 700,
-                  }}
-                >
-                  Pending Plan Change
-                </div>
-                <div
-                  style={{
-                    fontSize: 16,
-                    fontWeight: 800,
-                    color: "var(--text)",
-                  }}
-                >
-                  {pendingPlanCode || "None"}
-                </div>
-                <div style={{ color: "var(--text-muted)", lineHeight: 1.7 }}>
+                <div style={snapshotTitleStyle()}>Pending Plan Change</div>
+                <div style={snapshotValueStyle()}>{pendingPlanCode || "None"}</div>
+                <div style={snapshotMetaStyle()}>
                   {pendingPlanCode
                     ? `Pending start: ${pendingStartsAt ? formatDate(pendingStartsAt) : "Not shown"}`
                     : "No pending plan transition is currently visible."}
@@ -687,7 +670,7 @@ export default function DashboardPage() {
               </div>
             </div>
           </WorkspaceSectionCard>
-        </div>
+        </ResponsiveColumns>
       </SectionStack>
     </AppShell>
   );
