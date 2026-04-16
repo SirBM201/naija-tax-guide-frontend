@@ -9,6 +9,7 @@ import AppShell, {
 import WorkspaceSectionCard from "@/components/workspace-section-card";
 import { Banner } from "@/components/ui";
 import { SectionStack } from "@/components/page-layout";
+import { SITE } from "@/lib/site";
 
 function sectionBodyStyle(): React.CSSProperties {
   return {
@@ -144,7 +145,7 @@ export default function ContactPage() {
           <div style={contactGridStyle()}>
             <div style={infoCardStyle()}>
               <p style={labelStyle()}>Support email</p>
-              <p style={valueStyle()}>support@naijataxguides.com</p>
+              <p style={valueStyle()}>{SITE.supportEmail}</p>
               <p style={helperStyle()}>
                 Best for direct business contact, follow-up communication, and general enquiries where email communication is appropriate.
               </p>
@@ -170,7 +171,7 @@ export default function ContactPage() {
 
         <WorkspaceSectionCard
           title="1. General enquiries"
-          subtitle="Use this route for normal business communication that is not a support ticket."
+          subtitle={`Use this route for normal business communication with ${SITE.companyName} that is not a support ticket.`}
         >
           <div style={sectionBodyStyle()}>
             <p style={paragraphStyle()}>
@@ -239,12 +240,12 @@ export default function ContactPage() {
 
         <WorkspaceSectionCard
           title="5. Official contact note"
-          subtitle="Use direct company contact responsibly and keep messages relevant to the communication route."
+          subtitle={`Use direct company contact with ${SITE.companyName} responsibly and keep messages relevant to the communication route.`}
         >
           <div style={sectionBodyStyle()}>
             <div style={contactHighlightStyle()}>
               <p style={labelStyle()}>Official contact email</p>
-              <p style={valueStyle()}>support@naijataxguides.com</p>
+              <p style={valueStyle()}>{SITE.supportEmail}</p>
               <p style={helperStyle()}>
                 Use this email for general business communication where a support ticket is not the appropriate workflow.
               </p>
