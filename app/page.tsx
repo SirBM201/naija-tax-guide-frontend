@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiJson } from "@/lib/api";
+import { SITE } from "@/lib/site";
 import { themeChipStyle, themeVars, useSharedTheme } from "@/lib/theme";
 
 type WebMeResp = {
@@ -248,10 +249,10 @@ export default function LandingPage() {
       : "Get Started";
 
   const heroPrimaryLabel = checkingSession
-    ? "Start Using Naija Tax Guide"
+    ? `Start Using ${SITE.name}`
     : hasSession
       ? "Continue to Dashboard"
-      : "Start Using Naija Tax Guide";
+      : `Start Using ${SITE.name}`;
 
   const heroSecondaryLabel = checkingSession
     ? "Explore the Product"
@@ -320,7 +321,7 @@ export default function LandingPage() {
             >
               <img
                 src="/bms-logo.jpg"
-                alt="BMS logo"
+                alt={`${SITE.companyName} logo`}
                 style={{ width: "100%", height: "100%", objectFit: "cover" }}
               />
             </div>
@@ -336,7 +337,7 @@ export default function LandingPage() {
                   wordBreak: "break-word",
                 }}
               >
-                Naija Tax Guide
+                {SITE.name}
               </div>
               <div
                 style={{
@@ -347,7 +348,7 @@ export default function LandingPage() {
                   wordBreak: "break-word",
                 }}
               >
-                From Deep Roots, We Soar.
+                {SITE.slogan}
               </div>
             </div>
           </div>
@@ -441,7 +442,7 @@ export default function LandingPage() {
                     flexShrink: 0,
                   }}
                 />
-                Built for Nigerian freelancers, SMEs, and digital professionals
+                Built by {SITE.companyName} for Nigerian freelancers, SMEs, and digital professionals
               </div>
 
               <div
@@ -466,7 +467,7 @@ export default function LandingPage() {
                   maxWidth: 820,
                 }}
               >
-                Naija Tax Guide helps users understand tax questions clearly,
+                {SITE.name} helps users understand tax questions clearly,
                 manage usage professionally, and access guidance through a clean
                 AI-powered workspace designed for Nigeria. It is built to reduce
                 confusion, improve confidence, and make tax guidance more
@@ -736,7 +737,7 @@ export default function LandingPage() {
           <LandingSectionTitle
             eyebrow="How it works"
             title="Simple for users. Structured underneath."
-            subtitle="Naija Tax Guide is designed to feel easy on the outside while maintaining a proper commercial and compliance-ready workflow behind the scenes."
+            subtitle={`${SITE.name} is designed to feel easy on the outside while maintaining a proper commercial and compliance-ready workflow behind the scenes.`}
           />
 
           <div
@@ -890,7 +891,7 @@ export default function LandingPage() {
           <LandingSectionTitle
             eyebrow="Trust and positioning"
             title="Professional enough to inspire confidence."
-            subtitle="Naija Tax Guide should feel credible, useful, and commercially structured from the first screen."
+            subtitle={`${SITE.name} should feel credible, useful, and commercially structured from the first screen.`}
           />
 
           <div
@@ -934,7 +935,7 @@ export default function LandingPage() {
                   lineHeight: 1.85,
                 }}
               >
-                Naija Tax Guide is designed to provide guided tax support and
+                {SITE.name} is designed to provide guided tax support and
                 structured user assistance. It is not presented as official
                 government representation or a substitute for qualified
                 professional escalation in highly sensitive or advanced cases.
