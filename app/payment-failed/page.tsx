@@ -13,27 +13,30 @@ import { SectionStack } from "@/components/page-layout";
 function bodyStyle(): React.CSSProperties {
   return {
     display: "grid",
-    gap: 18,
+    gap: 16,
     color: "var(--text)",
-    fontSize: 16,
-    lineHeight: 1.9,
+    fontSize: 15,
+    lineHeight: 1.85,
+    minWidth: 0,
   };
 }
 
-function actionRowStyle(): React.CSSProperties {
+function actionGridStyle(): React.CSSProperties {
   return {
-    display: "flex",
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
     gap: 12,
-    flexWrap: "wrap",
-    alignItems: "center",
+    alignItems: "stretch",
+    width: "100%",
   };
 }
 
 function infoGridStyle(): React.CSSProperties {
   return {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
     gap: 16,
+    width: "100%",
   };
 }
 
@@ -45,35 +48,53 @@ function infoCardStyle(): React.CSSProperties {
     padding: 18,
     display: "grid",
     gap: 8,
+    minWidth: 0,
   };
 }
 
 function labelStyle(): React.CSSProperties {
   return {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: 800,
     color: "var(--text-muted)",
     textTransform: "uppercase",
-    letterSpacing: 0.4,
+    letterSpacing: 0.45,
     margin: 0,
+    wordBreak: "break-word",
   };
 }
 
 function valueStyle(): React.CSSProperties {
   return {
-    fontSize: 20,
+    fontSize: "clamp(19px, 4vw, 22px)",
     fontWeight: 900,
     color: "var(--text)",
     margin: 0,
+    lineHeight: 1.2,
+    wordBreak: "break-word",
+    overflowWrap: "anywhere",
   };
 }
 
 function helperStyle(): React.CSSProperties {
   return {
-    fontSize: 15,
+    fontSize: 14,
     color: "var(--text-muted)",
     lineHeight: 1.7,
     margin: 0,
+    wordBreak: "break-word",
+    overflowWrap: "anywhere",
+  };
+}
+
+function bulletListStyle(): React.CSSProperties {
+  return {
+    margin: 0,
+    paddingLeft: 20,
+    display: "grid",
+    gap: 12,
+    lineHeight: 1.8,
+    fontSize: 15,
   };
 }
 
@@ -139,7 +160,7 @@ export default function PaymentFailedPage() {
           title="Recommended next actions"
           subtitle="Use a controlled route instead of repeatedly retrying the same failed step without review."
         >
-          <div style={actionRowStyle()}>
+          <div style={actionGridStyle()}>
             <button onClick={() => router.push("/billing")} style={shellButtonPrimary()}>
               Billing
             </button>
@@ -160,15 +181,7 @@ export default function PaymentFailedPage() {
           subtitle="A careful retry is better than repeated blind retries."
         >
           <div style={bodyStyle()}>
-            <ul
-              style={{
-                margin: 0,
-                paddingLeft: 22,
-                display: "grid",
-                gap: 12,
-                lineHeight: 1.8,
-              }}
-            >
+            <ul style={bulletListStyle()}>
               <li>Confirm that the selected plan is the one you actually want.</li>
               <li>Check that the payment method is valid and authorized for the transaction.</li>
               <li>Make sure the internet connection or checkout session did not fail mid-process.</li>
@@ -182,15 +195,7 @@ export default function PaymentFailedPage() {
           subtitle="Support is appropriate if the failed state seems incorrect or the billing result is unclear."
         >
           <div style={bodyStyle()}>
-            <ul
-              style={{
-                margin: 0,
-                paddingLeft: 22,
-                display: "grid",
-                gap: 12,
-                lineHeight: 1.8,
-              }}
-            >
+            <ul style={bulletListStyle()}>
               <li>You believe money was deducted even though the page shows failure.</li>
               <li>You retried carefully and the same failure keeps happening.</li>
               <li>You suspect a processor issue, duplicate attempt, or inconsistent billing result.</li>
