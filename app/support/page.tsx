@@ -79,16 +79,17 @@ function infoBoxStyle(): React.CSSProperties {
     border: "1px solid var(--border)",
     borderRadius: 18,
     background: "var(--surface)",
-    padding: 16,
+    padding: "clamp(14px, 3.5vw, 16px)",
     display: "grid",
     gap: 6,
+    minWidth: 0,
   };
 }
 
 function pageGridStyle(): React.CSSProperties {
   return {
     display: "grid",
-    gridTemplateColumns: "minmax(0, 1.05fr) minmax(360px, 0.95fr)",
+    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))",
     gap: 18,
     alignItems: "start",
   };
@@ -99,24 +100,45 @@ function ticketRowStyle(active: boolean): React.CSSProperties {
     border: "1px solid var(--border)",
     borderRadius: 16,
     background: active ? "rgba(78, 110, 255, 0.14)" : "var(--surface)",
-    padding: 14,
+    padding: "clamp(12px, 3vw, 14px)",
     display: "grid",
-    gap: 6,
+    gap: 8,
     cursor: "pointer",
+    minWidth: 0,
   };
 }
 
 function messageBubbleStyle(senderType: "user" | "admin"): React.CSSProperties {
   const isUser = senderType === "user";
   return {
-    maxWidth: "88%",
+    maxWidth: "min(100%, 820px)",
+    width: "fit-content",
     justifySelf: isUser ? "end" : "start",
     border: "1px solid var(--border)",
     borderRadius: 16,
     background: isUser ? "rgba(78, 110, 255, 0.16)" : "var(--surface)",
-    padding: 14,
+    padding: "clamp(12px, 3vw, 14px)",
     display: "grid",
     gap: 6,
+    minWidth: 0,
+  };
+}
+
+function fluidActionGrid(columns = 2): React.CSSProperties {
+  return {
+    display: "grid",
+    gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, ${columns === 1 ? 220 : 180}px), 1fr))`,
+    gap: 12,
+    width: "100%",
+    minWidth: 0,
+  };
+}
+
+function wrapTextStyle(): React.CSSProperties {
+  return {
+    minWidth: 0,
+    overflowWrap: "anywhere",
+    wordBreak: "break-word",
   };
 }
 
@@ -722,7 +744,7 @@ export default function SupportPage() {
           subtitle="Support replies are now available directly inside the app."
         >
           <div style={infoBoxStyle()}>
-            <div style={{ color: "var(--text)", lineHeight: 1.8 }}>
+            <div style={{ color: "var(--text)", lineHeight: 1.8, ...wrapTextStyle() }}>
               Your support updates will appear in the <strong>In-app support inbox</strong> on
               this page. Important updates may also be sent to your account email when available.
               Keep your ticket ID for easy reference.
@@ -735,12 +757,12 @@ export default function SupportPage() {
           subtitle="Use this page to submit a clear support request together with the visible account context that may help review it faster."
         >
           <div style={pageGridStyle()}>
-            <div style={{ display: "grid", gap: 18 }}>
+            <div style={{ display: "grid", gap: 18, minWidth: 0 }}>
               <div style={infoBoxStyle()}>
-                <div style={{ fontSize: 18, fontWeight: 900, color: "var(--text)" }}>
+                <div style={{ fontSize: 18, fontWeight: 900, color: "var(--text)", ...wrapTextStyle() }}>
                   Open a support request
                 </div>
-                <div style={{ color: "var(--text-muted)", lineHeight: 1.7 }}>
+                <div style={{ color: "var(--text-muted)", lineHeight: 1.7, ...wrapTextStyle() }}>
                   Choose the issue type, set the priority, and explain clearly what happened.
                 </div>
                 {isIntentLocked ? (
@@ -750,7 +772,7 @@ export default function SupportPage() {
                 ) : null}
               </div>
 
-              <div style={{ display: "grid", gap: 14 }}>
+              <div style={{ display: "grid", gap: 14, minWidth: 0 }}>
                 <select
                   value={effectiveCategory}
                   onChange={(event) => setField("category", event.target.value)}
@@ -804,7 +826,7 @@ export default function SupportPage() {
                   style={appTextareaStyle()}
                 />
 
-                <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                <div style={fluidActionGrid()}>
                   <button
                     onClick={handleSubmit}
                     disabled={submitting}
@@ -824,18 +846,18 @@ export default function SupportPage() {
               </div>
             </div>
 
-            <div style={{ display: "grid", gap: 18 }}>
+            <div style={{ display: "grid", gap: 18, minWidth: 0 }}>
               <div style={infoBoxStyle()}>
-                <div style={{ fontSize: 18, fontWeight: 900, color: "var(--text)" }}>
+                <div style={{ fontSize: 18, fontWeight: 900, color: "var(--text)", ...wrapTextStyle() }}>
                   Visible account context
                 </div>
-                <div style={{ color: "var(--text-muted)", lineHeight: 1.7 }}>
+                <div style={{ color: "var(--text-muted)", lineHeight: 1.7, ...wrapTextStyle() }}>
                   This summary helps support understand the likely source of the issue without
                   needing unrelated dashboard details.
                 </div>
               </div>
 
-              <CardsGrid min={220}>
+              <CardsGrid min={190}>
                 <MetricCard
                   label="Account Email"
                   value={accountEmail}
@@ -867,7 +889,7 @@ export default function SupportPage() {
           title="My support requests"
           subtitle="Track your ticket status, focus on billing-related requests when needed, and open any ticket to see the full in-app conversation."
         >
-          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
+          <div style={{ ...fluidActionGrid(), marginBottom: 14 }}>
             <button
               onClick={() => setShowBillingOnly(false)}
               style={showBillingOnly ? shellButtonSecondary() : shellButtonPrimary()}
@@ -920,7 +942,7 @@ export default function SupportPage() {
                       }}
                     >
                       <div style={{ display: "grid", gap: 8 }}>
-                        <div style={{ fontSize: 16, fontWeight: 800, color: "var(--text)" }}>
+                        <div style={{ fontSize: 16, fontWeight: 800, color: "var(--text)", ...wrapTextStyle() }}>
                           {ticket.subject || "Untitled support request"}
                         </div>
 
@@ -965,6 +987,7 @@ export default function SupportPage() {
                           fontWeight: 700,
                           color: "var(--text)",
                           opacity: 0.9,
+                          ...wrapTextStyle(),
                         }}
                       >
                         {ticket.ticket_id}
@@ -978,6 +1001,7 @@ export default function SupportPage() {
                         flexWrap: "wrap",
                         color: "var(--text-muted)",
                         fontSize: 14,
+                        minWidth: 0,
                       }}
                     >
                       <span>Status: {ticket.status}</span>
@@ -996,6 +1020,8 @@ export default function SupportPage() {
                         WebkitLineClamp: 2,
                         WebkitBoxOrient: "vertical",
                         overflow: "hidden",
+                        overflowWrap: "anywhere",
+                        wordBreak: "break-word",
                       }}
                     >
                       {previewText(ticket)}
@@ -1020,21 +1046,21 @@ export default function SupportPage() {
           ) : loadingThread ? (
             <Banner tone="default" title="Loading support thread" subtitle="Please wait..." />
           ) : selectedTicket ? (
-            <div style={{ display: "grid", gap: 18 }}>
+            <div style={{ display: "grid", gap: 18, minWidth: 0 }}>
               <div style={infoBoxStyle()}>
                 <div
                   style={{
-                    display: "flex",
-                    justifyContent: "space-between",
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 220px), 1fr))",
                     gap: 12,
-                    flexWrap: "wrap",
                     alignItems: "center",
+                    minWidth: 0,
                   }}
                 >
-                  <div style={{ fontSize: 18, fontWeight: 900, color: "var(--text)" }}>
+                  <div style={{ fontSize: 18, fontWeight: 900, color: "var(--text)", ...wrapTextStyle() }}>
                     {selectedTicket.subject}
                   </div>
-                  <div style={{ color: "var(--text-muted)", fontSize: 14 }}>
+                  <div style={{ color: "var(--text-muted)", fontSize: 14, ...wrapTextStyle() }}>
                     Ticket ID: {selectedTicket.ticket_id}
                   </div>
                 </div>
@@ -1081,8 +1107,9 @@ export default function SupportPage() {
                   border: "1px solid var(--border)",
                   borderRadius: 18,
                   background: "var(--surface)",
-                  padding: 16,
+                  padding: "clamp(12px, 3.5vw, 16px)",
                   minHeight: 220,
+                  minWidth: 0,
                 }}
               >
                 {threadMessages.length === 0 ? (
@@ -1103,7 +1130,7 @@ export default function SupportPage() {
                           alignItems: "center",
                         }}
                       >
-                        <div style={{ fontWeight: 800, color: "var(--text)" }}>
+                        <div style={{ fontWeight: 800, color: "var(--text)", ...wrapTextStyle() }}>
                           {msg.sender_type === "admin"
                             ? msg.sender_name || "Support Team"
                             : msg.sender_name || "You"}
@@ -1128,10 +1155,10 @@ export default function SupportPage() {
               </div>
 
               <div style={infoBoxStyle()}>
-                <div style={{ fontSize: 17, fontWeight: 900, color: "var(--text)" }}>
+                <div style={{ fontSize: 17, fontWeight: 900, color: "var(--text)", ...wrapTextStyle() }}>
                   Reply in-app
                 </div>
-                <div style={{ color: "var(--text-muted)", lineHeight: 1.7 }}>
+                <div style={{ color: "var(--text-muted)", lineHeight: 1.7, ...wrapTextStyle() }}>
                   Send your follow-up directly from this page. Your message will become part of the
                   ticket conversation.
                 </div>
@@ -1148,7 +1175,7 @@ export default function SupportPage() {
                   style={appTextareaStyle()}
                 />
 
-                <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                <div style={fluidActionGrid()}>
                   <button
                     onClick={handleReplySubmit}
                     disabled={replying}
@@ -1186,10 +1213,12 @@ export default function SupportPage() {
           <div
             style={{
               display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 220px), 1fr))",
               gap: 12,
               color: "var(--text)",
               fontSize: 15,
               lineHeight: 1.8,
+              minWidth: 0,
             }}
           >
             <div style={infoBoxStyle()}>
