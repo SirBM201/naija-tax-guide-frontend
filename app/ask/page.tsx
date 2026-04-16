@@ -152,8 +152,10 @@ function pageCardStyle(extra?: React.CSSProperties): React.CSSProperties {
     borderRadius: 28,
     border: "1px solid var(--border)",
     background: "var(--panel-bg)",
-    padding: 28,
+    padding: "clamp(18px, 3vw, 28px)",
     boxShadow: "0 10px 34px rgba(15, 23, 42, 0.04)",
+    width: "100%",
+    minWidth: 0,
     ...extra,
   };
 }
@@ -163,7 +165,9 @@ function innerCardStyle(extra?: React.CSSProperties): React.CSSProperties {
     borderRadius: 22,
     border: "1px solid var(--border)",
     background: "var(--surface)",
-    padding: 22,
+    padding: "clamp(16px, 2.5vw, 22px)",
+    width: "100%",
+    minWidth: 0,
     ...extra,
   };
 }
@@ -207,14 +211,17 @@ function metricCardStyle(
     minHeight: 108,
     display: "grid",
     gap: 8,
+    width: "100%",
+    minWidth: 0,
     ...toneStyles(tone),
   };
 }
 
 function secondaryButtonStyle(disabled = false): React.CSSProperties {
   return {
-    minHeight: 56,
-    padding: "0 26px",
+    minHeight: 54,
+    width: "100%",
+    padding: "0 22px",
     borderRadius: 18,
     border: "1px solid var(--border-strong)",
     background: disabled ? "var(--surface-soft)" : "var(--button-bg)",
@@ -228,8 +235,9 @@ function secondaryButtonStyle(disabled = false): React.CSSProperties {
 
 function primaryButtonStyle(disabled = false): React.CSSProperties {
   return {
-    minHeight: 56,
-    padding: "0 26px",
+    minHeight: 54,
+    width: "100%",
+    padding: "0 22px",
     borderRadius: 18,
     border: "1px solid var(--accent-border)",
     background: disabled ? "var(--surface-soft)" : "var(--button-bg-strong)",
@@ -244,14 +252,14 @@ function primaryButtonStyle(disabled = false): React.CSSProperties {
 function textareaStyle(): React.CSSProperties {
   return {
     width: "100%",
-    minHeight: 230,
+    minHeight: 210,
     borderRadius: 24,
     border: "1px solid var(--border-strong)",
     background: "var(--surface)",
     color: "var(--text)",
-    padding: "22px 20px",
+    padding: "18px 18px",
     resize: "vertical",
-    fontSize: 20,
+    fontSize: "max(16px, 1rem)",
     lineHeight: 1.7,
     fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
     outline: "none",
@@ -261,21 +269,22 @@ function textareaStyle(): React.CSSProperties {
 function selectStyle(): React.CSSProperties {
   return {
     width: "100%",
-    minHeight: 58,
+    minHeight: 56,
     borderRadius: 18,
     border: "1px solid var(--border-strong)",
     background: "var(--surface)",
     color: "var(--text)",
-    padding: "0 18px",
-    fontSize: 17,
+    padding: "0 16px",
+    fontSize: 16,
     outline: "none",
   };
 }
 
-function chipStyle(): React.CSSProperties {
+function chipStyle(fullWidth = false): React.CSSProperties {
   return {
-    display: "inline-flex",
+    display: fullWidth ? "flex" : "inline-flex",
     alignItems: "center",
+    width: fullWidth ? "100%" : "auto",
     minHeight: 40,
     padding: "0 16px",
     borderRadius: 999,
@@ -284,6 +293,17 @@ function chipStyle(): React.CSSProperties {
     color: "var(--text)",
     fontWeight: 800,
     fontSize: 14,
+    minWidth: 0,
+    overflowWrap: "anywhere",
+  };
+}
+
+function gridAutoFit(minWidth: number): React.CSSProperties {
+  return {
+    display: "grid",
+    gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, ${minWidth}px), 1fr))`,
+    gap: 16,
+    alignItems: "start",
   };
 }
 
@@ -656,7 +676,7 @@ function AskPageContent() {
       subtitle="Ask a practical Nigerian tax question and get a structured response inside your workspace."
     >
       <div style={{ display: "grid", gap: 20 }}>
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 12, flexWrap: "wrap" }}>
+        <div style={gridAutoFit(160)}>
           <button
             onClick={() => {
               void load("Refreshing assistant state...");
@@ -710,22 +730,14 @@ function AskPageContent() {
 
         <div
           style={{
-            display: "grid",
-            gridTemplateColumns: "minmax(0, 1.6fr) minmax(320px, 0.95fr)",
+            ...gridAutoFit(320),
             gap: 22,
-            alignItems: "start",
           }}
         >
-          <div style={{ display: "grid", gap: 20 }}>
+          <div style={{ display: "grid", gap: 20, minWidth: 0 }}>
             <div style={pageCardStyle()}>
               <div style={{ display: "grid", gap: 16 }}>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-                    gap: 16,
-                  }}
-                >
+                <div style={gridAutoFit(180)}>
                   <div style={metricCardStyle("warn")}>
                     <div
                       style={{
@@ -782,6 +794,7 @@ function AskPageContent() {
                         fontWeight: 950,
                         color: "var(--text)",
                         lineHeight: 1.35,
+                        overflowWrap: "anywhere",
                       }}
                     >
                       {channelSummary}
@@ -789,7 +802,7 @@ function AskPageContent() {
                   </div>
                 </div>
 
-                <div style={{ display: "grid", gap: 10 }}>
+                <div style={{ display: "grid", gap: 10, minWidth: 0 }}>
                   <div
                     style={{
                       color: "var(--text)",
@@ -827,10 +840,8 @@ function AskPageContent() {
 
                 <div
                   style={{
-                    display: "grid",
-                    gridTemplateColumns: "minmax(220px, 1fr) auto auto",
+                    ...gridAutoFit(220),
                     gap: 14,
-                    alignItems: "end",
                   }}
                 >
                   <div style={{ display: "grid", gap: 8 }}>
@@ -944,10 +955,10 @@ function AskPageContent() {
               ) : null}
 
               {resultOk && answer ? (
-                <div style={{ display: "grid", gap: 18 }}>
-                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                <div style={{ display: "grid", gap: 18, minWidth: 0 }}>
+                  <div style={{ display: "grid", gap: 10, minWidth: 0 }}>
                     <div style={chipStyle()}>Latest answer</div>
-                    <div style={chipStyle()}>Question: {latestQuestionLabel}</div>
+                    <div style={chipStyle(true)}>Question: {latestQuestionLabel}</div>
                   </div>
 
                   <div
@@ -955,18 +966,20 @@ function AskPageContent() {
                       borderRadius: 28,
                       border: "1px solid var(--success-border)",
                       background: "var(--success-bg)",
-                      padding: 28,
+                      padding: "clamp(18px, 3vw, 28px)",
                       display: "grid",
                       gap: 18,
+                      minWidth: 0,
                     }}
                   >
                     <div
                       style={{
                         color: "var(--text)",
-                        fontSize: 26,
+                        fontSize: "clamp(20px, 4vw, 26px)",
                         fontWeight: 950,
                         lineHeight: 1.55,
                         letterSpacing: -0.2,
+                        overflowWrap: "anywhere",
                       }}
                     >
                       {parsed.lead}
@@ -980,6 +993,7 @@ function AskPageContent() {
                             fontSize: 18,
                             fontWeight: 950,
                             marginBottom: 14,
+                            overflowWrap: "anywhere",
                           }}
                         >
                           {section.title}
@@ -989,12 +1003,13 @@ function AskPageContent() {
                           <ol
                             style={{
                               margin: 0,
-                              paddingLeft: 28,
+                              paddingLeft: 24,
                               display: "grid",
                               gap: 12,
                               color: "var(--text)",
-                              fontSize: 17,
+                              fontSize: 16,
                               lineHeight: 1.8,
+                              overflowWrap: "anywhere",
                             }}
                           >
                             {section.lines.map((line, lineIndex) => (
@@ -1007,8 +1022,9 @@ function AskPageContent() {
                               display: "grid",
                               gap: 12,
                               color: "var(--text)",
-                              fontSize: 17,
+                              fontSize: 16,
                               lineHeight: 1.8,
+                              overflowWrap: "anywhere",
                             }}
                           >
                             {section.lines.map((line, lineIndex) => (
@@ -1027,6 +1043,7 @@ function AskPageContent() {
                           color: "var(--text-muted)",
                           fontSize: 14,
                           lineHeight: 1.8,
+                          overflowWrap: "anywhere",
                         }}
                       >
                         <strong style={{ color: "var(--text)" }}>Source:</strong> {parsed.source}
@@ -1040,6 +1057,7 @@ function AskPageContent() {
                           paddingTop: 16,
                           display: "grid",
                           gap: 8,
+                          minWidth: 0,
                         }}
                       >
                         <div
@@ -1059,6 +1077,7 @@ function AskPageContent() {
                             color: "var(--text-muted)",
                             fontSize: 14,
                             lineHeight: 1.7,
+                            overflowWrap: "anywhere",
                           }}
                         >
                           {citations.map((citation, index) => (
@@ -1076,10 +1095,8 @@ function AskPageContent() {
           <div
             style={{
               ...pageCardStyle(),
-              position: "sticky",
-              top: 16,
-              maxHeight: "calc(100vh - 120px)",
-              overflowY: "auto",
+              position: "relative",
+              minWidth: 0,
             }}
           >
             <div style={{ display: "grid", gap: 8, marginBottom: 18 }}>
@@ -1143,6 +1160,7 @@ function AskPageContent() {
                             fontSize: 16,
                             lineHeight: 1.45,
                             cursor: "pointer",
+                            overflowWrap: "anywhere",
                           }}
                         >
                           {starterQuestion}
