@@ -9,7 +9,6 @@ import AppShell, {
 import {
   Banner,
   Card,
-  MetricCard,
   ShortcutCard,
   formatDate,
   planDisplayName,
@@ -22,6 +21,77 @@ import {
 import { getWelcomeSeen, setWelcomeSeen } from "@/lib/preferences-storage";
 import { useWorkspaceState } from "@/hooks/useWorkspaceState";
 import { useAuth } from "@/lib/auth";
+
+function SafeMetricCard({
+  label,
+  value,
+  helper,
+  tone = "default",
+}: {
+  label: string;
+  value: string;
+  helper?: string;
+  tone?: "default" | "good" | "warn" | "danger";
+}) {
+  const border =
+    tone === "good"
+      ? "var(--success-border)"
+      : tone === "warn"
+        ? "var(--warn-border)"
+        : tone === "danger"
+          ? "var(--danger-border)"
+          : "var(--border)";
+
+  const background =
+    tone === "good"
+      ? "var(--success-bg)"
+      : tone === "warn"
+        ? "var(--warn-bg)"
+        : tone === "danger"
+          ? "var(--danger-bg)"
+          : "var(--surface)";
+
+  return (
+    <div
+      style={{
+        borderRadius: 18,
+        border: `1px solid ${border}`,
+        background,
+        padding: 16,
+        minWidth: 0,
+      }}
+    >
+      <div style={{ color: "var(--text-faint)", fontSize: 13 }}>{label}</div>
+      <div
+        style={{
+          marginTop: 8,
+          color: "var(--text)",
+          fontWeight: 900,
+          fontSize: "clamp(20px, 4vw, 24px)",
+          lineHeight: 1.2,
+          wordBreak: "break-word",
+          overflowWrap: "anywhere",
+        }}
+      >
+        {value}
+      </div>
+      {helper ? (
+        <div
+          style={{
+            marginTop: 8,
+            color: "var(--text-muted)",
+            fontSize: 13,
+            lineHeight: 1.65,
+            wordBreak: "break-word",
+            overflowWrap: "anywhere",
+          }}
+        >
+          {helper}
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 function WelcomeStep({
   number,
@@ -41,6 +111,7 @@ function WelcomeStep({
         display: "grid",
         gap: 10,
         background: "var(--surface)",
+        minWidth: 0,
       }}
     >
       <div
@@ -55,6 +126,7 @@ function WelcomeStep({
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
+          flexShrink: 0,
         }}
       >
         {number}
@@ -66,6 +138,7 @@ function WelcomeStep({
           fontWeight: 700,
           color: "var(--text)",
           lineHeight: 1.5,
+          wordBreak: "break-word",
         }}
       >
         {title}
@@ -76,6 +149,7 @@ function WelcomeStep({
           fontSize: 14,
           color: "var(--text-muted)",
           lineHeight: 1.7,
+          wordBreak: "break-word",
         }}
       >
         {description}
@@ -92,13 +166,14 @@ function SectionHeader({
   subtitle?: string;
 }) {
   return (
-    <div style={{ display: "grid", gap: 6 }}>
+    <div style={{ display: "grid", gap: 6, minWidth: 0 }}>
       <div
         style={{
           fontSize: 18,
           fontWeight: 700,
           color: "var(--text)",
           lineHeight: 1.4,
+          wordBreak: "break-word",
         }}
       >
         {title}
@@ -110,11 +185,27 @@ function SectionHeader({
             fontSize: 14,
             color: "var(--text-muted)",
             lineHeight: 1.7,
+            wordBreak: "break-word",
           }}
         >
           {subtitle}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function ActionGrid({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+        gap: 10,
+        width: "100%",
+      }}
+    >
+      {children}
     </div>
   );
 }
@@ -191,10 +282,10 @@ function WelcomePageContent() {
     loweredStatus.includes("ready")
       ? "good"
       : loweredStatus.includes("partial") ||
-        loweredStatus.includes("inactive") ||
-        loweredStatus.includes("attention")
-      ? "warn"
-      : "default";
+          loweredStatus.includes("inactive") ||
+          loweredStatus.includes("attention")
+        ? "warn"
+        : "default";
 
   if (!pageReady) {
     return (
@@ -218,23 +309,23 @@ function WelcomePageContent() {
       title="Welcome"
       subtitle="Start using Naija Tax Guide with a clear understanding of your plan, credits, channels, and the main workspace sections."
       actions={
-        <>
-          <button onClick={handleContinue} style={shellButtonPrimary()}>
+        <ActionGrid>
+          <button onClick={handleContinue} style={{ ...shellButtonPrimary(), width: "100%" }}>
             Continue to Dashboard
           </button>
 
-          <button onClick={handleAskPage} style={shellButtonSecondary()}>
+          <button onClick={handleAskPage} style={{ ...shellButtonSecondary(), width: "100%" }}>
             Go to Ask Page
           </button>
 
           <button
             onClick={handleRefresh}
             disabled={busy}
-            style={shellButtonSecondary()}
+            style={{ ...shellButtonSecondary(), width: "100%" }}
           >
             {busy ? "Refreshing..." : "Refresh"}
           </button>
-        </>
+        </ActionGrid>
       }
     >
       <SectionStack>
@@ -265,32 +356,32 @@ function WelcomePageContent() {
               subtitle="This welcome page now shows subscription-and-credit visibility only. Daily AI usage and daily limit blocks have been removed."
             />
 
-            <CardsGrid min={220}>
-              <MetricCard
+            <CardsGrid min={180}>
+              <SafeMetricCard
                 label="Current Plan"
                 value={planDisplayName(planCode)}
                 tone="default"
               />
 
-              <MetricCard
+              <SafeMetricCard
                 label="Credits Available"
                 value={String(creditBalance)}
                 tone={
                   creditBalance <= 0
                     ? "danger"
                     : creditBalance <= 3
-                    ? "warn"
-                    : "good"
+                      ? "warn"
+                      : "good"
                 }
               />
 
-              <MetricCard
+              <SafeMetricCard
                 label="Access State"
                 value={activeNow ? "Active" : "Inactive"}
                 tone={activeNow ? "good" : "warn"}
               />
 
-              <MetricCard
+              <SafeMetricCard
                 label="Current Expiry"
                 value={formatDate(expiresAt)}
                 tone="default"
@@ -306,7 +397,7 @@ function WelcomePageContent() {
               subtitle="Use these steps to begin using the product properly."
             />
 
-            <CardsGrid min={260}>
+            <CardsGrid min={220}>
               <WelcomeStep
                 number="1"
                 title="Open the Ask page"
@@ -333,7 +424,7 @@ function WelcomePageContent() {
               subtitle="These are the most important parts of Version 1."
             />
 
-            <CardsGrid min={240}>
+            <CardsGrid min={220}>
               <ShortcutCard
                 title="Ask Tax AI"
                 subtitle="Submit your next tax question and receive guided assistance."
@@ -341,8 +432,8 @@ function WelcomePageContent() {
                   !activeNow
                     ? "warn"
                     : creditBalance <= 0
-                    ? "danger"
-                    : "good"
+                      ? "danger"
+                      : "good"
                 }
                 onClick={() => router.push("/ask")}
               />
@@ -361,8 +452,8 @@ function WelcomePageContent() {
                   creditBalance <= 0
                     ? "danger"
                     : creditBalance <= 3
-                    ? "warn"
-                    : "good"
+                      ? "warn"
+                      : "good"
                 }
                 onClick={() => router.push("/credits")}
               />
@@ -400,21 +491,21 @@ function WelcomePageContent() {
               />
 
               <div style={{ display: "grid", gap: 12 }}>
-                <MetricCard
+                <SafeMetricCard
                   label="Web Portal"
                   value="Active Workspace"
                   tone="good"
                   helper="Main place for account, billing, credits, history, help, and question management."
                 />
 
-                <MetricCard
+                <SafeMetricCard
                   label="WhatsApp"
                   value="Version 1"
                   tone="default"
                   helper="Mobile-first guided access under the same account model."
                 />
 
-                <MetricCard
+                <SafeMetricCard
                   label="Telegram"
                   value="Version 1"
                   tone="default"
@@ -438,6 +529,8 @@ function WelcomePageContent() {
                   color: "var(--text-muted)",
                   fontSize: 14,
                   lineHeight: 1.75,
+                  wordBreak: "break-word",
+                  overflowWrap: "anywhere",
                 }}
               >
                 <div>
@@ -465,32 +558,32 @@ function WelcomePageContent() {
                 subtitle="Best next steps for a new or returning user."
               />
 
-              <div style={{ display: "grid", gap: 12 }}>
-                <button onClick={handleContinue} style={shellButtonPrimary()}>
+              <ActionGrid>
+                <button onClick={handleContinue} style={{ ...shellButtonPrimary(), width: "100%" }}>
                   Continue to Dashboard
                 </button>
 
                 <button
                   onClick={() => router.push("/ask")}
-                  style={shellButtonSecondary()}
+                  style={{ ...shellButtonSecondary(), width: "100%" }}
                 >
                   Ask Your First Question
                 </button>
 
                 <button
                   onClick={() => router.push("/plans")}
-                  style={shellButtonSecondary()}
+                  style={{ ...shellButtonSecondary(), width: "100%" }}
                 >
                   Review Plans
                 </button>
 
                 <button
                   onClick={() => router.push("/help")}
-                  style={shellButtonSecondary()}
+                  style={{ ...shellButtonSecondary(), width: "100%" }}
                 >
                   Open Help Center
                 </button>
-              </div>
+              </ActionGrid>
             </div>
           </Card>
 
@@ -502,33 +595,33 @@ function WelcomePageContent() {
               />
 
               <div style={{ display: "grid", gap: 12 }}>
-                <MetricCard
+                <SafeMetricCard
                   label="Visible Email"
                   value={email || "Not available"}
                   tone="default"
                 />
 
-                <MetricCard
+                <SafeMetricCard
                   label="Account ID"
                   value={accountId || "Not available"}
                   tone="default"
                 />
 
-                <MetricCard
+                <SafeMetricCard
                   label="Current Plan"
                   value={planDisplayName(planCode)}
                   tone="default"
                 />
 
-                <MetricCard
+                <SafeMetricCard
                   label="Credits Available"
                   value={String(creditBalance)}
                   tone={
                     creditBalance <= 0
                       ? "danger"
                       : creditBalance <= 3
-                      ? "warn"
-                      : "good"
+                        ? "warn"
+                        : "good"
                   }
                 />
               </div>
