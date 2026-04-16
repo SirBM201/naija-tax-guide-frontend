@@ -2,10 +2,11 @@ import type { Metadata } from "next";
 import "./globals.css";
 import Providers from "@/components/Providers";
 import EntryBootstrapProvider from "@/components/entry-bootstrap-provider";
+import { SITE } from "@/lib/site";
 
 export const metadata: Metadata = {
-  title: "NaijaTax Guide",
-  description: "NaijaTax Guide Web Portal",
+  title: `${SITE.name} | ${SITE.companyName}`,
+  description: `${SITE.name} by ${SITE.companyName}. ${SITE.slogan}`,
   other: {
     "facebook-domain-verification": "1da7tqv44h2lu0wyv7vmm9o4eh9us6",
   },
