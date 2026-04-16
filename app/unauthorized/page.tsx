@@ -15,25 +15,28 @@ function bodyStyle(): React.CSSProperties {
     display: "grid",
     gap: 18,
     color: "var(--text)",
-    fontSize: 16,
-    lineHeight: 1.9,
+    fontSize: 15,
+    lineHeight: 1.85,
+    minWidth: 0,
   };
 }
 
-function actionRowStyle(): React.CSSProperties {
+function actionGridStyle(): React.CSSProperties {
   return {
-    display: "flex",
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
     gap: 12,
-    flexWrap: "wrap",
-    alignItems: "center",
+    alignItems: "stretch",
+    minWidth: 0,
   };
 }
 
 function infoGridStyle(): React.CSSProperties {
   return {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
     gap: 16,
+    minWidth: 0,
   };
 }
 
@@ -45,35 +48,51 @@ function infoCardStyle(): React.CSSProperties {
     padding: 18,
     display: "grid",
     gap: 8,
+    minWidth: 0,
   };
 }
 
 function labelStyle(): React.CSSProperties {
   return {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: 800,
     color: "var(--text-muted)",
     textTransform: "uppercase",
     letterSpacing: 0.4,
     margin: 0,
+    wordBreak: "break-word",
   };
 }
 
 function valueStyle(): React.CSSProperties {
   return {
-    fontSize: 20,
+    fontSize: "clamp(18px, 4.5vw, 20px)",
     fontWeight: 900,
     color: "var(--text)",
     margin: 0,
+    lineHeight: 1.2,
+    wordBreak: "break-word",
   };
 }
 
 function helperStyle(): React.CSSProperties {
   return {
-    fontSize: 15,
+    fontSize: 14,
     color: "var(--text-muted)",
     lineHeight: 1.7,
     margin: 0,
+    wordBreak: "break-word",
+  };
+}
+
+function listStyle(): React.CSSProperties {
+  return {
+    margin: 0,
+    paddingLeft: 20,
+    display: "grid",
+    gap: 10,
+    lineHeight: 1.75,
+    minWidth: 0,
   };
 }
 
@@ -85,14 +104,14 @@ export default function UnauthorizedPage() {
       title="Access Restricted"
       subtitle="This page requires the right session, account access level, or active eligibility before it can be opened."
       actions={
-        <>
-          <button onClick={() => router.push("/login")} style={shellButtonPrimary()}>
+        <div style={actionGridStyle()}>
+          <button onClick={() => router.push("/login")} style={{ ...shellButtonPrimary(), width: "100%" }}>
             Go to Login
           </button>
-          <button onClick={() => router.push("/dashboard")} style={shellButtonSecondary()}>
+          <button onClick={() => router.push("/dashboard")} style={{ ...shellButtonSecondary(), width: "100%" }}>
             Back to Dashboard
           </button>
-        </>
+        </div>
       }
     >
       <SectionStack>
@@ -139,17 +158,17 @@ export default function UnauthorizedPage() {
           title="Recommended next actions"
           subtitle="Use one of these safe routes to restore access or continue productively."
         >
-          <div style={actionRowStyle()}>
-            <button onClick={() => router.push("/login")} style={shellButtonPrimary()}>
+          <div style={actionGridStyle()}>
+            <button onClick={() => router.push("/login")} style={{ ...shellButtonPrimary(), width: "100%" }}>
               Login Again
             </button>
-            <button onClick={() => router.push("/dashboard")} style={shellButtonSecondary()}>
+            <button onClick={() => router.push("/dashboard")} style={{ ...shellButtonSecondary(), width: "100%" }}>
               Dashboard
             </button>
-            <button onClick={() => router.push("/billing")} style={shellButtonSecondary()}>
+            <button onClick={() => router.push("/billing")} style={{ ...shellButtonSecondary(), width: "100%" }}>
               Billing
             </button>
-            <button onClick={() => router.push("/support")} style={shellButtonSecondary()}>
+            <button onClick={() => router.push("/support")} style={{ ...shellButtonSecondary(), width: "100%" }}>
               Support
             </button>
           </div>
@@ -160,15 +179,7 @@ export default function UnauthorizedPage() {
           subtitle="Support is the right next step when access should already be available but still fails."
         >
           <div style={bodyStyle()}>
-            <ul
-              style={{
-                margin: 0,
-                paddingLeft: 22,
-                display: "grid",
-                gap: 12,
-                lineHeight: 1.8,
-              }}
-            >
+            <ul style={listStyle()}>
               <li>You are already logged in but the same page still refuses to open.</li>
               <li>You recently paid, upgraded, or renewed and access has not updated correctly.</li>
               <li>You believe your credits, billing state, or linked workspace should allow access.</li>
@@ -182,7 +193,7 @@ export default function UnauthorizedPage() {
           subtitle="Restricted access is not always an error."
         >
           <div style={bodyStyle()}>
-            <p style={{ margin: 0 }}>
+            <p style={{ margin: 0, wordBreak: "break-word" }}>
               Some pages are intentionally limited to authenticated users,
               resolved accounts, or active billing states. This helps protect
               account data, enforce plan boundaries, and keep the platform
