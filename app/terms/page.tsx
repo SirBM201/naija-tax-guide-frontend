@@ -13,10 +13,11 @@ import { SectionStack } from "@/components/page-layout";
 function sectionBodyStyle(): React.CSSProperties {
   return {
     display: "grid",
-    gap: 18,
+    gap: 16,
     color: "var(--text)",
-    fontSize: 16,
-    lineHeight: 1.9,
+    fontSize: 15,
+    lineHeight: 1.85,
+    minWidth: 0,
   };
 }
 
@@ -24,20 +25,23 @@ function paragraphStyle(): React.CSSProperties {
   return {
     margin: 0,
     color: "var(--text)",
-    lineHeight: 1.9,
-    fontSize: 16,
+    lineHeight: 1.85,
+    fontSize: 15,
+    wordBreak: "break-word",
+    overflowWrap: "anywhere",
   };
 }
 
 function bulletListStyle(): React.CSSProperties {
   return {
     margin: 0,
-    paddingLeft: 22,
+    paddingLeft: 20,
     display: "grid",
-    gap: 12,
+    gap: 10,
     color: "var(--text)",
     lineHeight: 1.8,
-    fontSize: 16,
+    fontSize: 15,
+    minWidth: 0,
   };
 }
 
@@ -46,19 +50,13 @@ function mutedNoteStyle(): React.CSSProperties {
     border: "1px solid var(--border)",
     borderRadius: 18,
     background: "var(--surface)",
-    padding: 18,
+    padding: 16,
     color: "var(--text-muted)",
     lineHeight: 1.8,
-    fontSize: 15,
-  };
-}
-
-function miniHeadingStyle(): React.CSSProperties {
-  return {
-    fontSize: 18,
-    fontWeight: 900,
-    color: "var(--text)",
-    margin: 0,
+    fontSize: 14,
+    wordBreak: "break-word",
+    overflowWrap: "anywhere",
+    minWidth: 0,
   };
 }
 
