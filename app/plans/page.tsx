@@ -206,7 +206,11 @@ function truthyValue(value: unknown): boolean {
 }
 
 function cycleButtonStyle(active: boolean): React.CSSProperties {
-  return active ? shellButtonPrimary() : shellButtonSecondary();
+  return {
+    ...(active ? shellButtonPrimary() : shellButtonSecondary()),
+    width: "100%",
+    justifyContent: "center",
+  };
 }
 
 function summaryBoxStyle(): React.CSSProperties {
@@ -217,6 +221,7 @@ function summaryBoxStyle(): React.CSSProperties {
     padding: 16,
     display: "grid",
     gap: 6,
+    minWidth: 0,
   };
 }
 
@@ -235,6 +240,8 @@ function planCardStyle(
     padding: 20,
     display: "grid",
     gap: 14,
+    minWidth: 0,
+    overflowWrap: "anywhere",
   };
 }
 
@@ -504,7 +511,14 @@ export default function PlansPage() {
           title="Choose billing cycle"
           subtitle="Switch between monthly, quarterly, and yearly plan views before selecting a plan."
         >
-          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+              gap: 12,
+              width: "100%",
+            }}
+          >
             <button
               onClick={() => setBillingCycle("monthly")}
               style={cycleButtonStyle(billingCycle === "monthly")}
@@ -530,7 +544,7 @@ export default function PlansPage() {
           title="Plan snapshot"
           subtitle="Review the currently visible subscription state before choosing a new billing tier."
         >
-          <CardsGrid min={220}>
+          <CardsGrid min={180}>
             <MetricCard
               label="Current Plan"
               value={currentPlanName}
@@ -546,9 +560,11 @@ export default function PlansPage() {
               label="Pending Plan"
               value={pendingPlanCode || "No pending change"}
               tone={pendingPlanCode ? "warn" : "default"}
-              helper={pendingPlanCode && pendingStartsAt
-                ? `Scheduled to start ${formatDate(pendingStartsAt)}.`
-                : "Shows any scheduled downgrade or pending change."}
+              helper={
+                pendingPlanCode && pendingStartsAt
+                  ? `Scheduled to start ${formatDate(pendingStartsAt)}.`
+                  : "Shows any scheduled downgrade or pending change."
+              }
             />
             <MetricCard
               label="Visible Credits"
@@ -560,27 +576,39 @@ export default function PlansPage() {
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+              gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
               gap: 14,
               marginTop: 18,
             }}
           >
             <div style={summaryBoxStyle()}>
-              <strong>Subscription Started</strong>
-              <span>{startedAt ? formatDate(startedAt) : "Not currently visible"}</span>
+              <strong style={{ overflowWrap: "anywhere" }}>Subscription Started</strong>
+              <span style={{ overflowWrap: "anywhere" }}>
+                {startedAt ? formatDate(startedAt) : "Not currently visible"}
+              </span>
             </div>
             <div style={summaryBoxStyle()}>
-              <strong>Subscription Expires</strong>
-              <span>{expiresAt ? formatDate(expiresAt) : "Not currently visible"}</span>
+              <strong style={{ overflowWrap: "anywhere" }}>Subscription Expires</strong>
+              <span style={{ overflowWrap: "anywhere" }}>
+                {expiresAt ? formatDate(expiresAt) : "Not currently visible"}
+              </span>
             </div>
           </div>
 
           {pendingPlanCode ? (
-            <div style={{ marginTop: 18, display: "flex", gap: 12, flexWrap: "wrap" }}>
+            <div
+              style={{
+                marginTop: 18,
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                gap: 12,
+                width: "100%",
+              }}
+            >
               <button
                 disabled={processingCode === "__clear_pending__"}
                 onClick={handleClearPendingChange}
-                style={shellButtonSecondary()}
+                style={{ ...shellButtonSecondary(), width: "100%", justifyContent: "center" }}
               >
                 {processingCode === "__clear_pending__"
                   ? "Clearing Pending Change..."
@@ -594,7 +622,7 @@ export default function PlansPage() {
           title="Available plans"
           subtitle="Compare plan tiers, included AI credits, support level, and billing value before checkout."
         >
-          <CardsGrid min={320}>
+          <CardsGrid min={250}>
             {plansForCycle.map((plan) => {
               const isCurrent = currentPlanCode === plan.code;
               const isPending = pendingPlanCode === plan.code;
@@ -603,13 +631,21 @@ export default function PlansPage() {
 
               return (
                 <div key={plan.code} style={planCardStyle(isCurrent, !!plan.recommended)}>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-                    <div>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "minmax(0, 1fr)",
+                      gap: 12,
+                      alignItems: "start",
+                    }}
+                  >
+                    <div style={{ minWidth: 0 }}>
                       <div
                         style={{
                           fontSize: 18,
                           fontWeight: 900,
                           lineHeight: 1.2,
+                          overflowWrap: "anywhere",
                         }}
                       >
                         {plan.name}
@@ -620,6 +656,7 @@ export default function PlansPage() {
                           color: "var(--text-muted)",
                           fontSize: 15,
                           lineHeight: 1.6,
+                          overflowWrap: "anywhere",
                         }}
                       >
                         {plan.audience}
@@ -629,6 +666,7 @@ export default function PlansPage() {
                     {isCurrent ? (
                       <span
                         style={{
+                          justifySelf: "start",
                           alignSelf: "start",
                           borderRadius: 999,
                           padding: "6px 10px",
@@ -636,7 +674,8 @@ export default function PlansPage() {
                           fontWeight: 800,
                           color: "var(--accent)",
                           border: "1px solid var(--accent-border)",
-                          whiteSpace: "nowrap",
+                          maxWidth: "100%",
+                          overflowWrap: "anywhere",
                         }}
                       >
                         Current
@@ -644,6 +683,7 @@ export default function PlansPage() {
                     ) : isPending ? (
                       <span
                         style={{
+                          justifySelf: "start",
                           alignSelf: "start",
                           borderRadius: 999,
                           padding: "6px 10px",
@@ -651,7 +691,8 @@ export default function PlansPage() {
                           fontWeight: 800,
                           color: "var(--warning-text, #b45309)",
                           border: "1px solid var(--warning-border, #f59e0b)",
-                          whiteSpace: "nowrap",
+                          maxWidth: "100%",
+                          overflowWrap: "anywhere",
                         }}
                       >
                         Pending Change
@@ -659,6 +700,7 @@ export default function PlansPage() {
                     ) : plan.recommended ? (
                       <span
                         style={{
+                          justifySelf: "start",
                           alignSelf: "start",
                           borderRadius: 999,
                           padding: "6px 10px",
@@ -666,7 +708,8 @@ export default function PlansPage() {
                           fontWeight: 800,
                           color: "var(--gold)",
                           border: "1px solid var(--gold)",
-                          whiteSpace: "nowrap",
+                          maxWidth: "100%",
+                          overflowWrap: "anywhere",
                         }}
                       >
                         Recommended
@@ -679,6 +722,7 @@ export default function PlansPage() {
                       color: "var(--text-muted)",
                       fontSize: 15,
                       lineHeight: 1.7,
+                      overflowWrap: "anywhere",
                     }}
                   >
                     {plan.description}
@@ -692,28 +736,55 @@ export default function PlansPage() {
                       padding: 18,
                       display: "grid",
                       gap: 8,
+                      minWidth: 0,
                     }}
                   >
                     <div style={{ fontSize: 14, color: "var(--text-muted)" }}>Price</div>
-                    <div style={{ fontSize: 24, fontWeight: 900 }}>
+                    <div
+                      style={{
+                        fontSize: 24,
+                        fontWeight: 900,
+                        lineHeight: 1.15,
+                        overflowWrap: "anywhere",
+                      }}
+                    >
                       {formatCurrency(plan.price, "NGN")}
                     </div>
-                    <div style={{ fontSize: 14, color: "var(--text-muted)" }}>
+                    <div style={{ fontSize: 14, color: "var(--text-muted)", overflowWrap: "anywhere" }}>
                       {plan.cycle.charAt(0).toUpperCase() + plan.cycle.slice(1)}
                     </div>
                   </div>
 
-                  <div style={{ display: "grid", gap: 10, fontSize: 15, lineHeight: 1.7 }}>
-                    <div>Included AI credits: {plan.credits}</div>
-                    <div>Support level: {plan.support_level}</div>
-                    <div>Billing action: {actionLabel}</div>
+                  <div
+                    style={{
+                      display: "grid",
+                      gap: 10,
+                      fontSize: 15,
+                      lineHeight: 1.7,
+                      minWidth: 0,
+                    }}
+                  >
+                    <div style={{ overflowWrap: "anywhere" }}>Included AI credits: {plan.credits}</div>
+                    <div style={{ overflowWrap: "anywhere" }}>Support level: {plan.support_level}</div>
+                    <div style={{ overflowWrap: "anywhere" }}>Billing action: {actionLabel}</div>
                   </div>
 
-                  <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "minmax(0, 1fr)",
+                      gap: 12,
+                      width: "100%",
+                    }}
+                  >
                     <button
                       disabled={isProcessing || isCurrent || isPending}
                       onClick={() => handleChoosePlan(plan.code)}
-                      style={isCurrent || isPending ? shellButtonSecondary() : shellButtonPrimary()}
+                      style={{
+                        ...(isCurrent || isPending ? shellButtonSecondary() : shellButtonPrimary()),
+                        width: "100%",
+                        justifyContent: "center",
+                      }}
                     >
                       {isProcessing ? "Processing..." : actionLabel}
                     </button>
