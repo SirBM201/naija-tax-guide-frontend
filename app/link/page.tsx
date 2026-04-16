@@ -10,7 +10,7 @@ export default function LinkPage() {
     <div
       style={{
         minHeight: "100vh",
-        padding: 24,
+        padding: "16px 12px",
         display: "grid",
         placeItems: "center",
         background:
@@ -25,10 +25,19 @@ export default function LinkPage() {
           borderRadius: 22,
           border: "1px solid rgba(255,255,255,0.10)",
           background: "rgba(255,255,255,0.04)",
-          padding: 24,
+          padding: "clamp(18px, 4vw, 24px)",
+          minWidth: 0,
         }}
       >
-        <div style={{ fontSize: 40, fontWeight: 950, letterSpacing: -1 }}>
+        <div
+          style={{
+            fontSize: "clamp(30px, 8vw, 40px)",
+            fontWeight: 950,
+            letterSpacing: -1,
+            lineHeight: 1.05,
+            wordBreak: "break-word",
+          }}
+        >
           Link Channels
         </div>
 
@@ -37,8 +46,9 @@ export default function LinkPage() {
             marginTop: 10,
             color: "rgba(255,255,255,0.78)",
             lineHeight: 1.7,
-            fontSize: 15,
+            fontSize: "clamp(14px, 3.6vw, 15px)",
             maxWidth: 720,
+            wordBreak: "break-word",
           }}
         >
           This page is currently disabled in the present release. Channel linking
@@ -55,19 +65,35 @@ export default function LinkPage() {
             background: "rgba(0,0,0,0.20)",
             color: "rgba(255,255,255,0.88)",
             lineHeight: 1.7,
+            minWidth: 0,
           }}
         >
-          <div style={{ fontWeight: 900, marginBottom: 8 }}>Current status</div>
-          <div>• Channel-link generation is intentionally turned off.</div>
-          <div>• No Supabase session check is required on this page for now.</div>
-          <div>• This placeholder keeps the route safe during deployment.</div>
+          <div
+            style={{
+              fontWeight: 900,
+              marginBottom: 8,
+              fontSize: "clamp(15px, 3.8vw, 16px)",
+              wordBreak: "break-word",
+            }}
+          >
+            Current status
+          </div>
+          <div style={{ wordBreak: "break-word" }}>
+            • Channel-link generation is intentionally turned off.
+          </div>
+          <div style={{ wordBreak: "break-word" }}>
+            • No Supabase session check is required on this page for now.
+          </div>
+          <div style={{ wordBreak: "break-word" }}>
+            • This placeholder keeps the route safe during deployment.
+          </div>
         </div>
 
         <div
           style={{
-            display: "flex",
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
             gap: 12,
-            flexWrap: "wrap",
             marginTop: 22,
           }}
         >
@@ -81,6 +107,8 @@ export default function LinkPage() {
               color: "white",
               fontWeight: 900,
               cursor: "pointer",
+              width: "100%",
+              minWidth: 0,
             }}
           >
             Go to Dashboard
@@ -96,6 +124,8 @@ export default function LinkPage() {
               color: "white",
               fontWeight: 900,
               cursor: "pointer",
+              width: "100%",
+              minWidth: 0,
             }}
           >
             Open Support
