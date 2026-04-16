@@ -8,7 +8,7 @@ import AppShell, {
 } from "@/components/app-shell";
 import WorkspaceSectionCard from "@/components/workspace-section-card";
 import { Banner, MetricCard, ShortcutCard, formatDate } from "@/components/ui";
-import { CardsGrid, SectionStack } from "@/components/page-layout";
+import { CardsGrid, SectionStack, TwoColumnSection } from "@/components/page-layout";
 import { useWorkspaceState } from "@/hooks/useWorkspaceState";
 import { buildWorkspaceAlerts } from "@/lib/workspace-alerts";
 
@@ -47,8 +47,27 @@ function snapshotItemStyle(): React.CSSProperties {
     padding: 16,
     display: "grid",
     gap: 6,
+    minWidth: 0,
   };
 }
+
+const clampValueStyle: React.CSSProperties = {
+  fontSize: "clamp(15px, 3.6vw, 16px)",
+  fontWeight: 800,
+  color: "var(--text)",
+  lineHeight: 1.45,
+  overflowWrap: "anywhere",
+  wordBreak: "break-word",
+  minWidth: 0,
+};
+
+const mutedWrapStyle: React.CSSProperties = {
+  color: "var(--text-muted)",
+  lineHeight: 1.7,
+  overflowWrap: "anywhere",
+  wordBreak: "break-word",
+  minWidth: 0,
+};
 
 export default function CreditsPage() {
   const router = useRouter();
@@ -119,7 +138,7 @@ export default function CreditsPage() {
   return (
     <AppShell
       title="Credits"
-      subtitle="Track your available AI credit balance and monthly AI usage without exposing unnecessary technical details."
+      subtitle="Track your available AI credit balance and monthly AI usage with a clean, mobile-safe layout."
       actions={
         <>
           <button onClick={() => refreshAll()} style={shellButtonPrimary()}>
@@ -145,9 +164,9 @@ export default function CreditsPage() {
 
         <WorkspaceSectionCard
           title="Credit overview"
-          subtitle="This page is focused only on the credit position that matters to the user."
+          subtitle="A simple view of the credit position that matters on both desktop and mobile."
         >
-          <CardsGrid min={220}>
+          <CardsGrid min={190} gap={16}>
             <MetricCard
               label="Available Credits"
               value={String(balance)}
@@ -174,19 +193,12 @@ export default function CreditsPage() {
           </CardsGrid>
         </WorkspaceSectionCard>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "minmax(0, 1.2fr) minmax(280px, 0.9fr)",
-            gap: 18,
-            alignItems: "start",
-          }}
-        >
+        <TwoColumnSection leftRatio={1.1} rightRatio={0.9} gap={18} collapseAt={980}>
           <WorkspaceSectionCard
             title="Helpful actions"
             subtitle="Go directly to the page that best solves the current credit situation."
           >
-            <CardsGrid min={220}>
+            <CardsGrid min={200} gap={14}>
               <ShortcutCard
                 title="Ask"
                 subtitle="Open the assistant and continue asking when your credits are ready."
@@ -218,7 +230,7 @@ export default function CreditsPage() {
             title="Credit snapshot"
             subtitle="A short operational summary of the current credit-related account state."
           >
-            <div style={{ display: "grid", gap: 12 }}>
+            <div style={{ display: "grid", gap: 12, minWidth: 0 }}>
               <div style={snapshotItemStyle()}>
                 <div
                   style={{
@@ -229,18 +241,8 @@ export default function CreditsPage() {
                 >
                   Current Plan
                 </div>
-                <div
-                  style={{
-                    fontSize: 16,
-                    fontWeight: 800,
-                    color: "var(--text)",
-                  }}
-                >
-                  {planName}
-                </div>
-                <div style={{ color: "var(--text-muted)", lineHeight: 1.7 }}>
-                  Status: {planStatus}
-                </div>
+                <div style={clampValueStyle}>{planName}</div>
+                <div style={mutedWrapStyle}>Status: {planStatus}</div>
               </div>
 
               <div style={snapshotItemStyle()}>
@@ -253,16 +255,8 @@ export default function CreditsPage() {
                 >
                   Included by Plan
                 </div>
-                <div
-                  style={{
-                    fontSize: 16,
-                    fontWeight: 800,
-                    color: "var(--text)",
-                  }}
-                >
-                  {String(includedByPlan)}
-                </div>
-                <div style={{ color: "var(--text-muted)", lineHeight: 1.7 }}>
+                <div style={clampValueStyle}>{String(includedByPlan)}</div>
+                <div style={mutedWrapStyle}>
                   Credits currently visible as part of the plan if provided by the backend.
                 </div>
               </div>
@@ -277,16 +271,8 @@ export default function CreditsPage() {
                 >
                   Consumed Credits
                 </div>
-                <div
-                  style={{
-                    fontSize: 16,
-                    fontWeight: 800,
-                    color: "var(--text)",
-                  }}
-                >
-                  {String(consumed)}
-                </div>
-                <div style={{ color: "var(--text-muted)", lineHeight: 1.7 }}>
+                <div style={clampValueStyle}>{String(consumed)}</div>
+                <div style={mutedWrapStyle}>
                   Already used credits if your current backend exposes that value.
                 </div>
               </div>
@@ -301,16 +287,10 @@ export default function CreditsPage() {
                 >
                   Last Credit Update
                 </div>
-                <div
-                  style={{
-                    fontSize: 16,
-                    fontWeight: 800,
-                    color: "var(--text)",
-                  }}
-                >
+                <div style={clampValueStyle}>
                   {updatedAt ? formatDate(updatedAt) : "Not shown"}
                 </div>
-                <div style={{ color: "var(--text-muted)", lineHeight: 1.7 }}>
+                <div style={mutedWrapStyle}>
                   Latest visible update time for the credit balance if available.
                 </div>
               </div>
@@ -325,19 +305,13 @@ export default function CreditsPage() {
                 >
                   Plan Expiry
                 </div>
-                <div
-                  style={{
-                    fontSize: 16,
-                    fontWeight: 800,
-                    color: "var(--text)",
-                  }}
-                >
+                <div style={clampValueStyle}>
                   {expiresAt ? formatDate(expiresAt) : "Not shown"}
                 </div>
               </div>
             </div>
           </WorkspaceSectionCard>
-        </div>
+        </TwoColumnSection>
       </SectionStack>
     </AppShell>
   );
