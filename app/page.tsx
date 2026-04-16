@@ -22,6 +22,8 @@ function primaryButton(disabled = false): React.CSSProperties {
     cursor: disabled ? "not-allowed" : "pointer",
     fontSize: 15,
     boxShadow: disabled ? "none" : undefined,
+    width: "100%",
+    maxWidth: 320,
   };
 }
 
@@ -36,6 +38,8 @@ function secondaryButton(disabled = false): React.CSSProperties {
     cursor: disabled ? "not-allowed" : "pointer",
     fontSize: 15,
     boxShadow: disabled ? "none" : undefined,
+    width: "100%",
+    maxWidth: 320,
   };
 }
 
@@ -68,6 +72,7 @@ function metricCardStyle(
     border,
     background: bg,
     padding: 20,
+    minWidth: 0,
   };
 }
 
@@ -78,6 +83,7 @@ function featureCardStyle(): React.CSSProperties {
     background: "var(--surface)",
     padding: 20,
     height: "100%",
+    minWidth: 0,
   };
 }
 
@@ -88,6 +94,7 @@ function channelCardStyle(): React.CSSProperties {
     background: "var(--surface)",
     padding: 20,
     height: "100%",
+    minWidth: 0,
   };
 }
 
@@ -103,6 +110,8 @@ function infoPillStyle(): React.CSSProperties {
     color: "var(--text-soft)",
     fontSize: 13,
     fontWeight: 700,
+    maxWidth: "100%",
+    flexWrap: "wrap",
   };
 }
 
@@ -118,6 +127,7 @@ function numberBadgeStyle(): React.CSSProperties {
     justifyContent: "center",
     fontWeight: 900,
     fontSize: 16,
+    flexShrink: 0,
   };
 }
 
@@ -150,7 +160,7 @@ function LandingSectionTitle({
         style={{
           color: "var(--text)",
           fontWeight: 950,
-          fontSize: 34,
+          fontSize: "clamp(28px, 5vw, 34px)",
           lineHeight: 1.1,
           letterSpacing: -0.8,
         }}
@@ -162,7 +172,7 @@ function LandingSectionTitle({
         <div
           style={{
             color: "var(--text-muted)",
-            fontSize: 16,
+            fontSize: "clamp(15px, 2.4vw, 16px)",
             lineHeight: 1.75,
             maxWidth: 860,
           }}
@@ -228,38 +238,38 @@ export default function LandingPage() {
   const topRouteLabel = checkingSession
     ? "Checking..."
     : hasSession
-    ? "Dashboard"
-    : "Login";
+      ? "Dashboard"
+      : "Login";
 
   const primaryLabel = checkingSession
     ? "Get Started"
     : hasSession
-    ? "Continue to Dashboard"
-    : "Get Started";
+      ? "Continue to Dashboard"
+      : "Get Started";
 
   const heroPrimaryLabel = checkingSession
     ? "Start Using Naija Tax Guide"
     : hasSession
-    ? "Continue to Dashboard"
-    : "Start Using Naija Tax Guide";
+      ? "Continue to Dashboard"
+      : "Start Using Naija Tax Guide";
 
   const heroSecondaryLabel = checkingSession
     ? "Explore the Product"
     : hasSession
-    ? "Open Welcome Page"
-    : "Explore the Product";
+      ? "Open Welcome Page"
+      : "Explore the Product";
 
   const finalCtaPrimaryLabel = checkingSession
     ? "Get Started"
     : hasSession
-    ? "Continue to Dashboard"
-    : "Get Started";
+      ? "Continue to Dashboard"
+      : "Get Started";
 
   const finalCtaSecondaryLabel = checkingSession
     ? "Login to Workspace"
     : hasSession
-    ? "Open Welcome Page"
-    : "Login to Workspace";
+      ? "Open Welcome Page"
+      : "Login to Workspace";
 
   return (
     <div
@@ -274,31 +284,30 @@ export default function LandingPage() {
         style={{
           maxWidth: 1380,
           margin: "0 auto",
-          padding: "22px 18px 70px",
+          padding: "18px 14px 64px",
         }}
       >
         <header
           style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
+            display: "grid",
+            gridTemplateColumns: "1fr",
             gap: 16,
-            flexWrap: "wrap",
-            marginBottom: 28,
+            marginBottom: 24,
           }}
         >
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "62px minmax(0,1fr)",
-              gap: 14,
+              gridTemplateColumns: "56px minmax(0,1fr)",
+              gap: 12,
               alignItems: "center",
+              minWidth: 0,
             }}
           >
             <div
               style={{
-                width: 62,
-                height: 62,
+                width: 56,
+                height: 56,
                 borderRadius: 18,
                 overflow: "hidden",
                 border: "1px solid var(--accent-border)",
@@ -306,6 +315,7 @@ export default function LandingPage() {
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
+                flexShrink: 0,
               }}
             >
               <img
@@ -320,9 +330,10 @@ export default function LandingPage() {
                 style={{
                   color: "var(--text)",
                   fontWeight: 950,
-                  fontSize: 24,
+                  fontSize: "clamp(20px, 4vw, 24px)",
                   lineHeight: 1.05,
                   letterSpacing: -0.5,
+                  wordBreak: "break-word",
                 }}
               >
                 Naija Tax Guide
@@ -333,6 +344,7 @@ export default function LandingPage() {
                   color: "var(--gold)",
                   fontWeight: 800,
                   fontSize: 13,
+                  wordBreak: "break-word",
                 }}
               >
                 From Deep Roots, We Soar.
@@ -342,27 +354,27 @@ export default function LandingPage() {
 
           <div
             style={{
-              display: "flex",
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))",
               gap: 10,
-              flexWrap: "wrap",
-              alignItems: "center",
+              alignItems: "stretch",
             }}
           >
             <button
               onClick={() => setThemeMode("dark")}
-              style={themeChipStyle(themeMode === "dark")}
+              style={{ ...themeChipStyle(themeMode === "dark"), width: "100%" }}
             >
               Dark
             </button>
             <button
               onClick={() => setThemeMode("light")}
-              style={themeChipStyle(themeMode === "light")}
+              style={{ ...themeChipStyle(themeMode === "light"), width: "100%" }}
             >
               Light
             </button>
             <button
               onClick={() => setThemeMode("system")}
-              style={themeChipStyle(themeMode === "system")}
+              style={{ ...themeChipStyle(themeMode === "system"), width: "100%" }}
             >
               System
             </button>
@@ -371,7 +383,7 @@ export default function LandingPage() {
               onClick={() => router.push(hasSession ? "/dashboard" : "/login")}
               disabled={checkingSession}
               aria-disabled={checkingSession}
-              style={secondaryButton(checkingSession)}
+              style={{ ...secondaryButton(checkingSession), maxWidth: "100%" }}
             >
               {topRouteLabel}
             </button>
@@ -380,7 +392,7 @@ export default function LandingPage() {
               onClick={goToPrimary}
               disabled={checkingSession}
               aria-disabled={checkingSession}
-              style={primaryButton(checkingSession)}
+              style={{ ...primaryButton(checkingSession), maxWidth: "100%" }}
             >
               {primaryLabel}
             </button>
@@ -390,18 +402,18 @@ export default function LandingPage() {
         <section
           style={{
             ...sectionCardStyle(),
-            padding: 30,
+            padding: 22,
           }}
         >
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))",
-              gap: 24,
+              gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+              gap: 20,
               alignItems: "center",
             }}
           >
-            <div style={{ display: "grid", gap: 18 }}>
+            <div style={{ display: "grid", gap: 18, minWidth: 0 }}>
               <div
                 style={{
                   display: "inline-flex",
@@ -415,6 +427,8 @@ export default function LandingPage() {
                   fontSize: 12,
                   fontWeight: 800,
                   width: "fit-content",
+                  maxWidth: "100%",
+                  flexWrap: "wrap",
                 }}
               >
                 <span
@@ -424,6 +438,7 @@ export default function LandingPage() {
                     borderRadius: 999,
                     background: "var(--accent)",
                     display: "inline-block",
+                    flexShrink: 0,
                   }}
                 />
                 Built for Nigerian freelancers, SMEs, and digital professionals
@@ -431,12 +446,13 @@ export default function LandingPage() {
 
               <div
                 style={{
-                  fontSize: 56,
+                  fontSize: "clamp(34px, 8vw, 56px)",
                   fontWeight: 950,
                   lineHeight: 1.02,
                   letterSpacing: -1.5,
                   color: "var(--text)",
                   maxWidth: 820,
+                  wordBreak: "break-word",
                 }}
               >
                 Smart tax guidance for Nigerians who want clarity, speed, and confidence.
@@ -444,7 +460,7 @@ export default function LandingPage() {
 
               <div
                 style={{
-                  fontSize: 18,
+                  fontSize: "clamp(16px, 2.6vw, 18px)",
                   color: "var(--text-muted)",
                   lineHeight: 1.85,
                   maxWidth: 820,
@@ -460,16 +476,16 @@ export default function LandingPage() {
 
               <div
                 style={{
-                  display: "flex",
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
                   gap: 12,
-                  flexWrap: "wrap",
                 }}
               >
                 <button
                   onClick={goToPrimary}
                   disabled={checkingSession}
                   aria-disabled={checkingSession}
-                  style={primaryButton(checkingSession)}
+                  style={{ ...primaryButton(checkingSession), maxWidth: "100%" }}
                 >
                   {heroPrimaryLabel}
                 </button>
@@ -478,7 +494,7 @@ export default function LandingPage() {
                   onClick={goToSecondary}
                   disabled={checkingSession}
                   aria-disabled={checkingSession}
-                  style={secondaryButton(checkingSession)}
+                  style={{ ...secondaryButton(checkingSession), maxWidth: "100%" }}
                 >
                   {heroSecondaryLabel}
                 </button>
@@ -501,6 +517,7 @@ export default function LandingPage() {
               style={{
                 display: "grid",
                 gap: 16,
+                minWidth: 0,
               }}
             >
               <div style={metricCardStyle("good")}>
@@ -512,8 +529,9 @@ export default function LandingPage() {
                     marginTop: 8,
                     color: "var(--text)",
                     fontWeight: 900,
-                    fontSize: 28,
+                    fontSize: "clamp(24px, 5vw, 28px)",
                     lineHeight: 1.15,
+                    wordBreak: "break-word",
                   }}
                 >
                   Guided AI Tax Support
@@ -540,8 +558,9 @@ export default function LandingPage() {
                     marginTop: 8,
                     color: "var(--text)",
                     fontWeight: 900,
-                    fontSize: 28,
+                    fontSize: "clamp(24px, 5vw, 28px)",
                     lineHeight: 1.15,
+                    wordBreak: "break-word",
                   }}
                 >
                   Web, WhatsApp, Telegram
@@ -568,8 +587,9 @@ export default function LandingPage() {
                     marginTop: 8,
                     color: "var(--text)",
                     fontWeight: 900,
-                    fontSize: 28,
+                    fontSize: "clamp(24px, 5vw, 28px)",
                     lineHeight: 1.15,
+                    wordBreak: "break-word",
                   }}
                 >
                   Nigerian but Premium
@@ -601,7 +621,7 @@ export default function LandingPage() {
             style={{
               marginTop: 22,
               display: "grid",
-              gridTemplateColumns: "repeat(auto-fit,minmax(250px,1fr))",
+              gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))",
               gap: 18,
             }}
           >
@@ -723,7 +743,7 @@ export default function LandingPage() {
             style={{
               marginTop: 22,
               display: "grid",
-              gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))",
+              gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))",
               gap: 18,
             }}
           >
@@ -812,7 +832,7 @@ export default function LandingPage() {
             style={{
               marginTop: 22,
               display: "grid",
-              gridTemplateColumns: "repeat(auto-fit,minmax(260px,1fr))",
+              gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))",
               gap: 18,
             }}
           >
@@ -877,7 +897,7 @@ export default function LandingPage() {
             style={{
               marginTop: 22,
               display: "grid",
-              gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))",
+              gridTemplateColumns: "repeat(auto-fit,minmax(260px,1fr))",
               gap: 18,
             }}
           >
@@ -892,6 +912,7 @@ export default function LandingPage() {
                   gap: 12,
                   color: "var(--text-muted)",
                   lineHeight: 1.75,
+                  wordBreak: "break-word",
                 }}
               >
                 <div>• This app is built for Nigerian realities.</div>
@@ -928,6 +949,7 @@ export default function LandingPage() {
                   background: "var(--warn-bg)",
                   color: "var(--text-soft)",
                   lineHeight: 1.7,
+                  wordBreak: "break-word",
                 }}
               >
                 This is exactly why the product can remain both useful and
@@ -943,7 +965,7 @@ export default function LandingPage() {
             style={{
               ...sectionCardStyle(),
               textAlign: "center",
-              padding: 30,
+              padding: 24,
             }}
           >
             <div
@@ -963,9 +985,10 @@ export default function LandingPage() {
                 marginTop: 10,
                 color: "var(--text)",
                 fontWeight: 950,
-                fontSize: 42,
+                fontSize: "clamp(30px, 6vw, 42px)",
                 lineHeight: 1.08,
                 letterSpacing: -1.2,
+                wordBreak: "break-word",
               }}
             >
               Step into a smarter Nigerian tax guidance workspace.
@@ -975,7 +998,7 @@ export default function LandingPage() {
               style={{
                 marginTop: 14,
                 color: "var(--text-muted)",
-                fontSize: 17,
+                fontSize: "clamp(15px, 2.5vw, 17px)",
                 lineHeight: 1.85,
                 maxWidth: 820,
                 marginInline: "auto",
@@ -989,17 +1012,17 @@ export default function LandingPage() {
             <div
               style={{
                 marginTop: 22,
-                display: "flex",
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
                 justifyContent: "center",
                 gap: 12,
-                flexWrap: "wrap",
               }}
             >
               <button
                 onClick={goToPrimary}
                 disabled={checkingSession}
                 aria-disabled={checkingSession}
-                style={primaryButton(checkingSession)}
+                style={{ ...primaryButton(checkingSession), maxWidth: "100%" }}
               >
                 {finalCtaPrimaryLabel}
               </button>
@@ -1008,7 +1031,7 @@ export default function LandingPage() {
                 onClick={() => router.push(hasSession ? "/welcome" : "/login")}
                 disabled={checkingSession}
                 aria-disabled={checkingSession}
-                style={secondaryButton(checkingSession)}
+                style={{ ...secondaryButton(checkingSession), maxWidth: "100%" }}
               >
                 {finalCtaSecondaryLabel}
               </button>
