@@ -8,46 +8,53 @@ import AppShell, {
 } from "@/components/app-shell";
 import WorkspaceSectionCard from "@/components/workspace-section-card";
 import { Banner } from "@/components/ui";
-import { CardsGrid, SectionStack, TwoColumnSection } from "@/components/page-layout";
+import { CardsGrid, SectionStack } from "@/components/page-layout";
 import { useWorkspaceState } from "@/hooks/useWorkspaceState";
 
 function labelStyle(): React.CSSProperties {
   return {
     margin: 0,
-    fontSize: 15,
+    fontSize: 14,
     color: "var(--text-muted)",
-    lineHeight: 1.5,
+    lineHeight: 1.55,
+    wordBreak: "break-word",
   };
 }
 
 function valueStyle(): React.CSSProperties {
   return {
     margin: 0,
-    fontSize: 18,
+    fontSize: "clamp(18px, 4.5vw, 20px)",
     fontWeight: 800,
     color: "var(--text)",
-    lineHeight: 1.4,
+    lineHeight: 1.35,
+    wordBreak: "break-word",
+    overflowWrap: "anywhere",
   };
 }
 
 function bodyTextStyle(): React.CSSProperties {
   return {
     margin: 0,
-    fontSize: 16,
-    lineHeight: 1.9,
+    fontSize: "clamp(15px, 2.7vw, 16px)",
+    lineHeight: 1.85,
     color: "var(--text)",
+    wordBreak: "break-word",
+    overflowWrap: "anywhere",
   };
 }
 
 function bulletListStyle(): React.CSSProperties {
   return {
     margin: 0,
-    paddingLeft: 22,
+    paddingLeft: 20,
     display: "grid",
     gap: 12,
     color: "var(--text)",
     lineHeight: 1.8,
-    fontSize: 16,
+    fontSize: "clamp(15px, 2.6vw, 16px)",
+    wordBreak: "break-word",
+    overflowWrap: "anywhere",
   };
 }
 
@@ -56,6 +63,14 @@ function actionButtonStyle(primary = false): React.CSSProperties {
     ...(primary ? shellButtonPrimary() : shellButtonSecondary()),
     width: "100%",
     justifyContent: "center",
+  };
+}
+
+function cardTextBlockStyle(): React.CSSProperties {
+  return {
+    display: "grid",
+    gap: 12,
+    minWidth: 0,
   };
 }
 
@@ -128,24 +143,24 @@ export default function RefundPage() {
           title="Visible billing context"
           subtitle="This snapshot helps you confirm whether the visible account state matches the issue you want to report."
         >
-          <CardsGrid min={220}>
-            <div>
+          <CardsGrid min={200}>
+            <div style={{ minWidth: 0 }}>
               <p style={labelStyle()}>Current plan</p>
               <p style={valueStyle()}>{formatPlanName(currentPlan)}</p>
             </div>
-            <div>
+            <div style={{ minWidth: 0 }}>
               <p style={labelStyle()}>Latest reference</p>
               <p style={valueStyle()}>{latestReference}</p>
             </div>
-            <div>
+            <div style={{ minWidth: 0 }}>
               <p style={labelStyle()}>Visible credits</p>
               <p style={valueStyle()}>{creditBalance}</p>
             </div>
-            <div>
+            <div style={{ minWidth: 0 }}>
               <p style={labelStyle()}>Usage today</p>
               <p style={valueStyle()}>{usageToday}</p>
             </div>
-            <div>
+            <div style={{ minWidth: 0 }}>
               <p style={labelStyle()}>Subscription expires</p>
               <p style={valueStyle()}>{formatDate(expiresAt)}</p>
             </div>
@@ -156,13 +171,13 @@ export default function RefundPage() {
           title="Fastest next step"
           subtitle="Choose the path that matches the billing problem instead of opening a vague support ticket."
         >
-          <CardsGrid min={250}>
-            <div>
+          <CardsGrid min={220}>
+            <div style={cardTextBlockStyle()}>
               <p style={valueStyle()}>Duplicate charge</p>
               <p style={bodyTextStyle()}>
                 Use this when the same card or account appears to have been billed more than once for the same intended payment.
               </p>
-              <div style={{ marginTop: 16 }}>
+              <div style={{ marginTop: 2 }}>
                 <button
                   onClick={() => router.push(supportLinks.duplicate)}
                   style={actionButtonStyle(true)}
@@ -172,12 +187,12 @@ export default function RefundPage() {
               </div>
             </div>
 
-            <div>
+            <div style={cardTextBlockStyle()}>
               <p style={valueStyle()}>Wrong plan activated</p>
               <p style={bodyTextStyle()}>
                 Use this when payment was successful but the visible plan does not match the one you intended to buy.
               </p>
-              <div style={{ marginTop: 16 }}>
+              <div style={{ marginTop: 2 }}>
                 <button
                   onClick={() => router.push(supportLinks.wrongPlan)}
                   style={actionButtonStyle(false)}
@@ -187,12 +202,12 @@ export default function RefundPage() {
               </div>
             </div>
 
-            <div>
+            <div style={cardTextBlockStyle()}>
               <p style={valueStyle()}>Payment successful but access failed</p>
               <p style={bodyTextStyle()}>
                 Use this when the payment completed but activation, credits, or access did not reflect correctly.
               </p>
-              <div style={{ marginTop: 16 }}>
+              <div style={{ marginTop: 2 }}>
                 <button
                   onClick={() => router.push(supportLinks.activation)}
                   style={actionButtonStyle(false)}
@@ -202,12 +217,12 @@ export default function RefundPage() {
               </div>
             </div>
 
-            <div>
+            <div style={cardTextBlockStyle()}>
               <p style={valueStyle()}>Refund review request</p>
               <p style={bodyTextStyle()}>
                 Use this when you believe the transaction falls inside the refund-review rules on this page.
               </p>
-              <div style={{ marginTop: 16 }}>
+              <div style={{ marginTop: 2 }}>
                 <button
                   onClick={() => router.push(supportLinks.refund)}
                   style={actionButtonStyle(false)}
@@ -222,8 +237,8 @@ export default function RefundPage() {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-            gap: 24,
+            gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+            gap: 20,
           }}
         >
           <WorkspaceSectionCard
