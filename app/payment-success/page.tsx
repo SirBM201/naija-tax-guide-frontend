@@ -22,17 +22,17 @@ function bodyStyle(): React.CSSProperties {
 
 function actionRowStyle(): React.CSSProperties {
   return {
-    display: "flex",
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
     gap: 12,
-    flexWrap: "wrap",
-    alignItems: "center",
+    alignItems: "stretch",
   };
 }
 
 function infoGridStyle(): React.CSSProperties {
   return {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+    gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
     gap: 16,
   };
 }
@@ -42,9 +42,10 @@ function infoCardStyle(): React.CSSProperties {
     border: "1px solid var(--border)",
     borderRadius: 18,
     background: "var(--surface)",
-    padding: 18,
+    padding: 16,
     display: "grid",
     gap: 8,
+    minWidth: 0,
   };
 }
 
@@ -65,6 +66,9 @@ function valueStyle(): React.CSSProperties {
     fontWeight: 900,
     color: "var(--text)",
     margin: 0,
+    lineHeight: 1.25,
+    wordBreak: "break-word",
+    overflowWrap: "anywhere",
   };
 }
 
@@ -74,6 +78,8 @@ function helperStyle(): React.CSSProperties {
     color: "var(--text-muted)",
     lineHeight: 1.7,
     margin: 0,
+    wordBreak: "break-word",
+    overflowWrap: "anywhere",
   };
 }
 
@@ -160,7 +166,7 @@ export default function PaymentSuccessPage() {
           subtitle="A successful payment page does not always mean every visible account field updates at the exact same second."
         >
           <div style={bodyStyle()}>
-            <p style={{ margin: 0 }}>
+            <p style={{ margin: 0, wordBreak: "break-word", overflowWrap: "anywhere" }}>
               If your plan, credits, renewal state, or payment record does not
               appear immediately, allow a short processing window and then check
               Billing again. Temporary delay can happen due to payment provider
@@ -177,10 +183,12 @@ export default function PaymentSuccessPage() {
             <ul
               style={{
                 margin: 0,
-                paddingLeft: 22,
+                paddingLeft: 20,
                 display: "grid",
                 gap: 12,
                 lineHeight: 1.8,
+                wordBreak: "break-word",
+                overflowWrap: "anywhere",
               }}
             >
               <li>You completed payment but your plan did not change after a reasonable waiting period.</li>
