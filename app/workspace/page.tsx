@@ -213,12 +213,13 @@ const styles: Record<string, CSSProperties> = {
   container: {
     maxWidth: "1180px",
     margin: "0 auto",
+    width: "100%",
   },
   topSummary: {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
-    gap: 14,
-    marginBottom: 20,
+    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 180px), 1fr))",
+    gap: 12,
+    marginBottom: 18,
   },
   summaryCard: {
     background: "linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)",
@@ -226,6 +227,7 @@ const styles: Record<string, CSSProperties> = {
     borderRadius: 20,
     padding: 16,
     boxShadow: "0 8px 20px rgba(15, 23, 42, 0.05)",
+    minWidth: 0,
   },
   summaryLabel: {
     fontSize: 11,
@@ -236,16 +238,18 @@ const styles: Record<string, CSSProperties> = {
     marginBottom: 8,
   },
   summaryValue: {
-    fontSize: 20,
+    fontSize: "clamp(18px, 3vw, 20px)",
     fontWeight: 800,
     color: "#0f172a",
     lineHeight: 1.3,
+    overflowWrap: "anywhere",
   },
   summarySub: {
     fontSize: 13,
     color: "#64748b",
     marginTop: 6,
     lineHeight: 1.5,
+    overflowWrap: "anywhere",
   },
   heroAlert: {
     background: "linear-gradient(180deg, #fff7ed 0%, #fffbeb 100%)",
@@ -253,7 +257,7 @@ const styles: Record<string, CSSProperties> = {
     color: "#9a3412",
     borderRadius: 22,
     padding: 18,
-    marginBottom: 20,
+    marginBottom: 18,
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
@@ -266,7 +270,7 @@ const styles: Record<string, CSSProperties> = {
     color: "#1d4ed8",
     borderRadius: 22,
     padding: 18,
-    marginBottom: 20,
+    marginBottom: 18,
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
@@ -283,11 +287,12 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 14,
     lineHeight: 1.6,
     maxWidth: 760,
+    overflowWrap: "anywhere",
   },
   button: {
     border: "none",
     borderRadius: 16,
-    padding: "14px 20px",
+    padding: "14px 18px",
     background: "#4f46e5",
     color: "#ffffff",
     fontSize: 15,
@@ -298,6 +303,9 @@ const styles: Record<string, CSSProperties> = {
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
+    textAlign: "center",
+    width: "100%",
+    maxWidth: 240,
   },
   buttonDisabled: {
     background: "#94a3b8",
@@ -307,7 +315,7 @@ const styles: Record<string, CSSProperties> = {
   buttonSecondary: {
     border: "1px solid #c7d2fe",
     borderRadius: 16,
-    padding: "14px 20px",
+    padding: "14px 18px",
     background: "#eef2ff",
     color: "#3730a3",
     fontSize: 15,
@@ -317,6 +325,9 @@ const styles: Record<string, CSSProperties> = {
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
+    textAlign: "center",
+    width: "100%",
+    maxWidth: 240,
   },
   buttonWarning: {
     border: "1px solid #fdba74",
@@ -331,7 +342,10 @@ const styles: Record<string, CSSProperties> = {
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
+    textAlign: "center",
     boxShadow: "0 10px 22px rgba(234, 88, 12, 0.20)",
+    width: "100%",
+    maxWidth: 280,
   },
   bannerError: {
     border: "1px solid #fecaca",
@@ -339,34 +353,36 @@ const styles: Record<string, CSSProperties> = {
     color: "#b91c1c",
     borderRadius: 18,
     padding: 14,
-    marginBottom: 20,
+    marginBottom: 18,
     fontSize: 14,
     lineHeight: 1.6,
+    overflowWrap: "anywhere",
   },
   grid4: {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-    gap: 16,
-    marginBottom: 20,
+    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 210px), 1fr))",
+    gap: 14,
+    marginBottom: 18,
   },
   grid3: {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-    gap: 16,
-    marginBottom: 20,
+    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 240px), 1fr))",
+    gap: 14,
+    marginBottom: 18,
   },
   grid2: {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-    gap: 20,
+    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 300px), 1fr))",
+    gap: 18,
     alignItems: "start",
-    marginBottom: 20,
+    marginBottom: 18,
   },
   card: {
     background: "#ffffff",
     borderRadius: 24,
-    padding: 20,
+    padding: 18,
     boxShadow: "0 8px 24px rgba(15, 23, 42, 0.06)",
+    minWidth: 0,
   },
   label: {
     fontSize: 12,
@@ -378,18 +394,22 @@ const styles: Record<string, CSSProperties> = {
   },
   bigTitle: {
     margin: 0,
-    fontSize: 24,
+    fontSize: "clamp(20px, 4vw, 24px)",
     fontWeight: 800,
     color: "#0f172a",
+    lineHeight: 1.25,
+    overflowWrap: "anywhere",
   },
   hugeValue: {
     margin: "8px 0 0",
-    fontSize: 42,
+    fontSize: "clamp(30px, 7vw, 42px)",
     fontWeight: 800,
     color: "#0f172a",
+    lineHeight: 1.15,
+    overflowWrap: "anywhere",
   },
   hugeValueSub: {
-    fontSize: 22,
+    fontSize: "clamp(18px, 4vw, 22px)",
     color: "#64748b",
     fontWeight: 600,
   },
@@ -398,12 +418,14 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 14,
     color: "#64748b",
     lineHeight: 1.5,
+    overflowWrap: "anywhere",
   },
   statRow: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
     gap: 12,
+    flexWrap: "wrap",
     borderRadius: 16,
     background: "#f8fafc",
     padding: "14px 16px",
@@ -413,6 +435,7 @@ const styles: Record<string, CSSProperties> = {
   statValue: {
     fontWeight: 700,
     color: "#0f172a",
+    overflowWrap: "anywhere",
   },
   ownerBox: {
     border: "1px solid #e2e8f0",
@@ -420,17 +443,20 @@ const styles: Record<string, CSSProperties> = {
     padding: 16,
     marginTop: 14,
     background: "#ffffff",
+    minWidth: 0,
   },
   ownerName: {
     margin: 0,
     fontSize: 18,
     fontWeight: 700,
     color: "#0f172a",
+    overflowWrap: "anywhere",
   },
   ownerMeta: {
     marginTop: 6,
     fontSize: 14,
     color: "#475569",
+    overflowWrap: "anywhere",
   },
   miniLabel: {
     marginTop: 14,
@@ -451,6 +477,7 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 14,
     color: "#64748b",
     lineHeight: 1.6,
+    overflowWrap: "anywhere",
   },
   formGroup: {
     marginTop: 16,
@@ -466,12 +493,13 @@ const styles: Record<string, CSSProperties> = {
     width: "100%",
     borderRadius: 16,
     border: "1px solid #cbd5e1",
-    padding: "12px 14px",
-    fontSize: 15,
+    padding: "13px 14px",
+    fontSize: 16,
     outline: "none",
     background: "#ffffff",
     color: "#0f172a",
     boxSizing: "border-box",
+    minWidth: 0,
   },
   inputDisabled: {
     background: "#f1f5f9",
@@ -482,12 +510,13 @@ const styles: Record<string, CSSProperties> = {
     width: "100%",
     borderRadius: 16,
     border: "1px solid #cbd5e1",
-    padding: "12px 14px",
-    fontSize: 15,
+    padding: "13px 14px",
+    fontSize: 16,
     outline: "none",
     background: "#ffffff",
     color: "#0f172a",
     boxSizing: "border-box",
+    minWidth: 0,
   },
   selectDisabled: {
     background: "#f1f5f9",
@@ -503,6 +532,7 @@ const styles: Record<string, CSSProperties> = {
     marginTop: 14,
     fontSize: 14,
     lineHeight: 1.6,
+    overflowWrap: "anywhere",
   },
   errorBox: {
     border: "1px solid #fecaca",
@@ -513,6 +543,7 @@ const styles: Record<string, CSSProperties> = {
     marginTop: 14,
     fontSize: 14,
     lineHeight: 1.6,
+    overflowWrap: "anywhere",
   },
   warningBox: {
     border: "1px solid #fcd34d",
@@ -523,6 +554,7 @@ const styles: Record<string, CSSProperties> = {
     marginTop: 16,
     fontSize: 14,
     lineHeight: 1.6,
+    overflowWrap: "anywhere",
   },
   noteBox: {
     marginTop: 16,
@@ -532,12 +564,14 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 14,
     lineHeight: 1.6,
     color: "#475569",
+    overflowWrap: "anywhere",
   },
   actionRow: {
-    display: "flex",
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 160px), 1fr))",
     gap: 12,
-    flexWrap: "wrap",
     marginTop: 14,
+    width: "100%",
   },
   membersHeader: {
     display: "flex",
@@ -553,6 +587,8 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 12,
     fontWeight: 700,
     color: "#334155",
+    maxWidth: "100%",
+    overflowWrap: "anywhere",
   },
   emptyBox: {
     marginTop: 18,
@@ -571,6 +607,7 @@ const styles: Record<string, CSSProperties> = {
     padding: 16,
     marginTop: 16,
     background: "#ffffff",
+    minWidth: 0,
   },
   memberHead: {
     display: "flex",
@@ -584,15 +621,17 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 16,
     fontWeight: 700,
     color: "#0f172a",
+    overflowWrap: "anywhere",
   },
   memberEmail: {
     marginTop: 6,
     fontSize: 14,
     color: "#475569",
+    overflowWrap: "anywhere",
   },
   memberGrid: {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 160px), 1fr))",
     gap: 14,
     marginTop: 14,
   },
@@ -605,6 +644,8 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 14,
     fontWeight: 700,
     cursor: "pointer",
+    width: "100%",
+    maxWidth: 160,
   },
   removeButtonDisabled: {
     background: "#e2e8f0",
@@ -882,9 +923,8 @@ export default function WorkspacePage() {
                 </h2>
                 <div style={{ ...styles.heroText, color: "#9a3412" }}>
                   You are using {usedSlots} of {maxWorkspaceUsers} allowed workspace slot
-                  {maxWorkspaceUsers === 1 ? "" : "s"} on the{" "}
-                  <strong>{planName}</strong>. Upgrade your plan to add more members,
-                  or remove an existing member first.
+                  {maxWorkspaceUsers === 1 ? "" : "s"} on the <strong>{planName}</strong>.
+                  Upgrade your plan to add more members, or remove an existing member first.
                 </div>
               </div>
 
@@ -953,10 +993,7 @@ export default function WorkspacePage() {
                     </strong>
                   </div>
                   <div style={styles.subText}>
-                    Code:{" "}
-                    <strong style={{ color: "#0f172a" }}>
-                      {limits?.entitlements?.plan_code || plan?.code || "—"}
-                    </strong>
+                    Code: <strong style={{ color: "#0f172a" }}>{limits?.entitlements?.plan_code || plan?.code || "—"}</strong>
                   </div>
                 </div>
 
@@ -1119,6 +1156,7 @@ export default function WorkspacePage() {
                       style={{
                         ...styles.button,
                         width: "100%",
+                        maxWidth: "100%",
                         marginTop: 16,
                         ...(submittingAdd || addBlocked ? styles.buttonDisabled : {}),
                       }}
@@ -1126,10 +1164,10 @@ export default function WorkspacePage() {
                       {submittingAdd
                         ? "Adding member..."
                         : addBlockedBecauseNoPlan
-                        ? "Workspace plan required"
-                        : workspacePlanFull
-                        ? "No slots available"
-                        : "Add member"}
+                          ? "Workspace plan required"
+                          : workspacePlanFull
+                            ? "No slots available"
+                            : "Add member"}
                     </button>
                   </form>
 
@@ -1137,8 +1175,7 @@ export default function WorkspacePage() {
                     <div style={{ fontWeight: 700, color: "#0f172a", marginBottom: 6 }}>
                       Current rule
                     </div>
-                    Your plan currently allows{" "}
-                    <strong style={{ color: "#0f172a" }}>{maxWorkspaceUsers}</strong> total
+                    Your plan currently allows <strong style={{ color: "#0f172a" }}>{maxWorkspaceUsers}</strong> total
                     workspace user{maxWorkspaceUsers === 1 ? "" : "s"}, including the owner.
                   </div>
                 </div>
@@ -1178,7 +1215,7 @@ export default function WorkspacePage() {
                           style={styles.memberCard}
                         >
                           <div style={styles.memberHead}>
-                            <div>
+                            <div style={{ minWidth: 0, flex: "1 1 280px" }}>
                               <p style={styles.memberName}>{display}</p>
                               <div style={styles.memberEmail}>
                                 {member.member_email || "No email available"}
