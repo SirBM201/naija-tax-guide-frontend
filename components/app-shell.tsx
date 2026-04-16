@@ -294,6 +294,43 @@ export default function AppShell({
   }
 
   const footerYear = new Date().getFullYear();
+  const mobileSidebarWidth = "min(86vw, 320px)";
+  const topbarStyle: React.CSSProperties = {
+    ...styles.topbar,
+    minHeight: isMobile ? 0 : 76,
+    padding: isMobile ? "14px 16px" : "18px 24px",
+    alignItems: isMobile ? "stretch" : "center",
+  };
+  const topbarLeftStyle: React.CSSProperties = {
+    ...styles.topbarLeft,
+    alignItems: isMobile ? "flex-start" : "center",
+    width: isMobile ? "100%" : "auto",
+  };
+  const topbarRightStyle: React.CSSProperties = {
+    ...styles.topbarRight,
+    width: isMobile ? "100%" : "auto",
+    justifyContent: isMobile ? "flex-start" : "flex-end",
+  };
+  const contentStyle: React.CSSProperties = {
+    ...styles.content,
+    padding: isMobile ? 16 : 24,
+  };
+  const pageFooterStyle: React.CSSProperties = {
+    ...styles.pageFooter,
+    padding: isMobile ? "18px 16px 16px" : "22px 24px 18px",
+  };
+  const pageFooterInnerStyle: React.CSSProperties = {
+    ...styles.pageFooterInner,
+    flexDirection: isMobile ? "column" : "row",
+  };
+  const pageFooterRightStyle: React.CSSProperties = {
+    ...styles.pageFooterRight,
+    justifyItems: isMobile ? "start" : "end",
+  };
+  const pageFooterLinksStyle: React.CSSProperties = {
+    ...styles.pageFooterLinks,
+    justifyContent: isMobile ? "flex-start" : "flex-end",
+  };
 
   return (
     <div style={styles.root}>
@@ -304,13 +341,15 @@ export default function AppShell({
       <aside
         style={{
           ...styles.sidebar,
-          width: isMobile ? 320 : sidebarWidth,
+          width: isMobile ? mobileSidebarWidth : sidebarWidth,
+          padding: isMobile ? 14 : 18,
           transform: isMobile
             ? sidebarOpen
               ? "translateX(0)"
               : "translateX(-100%)"
             : "none",
           zIndex: isMobile ? 40 : 20,
+          boxShadow: isMobile ? "0 18px 50px rgba(0,0,0,0.28)" : "none",
         }}
       >
         <button onClick={toggleSidebar} style={styles.collapseBtn} type="button">
@@ -422,8 +461,8 @@ export default function AppShell({
           marginLeft: isMobile ? 0 : sidebarWidth,
         }}
       >
-        <header style={styles.topbar}>
-          <div style={styles.topbarLeft}>
+        <header style={topbarStyle}>
+          <div style={topbarLeftStyle}>
             {isMobile ? (
               <button onClick={toggleSidebar} style={styles.mobileMenuBtn} type="button">
                 Menu
@@ -431,29 +470,35 @@ export default function AppShell({
             ) : null}
 
             <div style={{ display: "grid", gap: 6, minWidth: 0 }}>
-              <div style={styles.topbarTitle}>{title || "Naija Tax Guide"}</div>
-              {subtitle ? <div style={styles.topbarSubtitle}>{subtitle}</div> : null}
+              <div style={{ ...styles.topbarTitle, fontSize: isMobile ? 18 : 22 }}>
+                {title || "Naija Tax Guide"}
+              </div>
+              {subtitle ? (
+                <div style={{ ...styles.topbarSubtitle, fontSize: isMobile ? 12 : 13 }}>
+                  {subtitle}
+                </div>
+              ) : null}
             </div>
           </div>
 
-          <div style={styles.topbarRight}>
+          <div style={topbarRightStyle}>
             {rightSlot ? <div style={styles.topbarSlotWrap}>{rightSlot}</div> : null}
             {actions ? <div style={styles.topbarSlotWrap}>{actions}</div> : null}
           </div>
         </header>
 
-        <section style={styles.content}>{children}</section>
+        <section style={contentStyle}>{children}</section>
 
-        <footer style={styles.pageFooter}>
-          <div style={styles.pageFooterInner}>
+        <footer style={pageFooterStyle}>
+          <div style={pageFooterInnerStyle}>
             <div style={styles.pageFooterBrand}>
               <div style={styles.pageFooterTitle}>Naija Tax Guide</div>
               <div style={styles.pageFooterText}>Operated by BMS Creative Concept.</div>
               <div style={styles.pageFooterText}>General contact: +2347034941158</div>
             </div>
 
-            <div style={styles.pageFooterRight}>
-              <div style={styles.pageFooterLinks}>
+            <div style={pageFooterRightStyle}>
+              <div style={pageFooterLinksStyle}>
                 <Link href="/contact" style={styles.pageFooterLink}>
                   Contact
                 </Link>
@@ -522,6 +567,8 @@ const styles: Record<string, React.CSSProperties> = {
     background: "var(--app-bg)",
     color: "var(--text)",
     position: "relative",
+    maxWidth: "100%",
+    overflowX: "clip",
   },
 
   mobileOverlay: {
@@ -535,7 +582,7 @@ const styles: Record<string, React.CSSProperties> = {
     position: "fixed",
     top: 0,
     left: 0,
-    height: "100vh",
+    height: "100dvh",
     borderRight: "1px solid var(--border)",
     padding: 18,
     display: "flex",
@@ -548,7 +595,7 @@ const styles: Record<string, React.CSSProperties> = {
 
   collapseBtn: {
     width: "100%",
-    minHeight: 52,
+    minHeight: 48,
     borderRadius: 18,
     border: "1px solid var(--border)",
     background: "var(--surface-soft)",
@@ -560,7 +607,7 @@ const styles: Record<string, React.CSSProperties> = {
 
   brand: {
     display: "flex",
-    gap: 14,
+    gap: 12,
     alignItems: "center",
     padding: 16,
     borderRadius: 20,
@@ -573,8 +620,8 @@ const styles: Record<string, React.CSSProperties> = {
   },
 
   logoImage: {
-    width: 58,
-    height: 58,
+    width: 54,
+    height: 54,
     borderRadius: 18,
     objectFit: "cover",
     border: "1px solid rgba(234,179,8,0.32)",
@@ -630,7 +677,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
 
   link: {
-    minHeight: 52,
+    minHeight: 48,
     borderRadius: 18,
     textDecoration: "none",
     color: "var(--text-soft)",
@@ -764,6 +811,8 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     alignItems: "center",
     gap: 10,
+    flexWrap: "wrap",
+    maxWidth: "100%",
   },
 
   content: {
@@ -834,5 +883,6 @@ const styles: Record<string, React.CSSProperties> = {
     borderTop: "1px solid var(--border)",
     fontSize: 12,
     color: "var(--text-faint)",
+    lineHeight: 1.6,
   },
 };
