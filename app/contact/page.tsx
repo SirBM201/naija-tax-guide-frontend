@@ -13,10 +13,11 @@ import { SectionStack } from "@/components/page-layout";
 function sectionBodyStyle(): React.CSSProperties {
   return {
     display: "grid",
-    gap: 18,
+    gap: 16,
     color: "var(--text)",
-    fontSize: 16,
-    lineHeight: 1.9,
+    fontSize: "clamp(15px, 2.5vw, 16px)",
+    lineHeight: 1.85,
+    minWidth: 0,
   };
 }
 
@@ -24,20 +25,22 @@ function paragraphStyle(): React.CSSProperties {
   return {
     margin: 0,
     color: "var(--text)",
-    lineHeight: 1.9,
-    fontSize: 16,
+    lineHeight: 1.85,
+    fontSize: "clamp(15px, 2.5vw, 16px)",
+    wordBreak: "break-word",
   };
 }
 
 function bulletListStyle(): React.CSSProperties {
   return {
     margin: 0,
-    paddingLeft: 22,
+    paddingLeft: 18,
     display: "grid",
-    gap: 12,
+    gap: 10,
     color: "var(--text)",
     lineHeight: 1.8,
-    fontSize: 16,
+    fontSize: "clamp(15px, 2.5vw, 16px)",
+    minWidth: 0,
   };
 }
 
@@ -49,44 +52,63 @@ function infoCardStyle(): React.CSSProperties {
     padding: 18,
     display: "grid",
     gap: 8,
+    minWidth: 0,
+    height: "100%",
   };
 }
 
 function labelStyle(): React.CSSProperties {
   return {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: 800,
     color: "var(--text-muted)",
     textTransform: "uppercase",
-    letterSpacing: 0.4,
-    margin: 0,
-  };
-}
-
-function valueStyle(): React.CSSProperties {
-  return {
-    fontSize: 18,
-    fontWeight: 900,
-    color: "var(--text)",
+    letterSpacing: 0.45,
     margin: 0,
     wordBreak: "break-word",
   };
 }
 
+function valueStyle(): React.CSSProperties {
+  return {
+    fontSize: "clamp(18px, 3vw, 20px)",
+    fontWeight: 900,
+    color: "var(--text)",
+    margin: 0,
+    wordBreak: "break-word",
+    overflowWrap: "anywhere",
+    lineHeight: 1.3,
+  };
+}
+
 function helperStyle(): React.CSSProperties {
   return {
-    fontSize: 15,
+    fontSize: "clamp(14px, 2.3vw, 15px)",
     color: "var(--text-muted)",
     lineHeight: 1.7,
     margin: 0,
+    wordBreak: "break-word",
   };
 }
 
 function contactGridStyle(): React.CSSProperties {
   return {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
     gap: 16,
+    alignItems: "stretch",
+  };
+}
+
+function contactHighlightStyle(): React.CSSProperties {
+  return {
+    display: "grid",
+    gap: 10,
+    borderRadius: 16,
+    border: "1px solid var(--accent-border)",
+    background: "var(--accent-soft)",
+    padding: 16,
+    minWidth: 0,
   };
 }
 
@@ -121,10 +143,10 @@ export default function ContactPage() {
         >
           <div style={contactGridStyle()}>
             <div style={infoCardStyle()}>
-              <p style={labelStyle()}>Phone / WhatsApp</p>
-              <p style={valueStyle()}>+2347034941158</p>
+              <p style={labelStyle()}>Support email</p>
+              <p style={valueStyle()}>support@naijataxguides.com</p>
               <p style={helperStyle()}>
-                Best for direct business contact, follow-up communication, and general enquiries where phone contact is appropriate.
+                Best for direct business contact, follow-up communication, and general enquiries where email communication is appropriate.
               </p>
             </div>
 
@@ -220,10 +242,13 @@ export default function ContactPage() {
           subtitle="Use direct company contact responsibly and keep messages relevant to the communication route."
         >
           <div style={sectionBodyStyle()}>
-            <p style={paragraphStyle()}>
-              Official direct contact currently available through the design is:
-              <strong> +2347034941158</strong>.
-            </p>
+            <div style={contactHighlightStyle()}>
+              <p style={labelStyle()}>Official contact email</p>
+              <p style={valueStyle()}>support@naijataxguides.com</p>
+              <p style={helperStyle()}>
+                Use this email for general business communication where a support ticket is not the appropriate workflow.
+              </p>
+            </div>
 
             <p style={paragraphStyle()}>
               Where a request is more suitable for a privacy, deletion, billing,
