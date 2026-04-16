@@ -2,6 +2,11 @@
 
 import React from "react";
 
+function responsiveTrack(min: number) {
+  const safeMin = Math.max(160, Math.floor(min));
+  return `repeat(auto-fit, minmax(min(100%, ${safeMin}px), 1fr))`;
+}
+
 export function SectionStack({
   children,
   gap = 20,
@@ -14,6 +19,8 @@ export function SectionStack({
       style={{
         display: "grid",
         gap,
+        width: "100%",
+        minWidth: 0,
       }}
     >
       {children}
@@ -34,8 +41,11 @@ export function MetricsGrid({
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: `repeat(auto-fit,minmax(${min}px,1fr))`,
+        gridTemplateColumns: responsiveTrack(min),
         gap,
+        width: "100%",
+        minWidth: 0,
+        alignItems: "start",
       }}
     >
       {children}
@@ -56,8 +66,11 @@ export function CardsGrid({
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: `repeat(auto-fit,minmax(${min}px,1fr))`,
+        gridTemplateColumns: responsiveTrack(min),
         gap,
+        width: "100%",
+        minWidth: 0,
+        alignItems: "start",
       }}
     >
       {children}
@@ -99,7 +112,10 @@ export function TwoColumnSection({
         gridTemplateColumns: isCollapsed
           ? "minmax(0,1fr)"
           : `minmax(0, ${leftRatio}fr) minmax(0, ${rightRatio}fr)`,
-        gap,
+        gap: isCollapsed ? Math.min(gap, 16) : gap,
+        width: "100%",
+        minWidth: 0,
+        alignItems: "start",
       }}
     >
       {children}
@@ -120,8 +136,11 @@ export function ResponsiveColumns({
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: `repeat(auto-fit,minmax(${min}px,1fr))`,
+        gridTemplateColumns: responsiveTrack(min),
         gap,
+        width: "100%",
+        minWidth: 0,
+        alignItems: "start",
       }}
     >
       {children}
