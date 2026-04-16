@@ -198,9 +198,10 @@ function cardStyle(): React.CSSProperties {
     border: "1px solid var(--border)",
     borderRadius: 20,
     background: "var(--surface)",
-    padding: 20,
+    padding: "clamp(16px, 2.5vw, 20px)",
     display: "grid",
     gap: 14,
+    minWidth: 0,
   };
 }
 
@@ -209,9 +210,10 @@ function statCardStyle(): React.CSSProperties {
     border: "1px solid var(--border)",
     borderRadius: 18,
     background: "var(--surface-soft)",
-    padding: 18,
+    padding: "clamp(14px, 2vw, 18px)",
     display: "grid",
     gap: 6,
+    minWidth: 0,
   };
 }
 
@@ -240,6 +242,8 @@ function inputStyle(): React.CSSProperties {
     color: "var(--text)",
     padding: "0 14px",
     outline: "none",
+    fontSize: 16,
+    minWidth: 0,
   };
 }
 
@@ -253,19 +257,43 @@ function labelStyle(): React.CSSProperties {
 
 function valueStyle(): React.CSSProperties {
   return {
-    fontSize: 24,
+    fontSize: "clamp(20px, 3.6vw, 24px)",
     fontWeight: 900,
     color: "var(--text)",
+    lineHeight: 1.2,
+    wordBreak: "break-word",
+  };
+}
+
+function fluidGridStyle(minWidth = 280): React.CSSProperties {
+  return {
+    display: "grid",
+    gridTemplateColumns: `repeat(auto-fit, minmax(min(${minWidth}px, 100%), 1fr))`,
+    gap: 20,
+    alignItems: "start",
+    minWidth: 0,
+  };
+}
+
+function listGridStyle(): React.CSSProperties {
+  return {
+    display: "grid",
+    gap: 12,
+    minWidth: 0,
+  };
+}
+
+function fieldGroupStyle(minWidth = 220): React.CSSProperties {
+  return {
+    display: "grid",
+    gridTemplateColumns: `repeat(auto-fit, minmax(min(${minWidth}px, 100%), 1fr))`,
+    gap: 12,
+    minWidth: 0,
   };
 }
 
 function twoColumnGridStyle(): React.CSSProperties {
-  return {
-    display: "grid",
-    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-    gap: 20,
-    alignItems: "start",
-  };
+  return fluidGridStyle(320);
 }
 
 function buttonStyleWithDisabledState(
@@ -799,10 +827,18 @@ export default function ReferralsPage() {
                   Naija Tax Guide.
                 </div>
 
-                <div style={{ display: "grid", gap: 12 }}>
+                <div style={listGridStyle()}>
                   <div style={statCardStyle()}>
                     <div style={labelStyle()}>Referral Code</div>
-                    <div style={{ fontSize: 28, fontWeight: 900, color: "var(--text)" }}>
+                    <div
+                      style={{
+                        fontSize: "clamp(22px, 5vw, 28px)",
+                        fontWeight: 900,
+                        color: "var(--text)",
+                        lineHeight: 1.2,
+                        wordBreak: "break-word",
+                      }}
+                    >
                       {referralCode}
                     </div>
                   </div>
@@ -846,13 +882,7 @@ export default function ReferralsPage() {
                   Quick view of totals, reward balances, and payout readiness.
                 </div>
 
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                    gap: 12,
-                  }}
-                >
+                <div style={fluidGridStyle(220)}>
                   {statItems.map((item) => (
                     <div key={item.label} style={statCardStyle()}>
                       <div style={labelStyle()}>{item.label}</div>
@@ -874,24 +904,24 @@ export default function ReferralsPage() {
 
                 <div style={statCardStyle()}>
                   <div style={labelStyle()}>Current saved payout account</div>
-                  <div style={mutedStyle()}>
+                  <div style={{ ...mutedStyle(), overflowWrap: "anywhere" }}>
                     Provider: {safeText(payoutAccount?.provider, "None")} • Bank:{" "}
                     {safeText(payoutAccount?.bank_name, "None")}
                   </div>
-                  <div style={mutedStyle()}>
+                  <div style={{ ...mutedStyle(), overflowWrap: "anywhere" }}>
                     Account Name: {safeText(payoutAccount?.account_name, "None")}
                   </div>
-                  <div style={mutedStyle()}>
+                  <div style={{ ...mutedStyle(), overflowWrap: "anywhere" }}>
                     Account Number:{" "}
                     {safeText(payoutAccount?.account_number_masked, "None")}
                   </div>
-                  <div style={mutedStyle()}>
+                  <div style={{ ...mutedStyle(), overflowWrap: "anywhere" }}>
                     Recipient Code: {safeText(payoutAccount?.recipient_code, "None")} •
                     Verified: {payoutAccount?.is_verified ? " Yes" : " No"}
                   </div>
                 </div>
 
-                <div style={{ display: "grid", gap: 12 }}>
+                <div style={listGridStyle()}>
                   <div style={{ display: "grid", gap: 6 }}>
                     <div style={labelStyle()}>Provider</div>
                     <input
@@ -902,7 +932,7 @@ export default function ReferralsPage() {
                     />
                   </div>
 
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                  <div style={fieldGroupStyle()}>
                     <div style={{ display: "grid", gap: 6 }}>
                       <div style={labelStyle()}>Bank Code</div>
                       <input
@@ -934,7 +964,7 @@ export default function ReferralsPage() {
                     />
                   </div>
 
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                  <div style={fieldGroupStyle()}>
                     <div style={{ display: "grid", gap: 6 }}>
                       <div style={labelStyle()}>Account Number</div>
                       <input
@@ -956,7 +986,7 @@ export default function ReferralsPage() {
                     </div>
                   </div>
 
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                  <div style={fieldGroupStyle()}>
                     <div style={{ display: "grid", gap: 6 }}>
                       <div style={labelStyle()}>Recipient Code</div>
                       <input
@@ -982,9 +1012,10 @@ export default function ReferralsPage() {
                     style={{
                       display: "flex",
                       gap: 10,
-                      alignItems: "center",
+                      alignItems: "flex-start",
                       color: "var(--text)",
                       fontWeight: 700,
+                      flexWrap: "wrap",
                     }}
                   >
                     <input
@@ -1037,7 +1068,7 @@ export default function ReferralsPage() {
                   </div>
                 </div>
 
-                <div style={{ display: "grid", gap: 12 }}>
+                <div style={listGridStyle()}>
                   <div style={{ display: "grid", gap: 6 }}>
                     <div style={labelStyle()}>Payout Amount</div>
                     <input
@@ -1108,13 +1139,19 @@ export default function ReferralsPage() {
               {recentReferrals.length === 0 ? (
                 <div style={mutedStyle()}>No referrals yet.</div>
               ) : (
-                <div style={{ display: "grid", gap: 12 }}>
+                <div style={listGridStyle()}>
                   {recentReferrals.map((row, rowIndex) => (
                     <div key={String(row.id || rowIndex)} style={statCardStyle()}>
-                      <div style={{ fontWeight: 800, color: "var(--text)" }}>
+                      <div
+                        style={{
+                          fontWeight: 800,
+                          color: "var(--text)",
+                          overflowWrap: "anywhere",
+                        }}
+                      >
                         Referred Account: {safeText(row.referred_account_id)}
                       </div>
-                      <div style={mutedStyle()}>
+                      <div style={{ ...mutedStyle(), overflowWrap: "anywhere" }}>
                         Status: {safeText(row.status)} • Source: {safeText(row.source)}
                       </div>
                       <div style={mutedStyle()}>
@@ -1136,14 +1173,20 @@ export default function ReferralsPage() {
                 {recentRewards.length === 0 ? (
                   <div style={mutedStyle()}>No rewards yet.</div>
                 ) : (
-                  <div style={{ display: "grid", gap: 12 }}>
+                  <div style={listGridStyle()}>
                     {recentRewards.map((row, rowIndex) => (
                       <div key={String(row.id || rowIndex)} style={statCardStyle()}>
-                        <div style={{ fontWeight: 800, color: "var(--text)" }}>
+                        <div
+                          style={{
+                            fontWeight: 800,
+                            color: "var(--text)",
+                            overflowWrap: "anywhere",
+                          }}
+                        >
                           {safeText(row.reward_type)} — {currency}{" "}
                           {safeText(row.reward_amount, "0")}
                         </div>
-                        <div style={mutedStyle()}>
+                        <div style={{ ...mutedStyle(), overflowWrap: "anywhere" }}>
                           Status: {safeText(row.status)} • Plan: {safeText(row.plan_code)}
                         </div>
                         <div style={mutedStyle()}>
@@ -1164,17 +1207,23 @@ export default function ReferralsPage() {
                 {recentPayouts.length === 0 ? (
                   <div style={mutedStyle()}>No payouts yet.</div>
                 ) : (
-                  <div style={{ display: "grid", gap: 12 }}>
+                  <div style={listGridStyle()}>
                     {recentPayouts.map((row, rowIndex) => (
                       <div key={String(row.id || rowIndex)} style={statCardStyle()}>
-                        <div style={{ fontWeight: 800, color: "var(--text)" }}>
+                        <div
+                          style={{
+                            fontWeight: 800,
+                            color: "var(--text)",
+                            overflowWrap: "anywhere",
+                          }}
+                        >
                           {currency} {safeText(row.amount, "0")}
                         </div>
                         <div style={mutedStyle()}>
                           Status: {safeText(row.status)} • Provider:{" "}
                           {safeText(row.provider)}
                         </div>
-                        <div style={mutedStyle()}>
+                        <div style={{ ...mutedStyle(), overflowWrap: "anywhere" }}>
                           Reference: {safeText(row.provider_reference, "None")} •
                           Transfer code: {safeText(row.provider_transfer_code, "None")}
                         </div>
