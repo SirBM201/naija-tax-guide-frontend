@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import React, { useEffect, useMemo, useState } from "react";
 import { apiJson, isApiError } from "@/lib/api";
+import { SITE } from "@/lib/site";
 
 type WorkspaceLimitsResponse = {
   ok?: boolean;
@@ -371,16 +372,16 @@ export default function AppShell({
           <div style={styles.logoWrap}>
             <img
               src="/bms-logo.jpg"
-              alt="Naija Tax Guide logo"
+              alt={`${SITE.companyName} logo`}
               style={styles.logoImage}
             />
           </div>
 
           {sidebarOpen ? (
             <div style={{ minWidth: 0 }}>
-              <div style={styles.brandTitle}>Naija Tax Guide</div>
-              <div style={styles.brandSub}>BMS Creative Concept</div>
-              <div style={styles.brandTagline}>Structured tax guidance workspace</div>
+              <div style={styles.brandTitle}>{SITE.name}</div>
+              <div style={styles.brandSub}>{SITE.companyName}</div>
+              <div style={styles.brandTagline}>{SITE.slogan}</div>
             </div>
           ) : null}
         </div>
@@ -438,8 +439,8 @@ export default function AppShell({
         {sidebarOpen ? (
           <div style={styles.sidebarFooter}>
             <div style={styles.footerTitle}>Company Contact</div>
-            <div style={styles.footerLine}>BMS Creative Concept</div>
-            <div style={styles.footerLine}>+2347034941158</div>
+            <div style={styles.footerLine}>{SITE.companyName}</div>
+            <div style={styles.footerLine}>{SITE.supportEmail}</div>
             <div style={styles.footerLinks}>
               <Link href="/contact" style={styles.footerLink}>
                 Contact
@@ -471,7 +472,7 @@ export default function AppShell({
 
             <div style={{ display: "grid", gap: 6, minWidth: 0 }}>
               <div style={{ ...styles.topbarTitle, fontSize: isMobile ? 18 : 22 }}>
-                {title || "Naija Tax Guide"}
+                {title || SITE.name}
               </div>
               {subtitle ? (
                 <div style={{ ...styles.topbarSubtitle, fontSize: isMobile ? 12 : 13 }}>
@@ -492,9 +493,9 @@ export default function AppShell({
         <footer style={pageFooterStyle}>
           <div style={pageFooterInnerStyle}>
             <div style={styles.pageFooterBrand}>
-              <div style={styles.pageFooterTitle}>Naija Tax Guide</div>
-              <div style={styles.pageFooterText}>Operated by BMS Creative Concept.</div>
-              <div style={styles.pageFooterText}>General contact: +2347034941158</div>
+              <div style={styles.pageFooterTitle}>{SITE.name}</div>
+              <div style={styles.pageFooterText}>Operated by {SITE.companyName}.</div>
+              <div style={styles.pageFooterText}>General contact: {SITE.supportEmail}</div>
             </div>
 
             <div style={pageFooterRightStyle}>
@@ -519,12 +520,12 @@ export default function AppShell({
                 </Link>
               </div>
 
-              <div style={styles.pageFooterSlogan}>From Deep Roots, We Soar.</div>
+              <div style={styles.pageFooterSlogan}>{SITE.slogan}</div>
             </div>
           </div>
 
           <div style={styles.pageFooterBottom}>
-            © {footerYear} Naija Tax Guide · BMS Creative Concept. All rights reserved.
+            © {footerYear} {SITE.name} · {SITE.companyName}. All rights reserved.
           </div>
         </footer>
       </main>
