@@ -1,6 +1,7 @@
 "use client";
 
-import React, { Suspense, useEffect, useRef, useState } from "react";
+import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { apiJson } from "@/lib/api";
@@ -38,30 +39,11 @@ type NoticeState = {
 const REFERRAL_STORAGE_KEY = "ntg_referral_code";
 const NEXT_PATH_STORAGE_KEY = "ntg_next_path";
 
-function Panel({ children }: { children: React.ReactNode }) {
-  return (
-    <div
-      style={{
-        width: "100%",
-        maxWidth: 980,
-        borderRadius: 26,
-        border: "1px solid var(--border)",
-        background: "var(--panel-bg)",
-        padding: 24,
-        backdropFilter: "blur(12px)",
-        boxShadow: "0 10px 30px rgba(0,0,0,0.10)",
-      }}
-    >
-      {children}
-    </div>
-  );
-}
-
 function safeDecodeNext(nextValue: string | null): string | null {
   let raw = String(nextValue || "").trim();
   if (!raw) return null;
 
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < 3; i += 1) {
     try {
       const decoded = decodeURIComponent(raw).trim();
       if (decoded === raw) break;
@@ -172,78 +154,6 @@ function clearStoredReferralCode() {
   }
 }
 
-function sectionCardStyle(): React.CSSProperties {
-  return {
-    borderRadius: 18,
-    border: "1px solid var(--border)",
-    background: "var(--surface-soft)",
-    padding: 16,
-  };
-}
-
-function sectionTitleStyle(): React.CSSProperties {
-  return {
-    color: "var(--text)",
-    fontWeight: 900,
-    fontSize: 15,
-  };
-}
-
-function sectionTextStyle(): React.CSSProperties {
-  return {
-    marginTop: 8,
-    color: "var(--text-faint)",
-    lineHeight: 1.6,
-  };
-}
-
-function linkBtnStyle(primary = false): React.CSSProperties {
-  return {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    minHeight: 44,
-    padding: "10px 16px",
-    borderRadius: 14,
-    border: primary
-      ? "1px solid var(--accent-border)"
-      : "1px solid var(--border)",
-    background: primary ? "var(--accent-soft)" : "var(--surface-soft)",
-    color: "var(--text)",
-    textDecoration: "none",
-    fontWeight: 900,
-    fontSize: 14,
-  };
-}
-
-function noticeStyle(tone: NoticeTone): React.CSSProperties {
-  if (tone === "good") {
-    return {
-      border: "1px solid var(--success-border)",
-      background: "var(--success-bg)",
-    };
-  }
-
-  if (tone === "warn") {
-    return {
-      border: "1px solid var(--warn-border)",
-      background: "var(--warn-bg)",
-    };
-  }
-
-  if (tone === "danger") {
-    return {
-      border: "1px solid var(--danger-border)",
-      background: "var(--danger-bg)",
-    };
-  }
-
-  return {
-    border: "1px solid var(--border)",
-    background: "var(--surface-soft)",
-  };
-}
-
 function appendNext(url: string, nextPath: string): string {
   if (!nextPath) return url;
   const joiner = url.includes("?") ? "&" : "?";
@@ -286,12 +196,120 @@ function verifyOtpMessage(): string {
   return "That OTP could not be accepted. Request a new code and try again.";
 }
 
+function authRootStyle(mode: "dark" | "light"): React.CSSProperties {
+  return {
+    minHeight: "100vh",
+    background:
+      mode === "light"
+        ? "linear-gradient(180deg, #f5f7fb 0%, #eef3fb 100%)"
+        : "radial-gradient(circle at top, rgba(99,102,241,0.16) 0%, rgba(5,8,22,1) 48%)",
+    color: "var(--text)",
+    ...themeVars(mode),
+  };
+}
+
+function panelStyle(): React.CSSProperties {
+  return {
+    width: "100%",
+    maxWidth: 1120,
+    borderRadius: 28,
+    border: "1px solid var(--border)",
+    background: "var(--panel-bg)",
+    padding: "clamp(18px, 3.5vw, 32px)",
+    backdropFilter: "blur(12px)",
+    boxShadow: "0 18px 50px rgba(2, 6, 23, 0.16)",
+  };
+}
+
+function noticeStyle(tone: NoticeTone): React.CSSProperties {
+  if (tone === "good") {
+    return {
+      border: "1px solid rgba(16,185,129,0.28)",
+      background: "rgba(16,185,129,0.12)",
+    };
+  }
+
+  if (tone === "warn") {
+    return {
+      border: "1px solid rgba(245,158,11,0.30)",
+      background: "rgba(245,158,11,0.10)",
+    };
+  }
+
+  if (tone === "danger") {
+    return {
+      border: "1px solid rgba(239,68,68,0.28)",
+      background: "rgba(239,68,68,0.10)",
+    };
+  }
+
+  return {
+    border: "1px solid var(--border)",
+    background: "var(--surface-soft)",
+  };
+}
+
+function linkBtnStyle(primary = false): React.CSSProperties {
+  return {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: "100%",
+    minHeight: 46,
+    padding: "11px 16px",
+    borderRadius: 14,
+    border: primary
+      ? "1px solid var(--accent-border)"
+      : "1px solid var(--border)",
+    background: primary ? "var(--accent-soft)" : "var(--surface-soft)",
+    color: "var(--text)",
+    textDecoration: "none",
+    fontWeight: 900,
+    fontSize: 14,
+    textAlign: "center",
+  };
+}
+
+function infoCardStyle(): React.CSSProperties {
+  return {
+    borderRadius: 18,
+    border: "1px solid var(--border)",
+    background: "var(--surface-soft)",
+    padding: 16,
+    display: "grid",
+    gap: 8,
+  };
+}
+
+function infoTitleStyle(): React.CSSProperties {
+  return {
+    color: "var(--text)",
+    fontWeight: 900,
+    fontSize: 15,
+  };
+}
+
+function infoTextStyle(): React.CSSProperties {
+  return {
+    color: "var(--text-faint)",
+    lineHeight: 1.6,
+    fontSize: 14,
+  };
+}
+
+function authInput(): React.CSSProperties {
+  return {
+    ...workspaceInputStyle(),
+    minHeight: 52,
+    fontSize: 16,
+  };
+}
+
 function SignupPageContent() {
   const router = useRouter();
   const sp = useSearchParams();
   const { themeMode, resolvedMode, setThemeMode } = useSharedTheme();
-  const { setToken, setHasSession, refreshSession, hasSession, authReady } =
-    useAuth();
+  const { setToken, setHasSession, refreshSession, hasSession, authReady } = useAuth();
 
   const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
@@ -329,7 +347,7 @@ function SignupPageContent() {
 
     setNotice(buildInitialNotice(effectiveReferralCode, effectiveNextPath));
     initDoneRef.current = true;
-  }, [effectiveReferralCode, effectiveNextPath]);
+  }, [effectiveNextPath, effectiveReferralCode]);
 
   useEffect(() => {
     if (!authReady) return;
@@ -369,11 +387,11 @@ function SignupPageContent() {
     };
   }, [
     authReady,
+    effectiveNextPath,
+    effectiveReferralCode,
     hasSession,
     refreshSession,
     setHasSession,
-    effectiveReferralCode,
-    effectiveNextPath,
   ]);
 
   useEffect(() => {
@@ -381,22 +399,19 @@ function SignupPageContent() {
   }, [referralCode]);
 
   const sendOtp = async () => {
-    const e = email.trim().toLowerCase();
+    const normalizedEmail = email.trim().toLowerCase();
     const normalizedReferral = normalizeReferralCode(referralCode);
-    if (!e) return;
+    if (!normalizedEmail) return;
 
     setBusy(true);
-    setNotice({
-      tone: "default",
-      text: "Sending sign-up OTP...",
-    });
+    setNotice({ tone: "default", text: "Sending sign-up OTP..." });
 
     try {
       const data = await apiJson<RequestOtpResp>("/web/auth/request-otp", {
         method: "POST",
         timeoutMs: 25000,
         body: {
-          contact: e,
+          contact: normalizedEmail,
           purpose: "web_login",
         },
         useAuthToken: false,
@@ -430,33 +445,27 @@ function SignupPageContent() {
         });
       }
     } catch {
-      setNotice({
-        tone: "danger",
-        text: requestOtpMessage(),
-      });
+      setNotice({ tone: "danger", text: requestOtpMessage() });
     } finally {
       setBusy(false);
     }
   };
 
   const verifyOtp = async () => {
-    const e = email.trim().toLowerCase();
+    const normalizedEmail = email.trim().toLowerCase();
     const code = otp.trim();
     const normalizedReferral = normalizeReferralCode(referralCode);
-    if (!e || !code) return;
+    if (!normalizedEmail || !code) return;
 
     setBusy(true);
-    setNotice({
-      tone: "default",
-      text: "Verifying sign-up OTP...",
-    });
+    setNotice({ tone: "default", text: "Verifying sign-up OTP..." });
 
     try {
       const data = await apiJson<VerifyOtpResp>("/web/auth/verify-otp", {
         method: "POST",
         timeoutMs: 25000,
         body: {
-          contact: e,
+          contact: normalizedEmail,
           otp: code,
           purpose: "web_login",
           referral_code: normalizedReferral || undefined,
@@ -503,10 +512,7 @@ function SignupPageContent() {
         }, 250);
       }
     } catch {
-      setNotice({
-        tone: "danger",
-        text: verifyOtpMessage(),
-      });
+      setNotice({ tone: "danger", text: verifyOtpMessage() });
     } finally {
       setBusy(false);
     }
@@ -529,301 +535,310 @@ function SignupPageContent() {
     nextPathForLinks === "/welcome" ? "" : nextPathForLinks
   );
 
+  const checkingText = checkingSession && !hasSession;
+  const headerText = useMemo(() => {
+    if (effectiveReferralCode) {
+      return "Start your account securely with email OTP. Referral support stays here so sign-up remains separate from normal sign-in.";
+    }
+    return "Start your account securely with email OTP. Referral code support is available here so account creation can remain separated from normal sign-in.";
+  }, [effectiveReferralCode]);
+
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        display: "grid",
-        placeItems: "center",
-        padding: 24,
-        background: "var(--app-bg)",
-        color: "var(--text)",
-        ...themeVars(resolvedMode),
-      }}
-    >
-      <Panel>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "88px minmax(0,1fr)",
-            gap: 18,
-            alignItems: "center",
-          }}
-        >
-          <div
-            style={{
-              width: 88,
-              height: 88,
-              borderRadius: 22,
-              overflow: "hidden",
-              border: "1px solid var(--accent-border)",
-              background: "var(--surface)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <img
-              src="/bms-logo.jpg"
-              alt="BMS logo"
-              style={{ width: "100%", height: "100%", objectFit: "cover" }}
-            />
-          </div>
-
-          <div style={{ minWidth: 0 }}>
+    <div style={authRootStyle(resolvedMode)}>
+      <div
+        style={{
+          minHeight: "100vh",
+          display: "grid",
+          placeItems: "center",
+          padding: "clamp(14px, 4vw, 28px)",
+        }}
+      >
+        <div style={panelStyle()}>
+          <div style={{ display: "grid", gap: 24 }}>
             <div
               style={{
-                fontSize: 38,
-                fontWeight: 950,
-                letterSpacing: -0.8,
-                color: "var(--text)",
-                lineHeight: 1.05,
+                display: "grid",
+                gap: 18,
+                gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+                alignItems: "start",
               }}
             >
-              Create Account
-            </div>
-            <div
-              style={{
-                marginTop: 8,
-                color: "var(--gold)",
-                fontSize: 15,
-                fontWeight: 800,
-              }}
-            >
-              Naija Tax Guide Sign Up
-            </div>
-            <div
-              style={{
-                marginTop: 10,
-                color: "var(--text-muted)",
-                lineHeight: 1.6,
-                fontSize: 15,
-                maxWidth: 620,
-              }}
-            >
-              Start your account securely with email OTP. Referral code support is available here so account creation can remain separated from normal sign-in.
-            </div>
-          </div>
-        </div>
+              <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
+                <div
+                  style={{
+                    position: "relative",
+                    width: 76,
+                    height: 76,
+                    borderRadius: 20,
+                    overflow: "hidden",
+                    border: "1px solid var(--accent-border)",
+                    background: "var(--surface)",
+                    flexShrink: 0,
+                  }}
+                >
+                  <Image
+                    src="/bms-logo.jpg"
+                    alt="BMS SparkVision Hub logo"
+                    fill
+                    sizes="76px"
+                    style={{ objectFit: "cover" }}
+                    priority
+                  />
+                </div>
 
-        <div
-          style={{
-            marginTop: 20,
-            display: "flex",
-            gap: 10,
-            flexWrap: "wrap",
-          }}
-        >
-          <button
-            onClick={() => setThemeMode("dark")}
-            style={themeChipStyle(themeMode === "dark")}
-          >
-            Dark
-          </button>
-          <button
-            onClick={() => setThemeMode("light")}
-            style={themeChipStyle(themeMode === "light")}
-          >
-            Light
-          </button>
-          <button
-            onClick={() => setThemeMode("system")}
-            style={themeChipStyle(themeMode === "system")}
-          >
-            System
-          </button>
-        </div>
-
-        <div
-          style={{
-            marginTop: 18,
-            display: "flex",
-            gap: 12,
-            flexWrap: "wrap",
-            alignItems: "center",
-          }}
-        >
-          <Link href={loginHref} style={linkBtnStyle(true)}>
-            Already have an account? Sign in
-          </Link>
-          <Link href="/welcome" style={linkBtnStyle(false)}>
-            Open Welcome Page
-          </Link>
-        </div>
-
-        <div
-          style={{
-            marginTop: 18,
-            padding: "14px 16px",
-            borderRadius: 16,
-            color: "var(--text-soft)",
-            fontSize: 15,
-            lineHeight: 1.6,
-            ...noticeStyle(checkingSession && !hasSession ? "default" : notice.tone),
-          }}
-        >
-          {checkingSession && !hasSession
-            ? "Checking secure access state..."
-            : notice.text}
-        </div>
-
-        {hasSession ? (
-          <div style={{ marginTop: 22 }}>
-            <WorkspaceSectionCard
-              title="Session already active"
-              subtitle="This browser already has an authenticated session."
-            >
-              <WorkspaceActionBar
-                items={[
-                  {
-                    label: "Continue to Dashboard",
-                    onClick: () => router.replace("/dashboard"),
-                    tone: "primary",
-                    disabled: busy,
-                  },
-                  {
-                    label: "Continue to Welcome",
-                    onClick: () => router.replace("/welcome"),
-                    tone: "secondary",
-                    disabled: busy,
-                  },
-                ]}
-              />
-            </WorkspaceSectionCard>
-          </div>
-        ) : (
-          <div
-            style={{
-              marginTop: 22,
-              display: "grid",
-              gap: 18,
-              gridTemplateColumns: "minmax(0,1.15fr) minmax(280px,0.85fr)",
-            }}
-          >
-            <WorkspaceSectionCard
-              title="Sign Up"
-              subtitle="Use your email address, optional referral code, and one-time code to create or initialize account access."
-            >
-              <WorkspaceField label="Email Address" htmlFor="signup-email">
-                <input
-                  id="signup-email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Email address"
-                  style={workspaceInputStyle()}
-                  autoComplete="email"
-                />
-              </WorkspaceField>
-
-              <WorkspaceField label="Referral Code (Optional)" htmlFor="signup-referral">
-                <input
-                  id="signup-referral"
-                  value={referralCode}
-                  onChange={(e) => setReferralCode(normalizeReferralCode(e.target.value))}
-                  placeholder="Referral code"
-                  style={workspaceInputStyle()}
-                  autoComplete="off"
-                />
-              </WorkspaceField>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div
+                    style={{
+                      fontSize: "clamp(1.9rem, 4vw, 2.7rem)",
+                      fontWeight: 950,
+                      letterSpacing: -0.8,
+                      color: "var(--text)",
+                      lineHeight: 1.05,
+                    }}
+                  >
+                    Create Account
+                  </div>
+                  <div
+                    style={{
+                      marginTop: 8,
+                      color: "var(--gold)",
+                      fontSize: 14,
+                      fontWeight: 800,
+                      letterSpacing: 0.2,
+                    }}
+                  >
+                    Naija Tax Guide Sign Up
+                  </div>
+                  <div
+                    style={{
+                      marginTop: 10,
+                      color: "var(--text-muted)",
+                      lineHeight: 1.65,
+                      fontSize: 15,
+                      maxWidth: 640,
+                    }}
+                  >
+                    {headerText}
+                  </div>
+                </div>
+              </div>
 
               <div
                 style={{
-                  marginTop: 8,
-                  color: "var(--text-faint)",
-                  fontSize: 13,
-                  lineHeight: 1.6,
+                  display: "grid",
+                  gap: 12,
+                  alignContent: "start",
+                  justifyItems: "start",
                 }}
               >
-                If you opened a referral link, the code is applied automatically. You can also paste a code manually before verification.
-              </div>
-
-              <WorkspaceActionBar
-                items={[
-                  {
-                    label: busy ? "Sending..." : "Send OTP",
-                    onClick: () => {
-                      void sendOtp();
-                    },
-                    tone: "secondary",
-                    disabled: busy || checkingSession || !email.trim(),
-                  },
-                  {
-                    label: "Clear Referral",
-                    onClick: clearReferral,
-                    tone: "secondary",
-                    disabled: busy || !referralCode,
-                  },
-                ]}
-              />
-
-              <WorkspaceField label="OTP Code" htmlFor="signup-otp">
-                <input
-                  id="signup-otp"
-                  ref={otpInputRef}
-                  value={otp}
-                  onChange={(e) => setOtp(e.target.value)}
-                  placeholder="OTP code"
-                  style={workspaceInputStyle()}
-                  autoComplete="one-time-code"
-                />
-              </WorkspaceField>
-
-              <WorkspaceActionBar
-                items={[
-                  {
-                    label: busy ? "Verifying..." : "Verify OTP",
-                    onClick: () => {
-                      void verifyOtp();
-                    },
-                    tone: "primary",
-                    disabled: busy || checkingSession || !email.trim() || !otp.trim(),
-                  },
-                ]}
-              />
-            </WorkspaceSectionCard>
-
-            <div style={{ display: "grid", gap: 14 }}>
-              <div style={sectionCardStyle()}>
-                <div style={sectionTitleStyle()}>Already registered?</div>
-                <div style={sectionTextStyle()}>
-                  Go to the separate sign-in page if you already have an account and only need workspace access.
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 10,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <button onClick={() => setThemeMode("dark")} style={themeChipStyle(themeMode === "dark")}>
+                    Dark
+                  </button>
+                  <button onClick={() => setThemeMode("light")} style={themeChipStyle(themeMode === "light")}>
+                    Light
+                  </button>
+                  <button onClick={() => setThemeMode("system")} style={themeChipStyle(themeMode === "system")}>
+                    System
+                  </button>
                 </div>
-                <div style={{ marginTop: 12 }}>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gap: 10,
+                    width: "100%",
+                    maxWidth: 360,
+                    gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+                  }}
+                >
                   <Link href={loginHref} style={linkBtnStyle(true)}>
-                    Open Sign In
+                    Already have an account? Sign in
                   </Link>
-                </div>
-              </div>
-
-              <div style={sectionCardStyle()}>
-                <div style={sectionTitleStyle()}>Referral support</div>
-                <div style={sectionTextStyle()}>
-                  Sign-up is the only page that should apply a referral code to a new account.
-                </div>
-              </div>
-
-              <div style={sectionCardStyle()}>
-                <div style={sectionTitleStyle()}>Secure access method</div>
-                <div style={sectionTextStyle()}>
-                  Account access is initialized through email OTP verification using your current backend flow.
-                </div>
-              </div>
-
-              <div style={sectionCardStyle()}>
-                <div style={sectionTitleStyle()}>Need help?</div>
-                <div style={sectionTextStyle()}>
-                  If sign-up fails after a valid attempt, use Support and try again after a short wait.
-                </div>
-                <div style={{ marginTop: 12 }}>
-                  <Link href="/support" style={linkBtnStyle(false)}>
-                    Open Support
+                  <Link href="/welcome" style={linkBtnStyle(false)}>
+                    Open Welcome Page
                   </Link>
                 </div>
               </div>
             </div>
+
+            <div
+              style={{
+                padding: "14px 16px",
+                borderRadius: 16,
+                color: "var(--text-soft)",
+                fontSize: 15,
+                lineHeight: 1.6,
+                ...noticeStyle(checkingText ? "default" : notice.tone),
+              }}
+            >
+              {checkingText ? "Checking secure access state..." : notice.text}
+            </div>
+
+            {hasSession ? (
+              <div style={{ display: "grid", gap: 14 }}>
+                <WorkspaceSectionCard
+                  title="Session already active"
+                  subtitle="This browser already has an authenticated session."
+                >
+                  <WorkspaceActionBar
+                    items={[
+                      {
+                        label: "Continue to Dashboard",
+                        onClick: () => router.replace("/dashboard"),
+                        tone: "primary",
+                        disabled: busy,
+                      },
+                      {
+                        label: "Continue to Welcome",
+                        onClick: () => router.replace("/welcome"),
+                        tone: "secondary",
+                        disabled: busy,
+                      },
+                    ]}
+                  />
+                </WorkspaceSectionCard>
+              </div>
+            ) : (
+              <div
+                style={{
+                  display: "grid",
+                  gap: 18,
+                  gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+                  alignItems: "start",
+                }}
+              >
+                <WorkspaceSectionCard
+                  title="Sign Up"
+                  subtitle="Use your email address, optional referral code, and one-time code to create or initialize account access."
+                >
+                  <WorkspaceField label="Email Address" htmlFor="signup-email">
+                    <input
+                      id="signup-email"
+                      value={email}
+                      onChange={(event) => setEmail(event.target.value)}
+                      placeholder="Email address"
+                      style={authInput()}
+                      autoComplete="email"
+                    />
+                  </WorkspaceField>
+
+                  <WorkspaceField label="Referral Code (Optional)" htmlFor="signup-referral">
+                    <input
+                      id="signup-referral"
+                      value={referralCode}
+                      onChange={(event) =>
+                        setReferralCode(normalizeReferralCode(event.target.value))
+                      }
+                      placeholder="Referral code"
+                      style={authInput()}
+                      autoComplete="off"
+                    />
+                  </WorkspaceField>
+
+                  <div
+                    style={{
+                      color: "var(--text-faint)",
+                      fontSize: 13,
+                      lineHeight: 1.6,
+                      marginTop: -2,
+                    }}
+                  >
+                    If you opened a referral link, the code is applied automatically. You can also paste a code manually before verification.
+                  </div>
+
+                  <WorkspaceActionBar
+                    items={[
+                      {
+                        label: busy ? "Sending..." : "Send OTP",
+                        onClick: () => {
+                          void sendOtp();
+                        },
+                        tone: "secondary",
+                        disabled: busy || checkingSession || !email.trim(),
+                      },
+                      {
+                        label: "Clear Referral",
+                        onClick: clearReferral,
+                        tone: "secondary",
+                        disabled: busy || !referralCode,
+                      },
+                    ]}
+                  />
+
+                  <WorkspaceField label="OTP Code" htmlFor="signup-otp">
+                    <input
+                      id="signup-otp"
+                      ref={otpInputRef}
+                      value={otp}
+                      onChange={(event) => setOtp(event.target.value)}
+                      placeholder="OTP code"
+                      style={authInput()}
+                      autoComplete="one-time-code"
+                      inputMode="numeric"
+                    />
+                  </WorkspaceField>
+
+                  <WorkspaceActionBar
+                    items={[
+                      {
+                        label: busy ? "Verifying..." : "Verify OTP",
+                        onClick: () => {
+                          void verifyOtp();
+                        },
+                        tone: "primary",
+                        disabled: busy || checkingSession || !email.trim() || !otp.trim(),
+                      },
+                    ]}
+                  />
+                </WorkspaceSectionCard>
+
+                <div style={{ display: "grid", gap: 14 }}>
+                  <div style={infoCardStyle()}>
+                    <div style={infoTitleStyle()}>Already registered?</div>
+                    <div style={infoTextStyle()}>
+                      Go to the separate sign-in page if you already have an account and only need workspace access.
+                    </div>
+                    <Link href={loginHref} style={{ ...linkBtnStyle(true), marginTop: 4 }}>
+                      Open Sign In
+                    </Link>
+                  </div>
+
+                  <div style={infoCardStyle()}>
+                    <div style={infoTitleStyle()}>Referral support</div>
+                    <div style={infoTextStyle()}>
+                      Sign-up is the only page that should apply a referral code to a new account.
+                    </div>
+                  </div>
+
+                  <div style={infoCardStyle()}>
+                    <div style={infoTitleStyle()}>Secure access method</div>
+                    <div style={infoTextStyle()}>
+                      Account access is initialized through email OTP verification using your current backend flow.
+                    </div>
+                  </div>
+
+                  <div style={infoCardStyle()}>
+                    <div style={infoTitleStyle()}>Need help?</div>
+                    <div style={infoTextStyle()}>
+                      If sign-up fails after a valid attempt, use Support and try again after a short wait.
+                    </div>
+                    <Link href="/support" style={{ ...linkBtnStyle(false), marginTop: 4 }}>
+                      Open Support
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
-        )}
-      </Panel>
+        </div>
+      </div>
     </div>
   );
 }
@@ -836,8 +851,8 @@ function SignupPageFallback() {
         display: "grid",
         placeItems: "center",
         padding: 24,
-        background: "var(--app-bg)",
-        color: "var(--text)",
+        background: "#050816",
+        color: "white",
       }}
     >
       <div
