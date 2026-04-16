@@ -121,6 +121,8 @@ function channelCardStyle(): React.CSSProperties {
     padding: 22,
     display: "grid",
     gap: 16,
+    minWidth: 0,
+    width: "100%",
   };
 }
 
@@ -130,6 +132,7 @@ function itemStyle(): React.CSSProperties {
     gap: 4,
     padding: "0 0 12px 0",
     borderBottom: "1px solid var(--border)",
+    minWidth: 0,
   };
 }
 
@@ -146,14 +149,20 @@ function itemValueStyle(): React.CSSProperties {
     fontSize: 16,
     fontWeight: 800,
     color: "var(--text)",
+    minWidth: 0,
+    overflowWrap: "anywhere",
+    wordBreak: "break-word",
+    lineHeight: 1.45,
   };
 }
 
 function summaryGridStyle(): React.CSSProperties {
   return {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 180px), 1fr))",
     gap: 16,
+    width: "100%",
+    minWidth: 0,
   };
 }
 
@@ -166,6 +175,7 @@ function summaryCardStyle(): React.CSSProperties {
     boxShadow: "0 8px 24px rgba(15, 23, 42, 0.04)",
     display: "grid",
     gap: 8,
+    minWidth: 0,
   };
 }
 
@@ -184,6 +194,9 @@ function summaryValueStyle(): React.CSSProperties {
     fontWeight: 900,
     color: "var(--text)",
     lineHeight: 1.2,
+    minWidth: 0,
+    overflowWrap: "anywhere",
+    wordBreak: "break-word",
   };
 }
 
@@ -192,6 +205,20 @@ function summarySubStyle(): React.CSSProperties {
     fontSize: 13,
     color: "var(--text-muted)",
     lineHeight: 1.6,
+    minWidth: 0,
+    overflowWrap: "anywhere",
+    wordBreak: "break-word",
+  };
+}
+
+function actionGridStyle(min = 180): React.CSSProperties {
+  return {
+    display: "grid",
+    gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, ${min}px), 1fr))`,
+    gap: 12,
+    width: "100%",
+    minWidth: 0,
+    alignItems: "stretch",
   };
 }
 
@@ -215,16 +242,26 @@ function buttonStyleWithDisabledState(
   baseStyle: React.CSSProperties,
   disabled: boolean
 ): React.CSSProperties {
+  const normalizedBase: React.CSSProperties = {
+    ...baseStyle,
+    width: "100%",
+    minWidth: 0,
+    justifyContent: "center",
+    textAlign: "center",
+    whiteSpace: "normal",
+    lineHeight: 1.35,
+  };
+
   if (!disabled) {
     return {
-      ...baseStyle,
+      ...normalizedBase,
       cursor: "pointer",
       opacity: 1,
     };
   }
 
   return {
-    ...baseStyle,
+    ...normalizedBase,
     cursor: "not-allowed",
     opacity: 1,
     background: "#e5e7eb",
@@ -387,17 +424,35 @@ function LinkCodePanel({
 
   return (
     <div style={channelCardStyle()}>
-      <div style={{ display: "grid", gap: 6 }}>
+      <div style={{ display: "grid", gap: 6, minWidth: 0 }}>
         <div style={{ fontSize: 14, color: "var(--text-muted)", fontWeight: 700 }}>
           {title}
         </div>
-        <div style={{ fontSize: 26, fontWeight: 900, color: "var(--text)" }}>
+        <div
+          style={{
+            fontSize: 26,
+            fontWeight: 900,
+            color: "var(--text)",
+            lineHeight: 1.2,
+            overflowWrap: "anywhere",
+          }}
+        >
           Live link setup
         </div>
-        <div style={{ color: "var(--text-muted)", lineHeight: 1.7 }}>{description}</div>
+        <div
+          style={{
+            color: "var(--text-muted)",
+            lineHeight: 1.7,
+            minWidth: 0,
+            overflowWrap: "anywhere",
+            wordBreak: "break-word",
+          }}
+        >
+          {description}
+        </div>
       </div>
 
-      <div style={{ display: "grid", gap: 10 }}>
+      <div style={{ display: "grid", gap: 10, minWidth: 0 }}>
         <div style={itemStyle()}>
           <div style={itemLabelStyle()}>Current Link Code</div>
           <div
@@ -405,17 +460,34 @@ function LinkCodePanel({
               ...itemValueStyle(),
               fontSize: 28,
               letterSpacing: 3,
-              wordBreak: "break-word",
               opacity: locked ? 0.6 : 1,
             }}
           >
             {state.code || "--------"}
           </div>
-          <div style={{ color: "var(--text-muted)", lineHeight: 1.7, fontSize: 14 }}>
+          <div
+            style={{
+              color: "var(--text-muted)",
+              lineHeight: 1.7,
+              fontSize: 14,
+              minWidth: 0,
+              overflowWrap: "anywhere",
+              wordBreak: "break-word",
+            }}
+          >
             {state.code ? formatMinutesLabel(state.expiresInMinutes) : "No code generated yet."}
           </div>
           {sendInstruction ? (
-            <div style={{ color: "var(--text)", lineHeight: 1.7, fontSize: 14 }}>
+            <div
+              style={{
+                color: "var(--text)",
+                lineHeight: 1.7,
+                fontSize: 14,
+                minWidth: 0,
+                overflowWrap: "anywhere",
+                wordBreak: "break-word",
+              }}
+            >
               {sendInstruction}
             </div>
           ) : null}
@@ -439,13 +511,16 @@ function LinkCodePanel({
             color: "#9a3412",
             fontSize: 14,
             lineHeight: 1.6,
+            minWidth: 0,
+            overflowWrap: "anywhere",
+            wordBreak: "break-word",
           }}
         >
           {lockedMessage}
         </div>
       ) : null}
 
-      <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+      <div style={actionGridStyle(170)}>
         <button
           onClick={handleGenerate}
           disabled={!canGenerate}
@@ -488,6 +563,9 @@ function LinkCodePanel({
             color: "var(--text)",
             fontSize: 14,
             lineHeight: 1.6,
+            minWidth: 0,
+            overflowWrap: "anywhere",
+            wordBreak: "break-word",
           }}
         >
           {state.success}
@@ -504,6 +582,9 @@ function LinkCodePanel({
             color: "var(--text)",
             fontSize: 14,
             lineHeight: 1.6,
+            minWidth: 0,
+            overflowWrap: "anywhere",
+            wordBreak: "break-word",
           }}
         >
           {state.error}
@@ -561,7 +642,7 @@ function UnlinkButton({
   }
 
   return (
-    <div style={{ display: "grid", gap: 8 }}>
+    <div style={{ display: "grid", gap: 8, minWidth: 0 }}>
       <button
         onClick={handleUnlink}
         disabled={busy}
@@ -570,7 +651,19 @@ function UnlinkButton({
       >
         {busy ? `Unlinking ${title}...` : `Unlink ${title}`}
       </button>
-      {msg ? <div style={{ color: "var(--text-muted)", fontSize: 13 }}>{msg}</div> : null}
+      {msg ? (
+        <div
+          style={{
+            color: "var(--text-muted)",
+            fontSize: 13,
+            minWidth: 0,
+            overflowWrap: "anywhere",
+            wordBreak: "break-word",
+          }}
+        >
+          {msg}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -816,22 +909,40 @@ export default function ChannelsPage() {
               border: "1px solid #fed7aa",
               background: "linear-gradient(180deg, #fff7ed 0%, #fffbeb 100%)",
               padding: 20,
-              display: "flex",
-              flexWrap: "wrap",
-              justifyContent: "space-between",
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 240px), 1fr))",
               gap: 16,
+              alignItems: "center",
+              minWidth: 0,
             }}
           >
-            <div style={{ maxWidth: 820 }}>
-              <div style={{ fontSize: 16, fontWeight: 900, color: "#9a3412" }}>
+            <div style={{ minWidth: 0 }}>
+              <div
+                style={{
+                  fontSize: 16,
+                  fontWeight: 900,
+                  color: "#9a3412",
+                  overflowWrap: "anywhere",
+                  wordBreak: "break-word",
+                }}
+              >
                 {actionLimitBanner.title}
               </div>
-              <div style={{ marginTop: 8, color: "#9a3412", lineHeight: 1.7 }}>
+              <div
+                style={{
+                  marginTop: 8,
+                  color: "#9a3412",
+                  lineHeight: 1.7,
+                  minWidth: 0,
+                  overflowWrap: "anywhere",
+                  wordBreak: "break-word",
+                }}
+              >
                 {actionLimitBanner.subtitle}
               </div>
             </div>
 
-            <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+            <div style={actionGridStyle(170)}>
               <a
                 href="/plans"
                 style={{
@@ -847,12 +958,16 @@ export default function ChannelsPage() {
                   alignItems: "center",
                   justifyContent: "center",
                   boxShadow: "0 10px 22px rgba(234, 88, 12, 0.20)",
+                  width: "100%",
+                  minWidth: 0,
+                  textAlign: "center",
+                  lineHeight: 1.35,
                 }}
               >
                 Upgrade to add more channels
               </a>
 
-              <a href="/billing" style={shellButtonSecondary()}>
+              <a href="/billing" style={buttonStyleWithDisabledState(shellButtonSecondary(), false)}>
                 Go to Billing
               </a>
             </div>
@@ -905,16 +1020,32 @@ export default function ChannelsPage() {
           />
         ) : null}
 
-        <CardsGrid min={320}>
+        <CardsGrid min={260}>
           <div style={channelCardStyle()}>
-            <div style={{ display: "grid", gap: 6 }}>
+            <div style={{ display: "grid", gap: 6, minWidth: 0 }}>
               <div style={{ fontSize: 14, color: "var(--text-muted)", fontWeight: 700 }}>
                 WhatsApp
               </div>
-              <div style={{ fontSize: 26, fontWeight: 900, color: "var(--text)" }}>
+              <div
+                style={{
+                  fontSize: 26,
+                  fontWeight: 900,
+                  color: "var(--text)",
+                  lineHeight: 1.2,
+                  overflowWrap: "anywhere",
+                }}
+              >
                 {statusLabel(whatsappLinked, whatsappVerified)}
               </div>
-              <div style={{ color: "var(--text-muted)", lineHeight: 1.7 }}>
+              <div
+                style={{
+                  color: "var(--text-muted)",
+                  lineHeight: 1.7,
+                  minWidth: 0,
+                  overflowWrap: "anywhere",
+                  wordBreak: "break-word",
+                }}
+              >
                 {whatsappLinked
                   ? "This channel is visible in your workspace."
                   : "This channel is not yet linked to your workspace."}
@@ -936,7 +1067,7 @@ export default function ChannelsPage() {
               <div style={itemValueStyle()}>{whatsappValue}</div>
             </div>
 
-            <div style={{ display: "grid", gap: 4 }}>
+            <div style={{ display: "grid", gap: 4, minWidth: 0 }}>
               <div style={itemLabelStyle()}>Last Updated</div>
               <div style={itemValueStyle()}>
                 {whatsappUpdatedAt ? formatDate(whatsappUpdatedAt) : "Not shown"}
@@ -959,6 +1090,9 @@ export default function ChannelsPage() {
                   color: "var(--text-muted)",
                   fontSize: 14,
                   lineHeight: 1.6,
+                  minWidth: 0,
+                  overflowWrap: "anywhere",
+                  wordBreak: "break-word",
                 }}
               >
                 No unlink action is needed because WhatsApp is not currently connected.
@@ -967,14 +1101,30 @@ export default function ChannelsPage() {
           </div>
 
           <div style={channelCardStyle()}>
-            <div style={{ display: "grid", gap: 6 }}>
+            <div style={{ display: "grid", gap: 6, minWidth: 0 }}>
               <div style={{ fontSize: 14, color: "var(--text-muted)", fontWeight: 700 }}>
                 Telegram
               </div>
-              <div style={{ fontSize: 26, fontWeight: 900, color: "var(--text)" }}>
+              <div
+                style={{
+                  fontSize: 26,
+                  fontWeight: 900,
+                  color: "var(--text)",
+                  lineHeight: 1.2,
+                  overflowWrap: "anywhere",
+                }}
+              >
                 {statusLabel(telegramLinked, telegramVerified)}
               </div>
-              <div style={{ color: "var(--text-muted)", lineHeight: 1.7 }}>
+              <div
+                style={{
+                  color: "var(--text-muted)",
+                  lineHeight: 1.7,
+                  minWidth: 0,
+                  overflowWrap: "anywhere",
+                  wordBreak: "break-word",
+                }}
+              >
                 {telegramLinked
                   ? "This channel is visible in your workspace."
                   : "This channel is not yet linked to your workspace."}
@@ -996,7 +1146,7 @@ export default function ChannelsPage() {
               <div style={itemValueStyle()}>{telegramValue}</div>
             </div>
 
-            <div style={{ display: "grid", gap: 4 }}>
+            <div style={{ display: "grid", gap: 4, minWidth: 0 }}>
               <div style={itemLabelStyle()}>Last Updated</div>
               <div style={itemValueStyle()}>
                 {telegramUpdatedAt ? formatDate(telegramUpdatedAt) : "Not shown"}
@@ -1019,6 +1169,9 @@ export default function ChannelsPage() {
                   color: "var(--text-muted)",
                   fontSize: 14,
                   lineHeight: 1.6,
+                  minWidth: 0,
+                  overflowWrap: "anywhere",
+                  wordBreak: "break-word",
                 }}
               >
                 No unlink action is needed because Telegram is not currently connected.
@@ -1027,7 +1180,7 @@ export default function ChannelsPage() {
           </div>
         </CardsGrid>
 
-        <CardsGrid min={360}>
+        <CardsGrid min={280}>
           <LinkCodePanel
             provider="wa"
             title="WhatsApp"
@@ -1064,10 +1217,16 @@ export default function ChannelsPage() {
               color: "var(--text-muted)",
               fontSize: 14,
               lineHeight: 1.8,
+              minWidth: 0,
             }}
           >
             {howItWorksSteps.map((step) => (
-              <div key={step}>{step}</div>
+              <div
+                key={step}
+                style={{ minWidth: 0, overflowWrap: "anywhere", wordBreak: "break-word" }}
+              >
+                {step}
+              </div>
             ))}
           </div>
         </WorkspaceSectionCard>
