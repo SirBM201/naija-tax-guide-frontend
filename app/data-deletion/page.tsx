@@ -13,10 +13,13 @@ import { SectionStack } from "@/components/page-layout";
 function sectionBodyStyle(): React.CSSProperties {
   return {
     display: "grid",
-    gap: 18,
+    gap: 16,
     color: "var(--text)",
-    fontSize: 16,
-    lineHeight: 1.9,
+    fontSize: "clamp(14px, 2.8vw, 16px)",
+    lineHeight: 1.85,
+    minWidth: 0,
+    wordBreak: "break-word",
+    overflowWrap: "anywhere",
   };
 }
 
@@ -24,20 +27,25 @@ function paragraphStyle(): React.CSSProperties {
   return {
     margin: 0,
     color: "var(--text)",
-    lineHeight: 1.9,
-    fontSize: 16,
+    lineHeight: 1.85,
+    fontSize: "clamp(14px, 2.8vw, 16px)",
+    minWidth: 0,
+    wordBreak: "break-word",
+    overflowWrap: "anywhere",
   };
 }
 
 function bulletListStyle(): React.CSSProperties {
   return {
     margin: 0,
-    paddingLeft: 22,
+    paddingLeft: 18,
     display: "grid",
-    gap: 12,
+    gap: 10,
     color: "var(--text)",
-    lineHeight: 1.8,
-    fontSize: 16,
+    lineHeight: 1.75,
+    fontSize: "clamp(14px, 2.8vw, 16px)",
+    minWidth: 0,
+    overflowWrap: "anywhere",
   };
 }
 
@@ -46,19 +54,23 @@ function mutedNoteStyle(): React.CSSProperties {
     border: "1px solid var(--border)",
     borderRadius: 18,
     background: "var(--surface)",
-    padding: 18,
+    padding: "clamp(14px, 3vw, 18px)",
     color: "var(--text-muted)",
-    lineHeight: 1.8,
-    fontSize: 15,
+    lineHeight: 1.75,
+    fontSize: "clamp(13px, 2.6vw, 15px)",
+    minWidth: 0,
+    wordBreak: "break-word",
+    overflowWrap: "anywhere",
   };
 }
 
 function miniHeadingStyle(): React.CSSProperties {
   return {
-    fontSize: 18,
+    fontSize: "clamp(16px, 3.2vw, 18px)",
     fontWeight: 900,
     color: "var(--text)",
     margin: 0,
+    wordBreak: "break-word",
   };
 }
 
@@ -119,12 +131,15 @@ export default function DataDeletionPage() {
               <strong>“Data Deletion Request”</strong>.
             </p>
 
-            <div>
+            <div style={{ display: "grid", gap: 10, minWidth: 0 }}>
               <h3 style={miniHeadingStyle()}>Include where available</h3>
               <ul style={bulletListStyle()}>
                 <li>Your linked phone number or email address.</li>
                 <li>Your account ID, if available.</li>
-                <li>Any detail that helps identify the correct workspace without exposing unnecessary sensitive information.</li>
+                <li>
+                  Any detail that helps identify the correct workspace without
+                  exposing unnecessary sensitive information.
+                </li>
               </ul>
             </div>
           </div>
