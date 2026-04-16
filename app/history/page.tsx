@@ -1,13 +1,13 @@
-"use client";
+'use client';
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import { useAuth } from "@/lib/auth";
-import { apiJson, isApiError } from "@/lib/api";
-import { CONFIG } from "@/lib/config";
-import AppShell from "@/components/app-shell";
-import WorkspaceActionBar from "@/components/workspace-action-bar";
-import WorkspaceSectionCard from "@/components/workspace-section-card";
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/lib/auth';
+import { apiJson, isApiError } from '@/lib/api';
+import { CONFIG } from '@/lib/config';
+import AppShell from '@/components/app-shell';
+import WorkspaceActionBar from '@/components/workspace-action-bar';
+import WorkspaceSectionCard from '@/components/workspace-section-card';
 import {
   Banner,
   MetricCard,
@@ -15,18 +15,11 @@ import {
   appInputStyle,
   appSelectStyle,
   formatDate,
-} from "@/components/ui";
-import {
-  CardsGrid,
-  SectionStack,
-  TwoColumnSection,
-} from "@/components/page-layout";
-import WorkspaceOverviewMetrics from "@/components/workspace-overview-metrics";
-import { useWorkspaceState } from "@/hooks/useWorkspaceState";
-import {
-  getHistoryItems,
-  type HistoryItem as LocalHistoryItem,
-} from "@/lib/history-storage";
+} from '@/components/ui';
+import { CardsGrid, SectionStack, TwoColumnSection } from '@/components/page-layout';
+import WorkspaceOverviewMetrics from '@/components/workspace-overview-metrics';
+import { useWorkspaceState } from '@/hooks/useWorkspaceState';
+import { getHistoryItems, type HistoryItem as LocalHistoryItem } from '@/lib/history-storage';
 
 type BackendHistoryItem = {
   id?: string;
@@ -104,7 +97,7 @@ type HistoryHealthResponse = {
   root_cause?: string;
 };
 
-type NoticeTone = "good" | "warn" | "danger" | "default";
+type NoticeTone = 'good' | 'warn' | 'danger' | 'default';
 
 type HistoryNotice = {
   title: string;
@@ -118,13 +111,13 @@ type PageAlert = {
   tone: NoticeTone;
 };
 
-type HistoryMode = "backend" | "local";
+type HistoryMode = 'backend' | 'local';
 
 function buildAuthHeaders(): Record<string, string> {
   const headers: Record<string, string> = {};
 
-  if (typeof window !== "undefined") {
-    const token = (window.localStorage.getItem("nt_access_token") || "").trim();
+  if (typeof window !== 'undefined') {
+    const token = (window.localStorage.getItem('nt_access_token') || '').trim();
     if (token) {
       headers.Authorization = `Bearer ${token}`;
     }
@@ -134,13 +127,13 @@ function buildAuthHeaders(): Record<string, string> {
 }
 
 function apiRoot(): string {
-  return String(CONFIG.apiBase || "").trim().replace(/\/+$/, "");
+  return String(CONFIG.apiBase || '').trim().replace(/\/+$/, '');
 }
 
 async function fetchHistoryHealth(): Promise<HistoryHealthResponse> {
   try {
-    return await apiJson<HistoryHealthResponse>("/history/health", {
-      method: "GET",
+    return await apiJson<HistoryHealthResponse>('/history/health', {
+      method: 'GET',
       timeoutMs: 15000,
       useAuthToken: false,
     });
@@ -148,18 +141,18 @@ async function fetchHistoryHealth(): Promise<HistoryHealthResponse> {
     if (isApiError(err)) {
       return {
         ok: false,
-        error: String(err.data?.error || "history_health_failed"),
+        error: String(err.data?.error || 'history_health_failed'),
         message:
-          String(err.data?.message || err.data?.root_cause || err.message || "").trim() ||
-          "History health check failed.",
-        root_cause: String(err.data?.root_cause || "").trim() || undefined,
+          String(err.data?.message || err.data?.root_cause || err.message || '').trim() ||
+          'History health check failed.',
+        root_cause: String(err.data?.root_cause || '').trim() || undefined,
       };
     }
 
     return {
       ok: false,
-      error: "history_health_failed",
-      message: err instanceof Error ? err.message : "History health check failed.",
+      error: 'history_health_failed',
+      message: err instanceof Error ? err.message : 'History health check failed.',
     };
   }
 }
@@ -178,22 +171,22 @@ async function fetchHistoryItems(params: {
   q?: string;
   limit?: number;
 }): Promise<HistoryApiResponse> {
-  if (!String(params.accountId || "").trim()) {
+  if (!String(params.accountId || '').trim()) {
     return {
       ok: false,
-      error: "missing_account_id",
-      message: "No account ID is available yet for backend history lookup.",
+      error: 'missing_account_id',
+      message: 'No account ID is available yet for backend history lookup.',
     };
   }
 
   try {
-    return await apiJson<HistoryApiResponse>("/history/items", {
-      method: "GET",
+    return await apiJson<HistoryApiResponse>('/history/items', {
+      method: 'GET',
       timeoutMs: 20000,
       useAuthToken: false,
       query: {
         account_id: params.accountId,
-        source: params.source && params.source !== "all" ? params.source : undefined,
+        source: params.source && params.source !== 'all' ? params.source : undefined,
         q: params.q?.trim() || undefined,
         limit: params.limit || 50,
       },
@@ -202,18 +195,18 @@ async function fetchHistoryItems(params: {
     if (isApiError(err)) {
       return {
         ok: false,
-        error: String(err.data?.error || "history_fetch_failed"),
+        error: String(err.data?.error || 'history_fetch_failed'),
         message:
-          String(err.data?.message || err.data?.root_cause || err.message || "").trim() ||
-          "History fetch failed.",
-        root_cause: String(err.data?.root_cause || "").trim() || undefined,
+          String(err.data?.message || err.data?.root_cause || err.message || '').trim() ||
+          'History fetch failed.',
+        root_cause: String(err.data?.root_cause || '').trim() || undefined,
       };
     }
 
     return {
       ok: false,
-      error: "history_fetch_failed",
-      message: err instanceof Error ? err.message : "History fetch failed.",
+      error: 'history_fetch_failed',
+      message: err instanceof Error ? err.message : 'History fetch failed.',
     };
   }
 }
@@ -233,9 +226,9 @@ async function deleteBackendHistoryItem(id: string, accountId: string): Promise<
   for (const candidate of candidates) {
     try {
       const res = await fetch(candidate, {
-        method: "DELETE",
+        method: 'DELETE',
         headers,
-        credentials: "include",
+        credentials: 'include',
       });
 
       if (res.ok) return true;
@@ -261,9 +254,9 @@ async function clearBackendHistory(accountId: string): Promise<boolean> {
   for (const candidate of candidates) {
     try {
       const res = await fetch(candidate, {
-        method: "DELETE",
+        method: 'DELETE',
         headers,
-        credentials: "include",
+        credentials: 'include',
       });
 
       if (res.ok) return true;
@@ -276,61 +269,61 @@ async function clearBackendHistory(accountId: string): Promise<boolean> {
 }
 
 function truncateText(value: string, max = 180) {
-  const text = String(value || "").trim();
+  const text = String(value || '').trim();
   if (text.length <= max) return text;
   return `${text.slice(0, max)}...`;
 }
 
 function sourceLabel(source?: string) {
-  const v = String(source || "").toLowerCase();
-  if (v === "web") return "Web";
-  if (v === "whatsapp") return "WhatsApp";
-  if (v === "telegram") return "Telegram";
-  if (v === "cache") return "Cache";
-  if (v === "ai") return "AI";
-  return "Unknown";
+  const v = String(source || '').toLowerCase();
+  if (v === 'web') return 'Web';
+  if (v === 'whatsapp') return 'WhatsApp';
+  if (v === 'telegram') return 'Telegram';
+  if (v === 'cache') return 'Cache';
+  if (v === 'ai') return 'AI';
+  return 'Unknown';
 }
 
 function languageLabel(language?: string) {
-  const v = String(language || "").trim();
-  if (!v) return "English";
+  const v = String(language || '').trim();
+  if (!v) return 'English';
 
   const lower = v.toLowerCase();
-  if (lower === "en") return "English";
-  if (lower === "pcm") return "Pidgin";
-  if (lower === "yo") return "Yoruba";
-  if (lower === "ig") return "Igbo";
-  if (lower === "ha") return "Hausa";
+  if (lower === 'en') return 'English';
+  if (lower === 'pcm') return 'Pidgin';
+  if (lower === 'yo') return 'Yoruba';
+  if (lower === 'ig') return 'Igbo';
+  if (lower === 'ha') return 'Hausa';
 
   return v;
 }
 
-function toneFromHistoryCount(count: number): "good" | "warn" | "default" {
-  if (count >= 5) return "good";
-  if (count >= 1) return "warn";
-  return "default";
+function toneFromHistoryCount(count: number): 'good' | 'warn' | 'default' {
+  if (count >= 5) return 'good';
+  if (count >= 1) return 'warn';
+  return 'default';
 }
 
 function mapBackendItem(row: BackendHistoryItem, index: number): DisplayHistoryItem {
   return {
-    id: String(row.id || `${row.created_at || "history"}-${index}`),
-    question: String(row.question || "").trim(),
-    answer: String(row.answer || "").trim(),
-    language: languageLabel(String(row.lang || "English")),
-    source: String(row.source || "web"),
-    created_at: String(row.created_at || row.updated_at || ""),
+    id: String(row.id || `${row.created_at || 'history'}-${index}`),
+    question: String(row.question || '').trim(),
+    answer: String(row.answer || '').trim(),
+    language: languageLabel(String(row.lang || 'English')),
+    source: String(row.source || 'web'),
+    created_at: String(row.created_at || row.updated_at || ''),
     from_cache: Boolean(row.from_cache),
   };
 }
 
 function mapLocalItem(row: LocalHistoryItem, index: number): DisplayHistoryItem {
   return {
-    id: String(row.id || `${row.created_at || "local"}-${index}`),
-    question: String(row.question || "").trim(),
-    answer: String(row.answer || "").trim(),
-    language: languageLabel(String(row.language || "English")),
-    source: String(row.source || "web"),
-    created_at: String(row.created_at || ""),
+    id: String(row.id || `${row.created_at || 'local'}-${index}`),
+    question: String(row.question || '').trim(),
+    answer: String(row.answer || '').trim(),
+    language: languageLabel(String(row.language || 'English')),
+    source: String(row.source || 'web'),
+    created_at: String(row.created_at || ''),
   };
 }
 
@@ -345,18 +338,18 @@ function readLocalHistoryItems(): DisplayHistoryItem[] {
 function looksLikeHistoryArray(value: unknown): value is Array<Record<string, unknown>> {
   if (!Array.isArray(value)) return false;
   return value.every((row) => {
-    if (!row || typeof row !== "object") return false;
+    if (!row || typeof row !== 'object') return false;
     const item = row as Record<string, unknown>;
     return (
-      typeof item.question === "string" &&
-      typeof item.answer === "string" &&
-      typeof item.created_at === "string"
+      typeof item.question === 'string' &&
+      typeof item.answer === 'string' &&
+      typeof item.created_at === 'string'
     );
   });
 }
 
 function findHistoryStorageKey(): string | null {
-  if (typeof window === "undefined") return null;
+  if (typeof window === 'undefined') return null;
 
   try {
     for (let i = 0; i < window.localStorage.length; i += 1) {
@@ -383,7 +376,7 @@ function findHistoryStorageKey(): string | null {
 }
 
 function persistLocalHistoryItems(items: DisplayHistoryItem[]): boolean {
-  if (typeof window === "undefined") return false;
+  if (typeof window === 'undefined') return false;
 
   const key = findHistoryStorageKey();
   if (!key) return false;
@@ -406,32 +399,54 @@ function persistLocalHistoryItems(items: DisplayHistoryItem[]): boolean {
 }
 
 function actionButtonStyle(
-  tone: "default" | "primary" | "danger" = "default"
+  tone: 'default' | 'primary' | 'danger' = 'default'
 ): React.CSSProperties {
   const tones: Record<string, React.CSSProperties> = {
     default: {
-      border: "1px solid var(--border-strong)",
-      background: "var(--button-bg)",
-      color: "var(--text)",
+      border: '1px solid var(--border-strong)',
+      background: 'var(--button-bg)',
+      color: 'var(--text)',
     },
     primary: {
-      border: "1px solid var(--brand-border)",
-      background: "var(--button-bg)",
-      color: "var(--text)",
+      border: '1px solid var(--brand-border)',
+      background: 'var(--button-bg)',
+      color: 'var(--text)',
     },
     danger: {
-      border: "1px solid rgba(176, 77, 77, 0.35)",
-      background: "rgba(176, 77, 77, 0.08)",
-      color: "var(--text)",
+      border: '1px solid rgba(176, 77, 77, 0.35)',
+      background: 'rgba(176, 77, 77, 0.08)',
+      color: 'var(--text)',
     },
   };
 
   return {
-    padding: "12px 16px",
+    width: '100%',
+    minHeight: 46,
+    padding: '12px 16px',
     borderRadius: 14,
     fontWeight: 900,
-    cursor: "pointer",
+    cursor: 'pointer',
+    fontSize: 14,
+    lineHeight: 1.3,
+    textAlign: 'center',
     ...tones[tone],
+  };
+}
+
+function sectionLabelStyle(): React.CSSProperties {
+  return {
+    color: 'var(--text)',
+    fontWeight: 800,
+    fontSize: 14,
+  };
+}
+
+function actionGridStyle(minWidth = 180): React.CSSProperties {
+  return {
+    display: 'grid',
+    gridTemplateColumns: `repeat(auto-fit,minmax(${minWidth}px,1fr))`,
+    gap: 10,
+    width: '100%',
   };
 }
 
@@ -456,55 +471,58 @@ function HistoryItemCard({
     <div
       style={{
         borderRadius: 22,
-        border: "1px solid var(--border)",
-        background: "var(--surface)",
+        border: '1px solid var(--border)',
+        background: 'var(--surface)',
         padding: 18,
+        minWidth: 0,
       }}
     >
       <div
         style={{
-          display: "flex",
-          justifyContent: "space-between",
+          display: 'grid',
+          gridTemplateColumns: 'minmax(0,1fr)',
           gap: 12,
-          alignItems: "flex-start",
-          flexWrap: "wrap",
         }}
       >
         <div style={{ minWidth: 0 }}>
           <div
             style={{
-              color: "var(--gold)",
+              color: 'var(--gold)',
               fontWeight: 900,
               fontSize: 12,
-              textTransform: "uppercase",
+              textTransform: 'uppercase',
               letterSpacing: 0.45,
+              lineHeight: 1.5,
+              wordBreak: 'break-word',
             }}
           >
             {sourceLabel(item.source)} • {languageLabel(item.language)}
-            {item.from_cache ? " • Cache-assisted" : ""}
+            {item.from_cache ? ' • Cache-assisted' : ''}
           </div>
 
           <div
             style={{
               marginTop: 10,
-              color: "var(--text)",
+              color: 'var(--text)',
               fontWeight: 900,
-              fontSize: 18,
-              lineHeight: 1.5,
-              wordBreak: "break-word",
+              fontSize: 'clamp(16px, 2.8vw, 18px)',
+              lineHeight: 1.55,
+              wordBreak: 'break-word',
+              overflowWrap: 'anywhere',
             }}
           >
             {expanded
-              ? String(item.question || "Untitled question")
-              : truncateText(String(item.question || "Untitled question"), 140)}
+              ? String(item.question || 'Untitled question')
+              : truncateText(String(item.question || 'Untitled question'), 140)}
           </div>
         </div>
 
         <div
           style={{
-            color: "var(--text-faint)",
+            color: 'var(--text-faint)',
             fontSize: 13,
-            whiteSpace: "nowrap",
+            lineHeight: 1.5,
+            overflowWrap: 'anywhere',
           }}
         >
           {formatDate(item.created_at)}
@@ -515,17 +533,18 @@ function HistoryItemCard({
         style={{
           marginTop: 16,
           borderRadius: 18,
-          border: "1px solid var(--border)",
-          background: "var(--surface-soft)",
+          border: '1px solid var(--border)',
+          background: 'var(--surface-soft)',
           padding: 16,
+          minWidth: 0,
         }}
       >
         <div
           style={{
-            color: "var(--text-faint)",
+            color: 'var(--text-faint)',
             fontSize: 12,
             fontWeight: 800,
-            textTransform: "uppercase",
+            textTransform: 'uppercase',
             letterSpacing: 0.35,
           }}
         >
@@ -534,55 +553,48 @@ function HistoryItemCard({
         <div
           style={{
             marginTop: 10,
-            color: "var(--text-muted)",
+            color: 'var(--text-muted)',
             lineHeight: 1.75,
             fontSize: 14,
-            whiteSpace: "pre-wrap",
-            wordBreak: "break-word",
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word',
+            overflowWrap: 'anywhere',
           }}
         >
           {expanded
-            ? String(item.answer || "No saved answer.")
-            : truncateText(String(item.answer || "No saved answer."), 320)}
+            ? String(item.answer || 'No saved answer.')
+            : truncateText(String(item.answer || 'No saved answer.'), 320)}
         </div>
       </div>
 
       <div
         style={{
           marginTop: 14,
-          display: "flex",
-          justifyContent: "space-between",
-          gap: 12,
-          alignItems: "center",
-          flexWrap: "wrap",
+          display: 'grid',
+          gap: 14,
+          alignItems: 'start',
         }}
       >
         <div
           style={{
-            color: "var(--text-faint)",
+            color: 'var(--text-faint)',
             fontSize: 13,
-            lineHeight: 1.5,
+            lineHeight: 1.6,
           }}
         >
           Saved item available for continuity, follow-up, and user review.
         </div>
 
-        <div
-          style={{
-            display: "flex",
-            gap: 10,
-            flexWrap: "wrap",
-          }}
-        >
-          <button onClick={onToggle} style={actionButtonStyle("default")}>
-            {expanded ? "Show Less" : "Open Full Item"}
+        <div style={actionGridStyle(165)}>
+          <button onClick={onToggle} style={actionButtonStyle('default')}>
+            {expanded ? 'Show Less' : 'Open Full Item'}
           </button>
 
           <button
             onClick={onOpenInAsk}
             disabled={actionBusy}
             style={{
-              ...actionButtonStyle("primary"),
+              ...actionButtonStyle('primary'),
               opacity: actionBusy ? 0.6 : 1,
             }}
           >
@@ -593,7 +605,7 @@ function HistoryItemCard({
             onClick={onCopyQuestion}
             disabled={actionBusy}
             style={{
-              ...actionButtonStyle("default"),
+              ...actionButtonStyle('default'),
               opacity: actionBusy ? 0.6 : 1,
             }}
           >
@@ -604,11 +616,11 @@ function HistoryItemCard({
             onClick={onDelete}
             disabled={actionBusy}
             style={{
-              ...actionButtonStyle("danger"),
+              ...actionButtonStyle('danger'),
               opacity: actionBusy ? 0.6 : 1,
             }}
           >
-            {actionBusy ? "Deleting..." : "Delete Item"}
+            {actionBusy ? 'Deleting...' : 'Delete Item'}
           </button>
         </div>
       </div>
@@ -621,12 +633,12 @@ export default function HistoryPage() {
   const { refreshSession, logout } = useAuth();
 
   const [historyItems, setHistoryItems] = useState<DisplayHistoryItem[]>([]);
-  const [search, setSearch] = useState("");
-  const [sourceFilter, setSourceFilter] = useState("all");
+  const [search, setSearch] = useState('');
+  const [sourceFilter, setSourceFilter] = useState('all');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [historyNotice, setHistoryNotice] = useState<HistoryNotice | null>(null);
-  const [historyMode, setHistoryMode] = useState<HistoryMode>("local");
+  const [historyMode, setHistoryMode] = useState<HistoryMode>('local');
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [clearingAll, setClearingAll] = useState(false);
 
@@ -649,27 +661,20 @@ export default function HistoryPage() {
     includeAccount: true,
     includeBilling: true,
     includeDebug: true,
-    loadingMessage: "Loading history workspace...",
+    loadingMessage: 'Loading history workspace...',
   });
 
-  const fallbackToLocalHistory = useCallback(
-    (notice?: HistoryNotice) => {
-      const localItems = readLocalHistoryItems();
-      setHistoryItems(localItems);
-      setHistoryMode("local");
-      if (notice) {
-        setHistoryNotice(notice);
-      }
-    },
-    []
-  );
+  const fallbackToLocalHistory = useCallback((notice?: HistoryNotice) => {
+    const localItems = readLocalHistoryItems();
+    setHistoryItems(localItems);
+    setHistoryMode('local');
+    if (notice) {
+      setHistoryNotice(notice);
+    }
+  }, []);
 
   const refreshHistoryFromBackend = useCallback(
-    async (
-      nextSearch?: string,
-      nextSource?: string,
-      suppressMissingAccountNotice = false
-    ) => {
+    async (nextSearch?: string, nextSource?: string, suppressMissingAccountNotice = false) => {
       setLoadingHistory(true);
       setHistoryNotice(null);
 
@@ -678,29 +683,28 @@ export default function HistoryPage() {
 
         if (!health.ok || health.backend_history_available !== true) {
           fallbackToLocalHistory({
-            title: "Backend history unavailable",
-            subtitle:
-              String(
-                health.message ||
-                  health.root_cause ||
-                  "Falling back to local history storage because backend history is not yet fully available."
-              ).trim(),
-            tone: "warn",
+            title: 'Backend history unavailable',
+            subtitle: String(
+              health.message ||
+                health.root_cause ||
+                'Falling back to local history storage because backend history is not yet fully available.'
+            ).trim(),
+            tone: 'warn',
           });
           return;
         }
 
-        const effectiveAccountId = String(accountId || "").trim();
+        const effectiveAccountId = String(accountId || '').trim();
 
         if (!effectiveAccountId) {
           fallbackToLocalHistory(
             suppressMissingAccountNotice
               ? undefined
               : {
-                  title: "History account not ready",
+                  title: 'History account not ready',
                   subtitle:
-                    "The workspace account is still loading, so backend history cannot be read yet. Refresh again after account details are ready.",
-                  tone: "warn",
+                    'The workspace account is still loading, so backend history cannot be read yet. Refresh again after account details are ready.',
+                  tone: 'warn',
                 }
           );
           return;
@@ -714,35 +718,35 @@ export default function HistoryPage() {
         });
 
         const rows = extractBackendItems(result);
-        const backendStorage =
-          String(result.storage_mode || result.summary?.storage_mode || health.storage_mode || "")
-            .trim()
-            .toLowerCase() === "backend";
+        const backendStorage = String(
+          result.storage_mode || result.summary?.storage_mode || health.storage_mode || ''
+        )
+          .trim()
+          .toLowerCase() === 'backend';
 
         if (result.ok && backendStorage) {
           setHistoryItems(rows.map(mapBackendItem));
-          setHistoryMode("backend");
+          setHistoryMode('backend');
           return;
         }
 
         fallbackToLocalHistory({
-          title: "Backend history unavailable",
-          subtitle:
-            String(
-              result.message ||
-                result.root_cause ||
-                "Falling back to local history storage because backend history is not yet fully available."
-            ).trim(),
-          tone: "warn",
+          title: 'Backend history unavailable',
+          subtitle: String(
+            result.message ||
+              result.root_cause ||
+              'Falling back to local history storage because backend history is not yet fully available.'
+          ).trim(),
+          tone: 'warn',
         });
       } catch (err: unknown) {
         fallbackToLocalHistory({
-          title: "History fallback in use",
+          title: 'History fallback in use',
           subtitle:
             err instanceof Error
               ? err.message
-              : "A backend history error occurred, so local history storage is being shown instead.",
-          tone: "warn",
+              : 'A backend history error occurred, so local history storage is being shown instead.',
+          tone: 'warn',
         });
       } finally {
         setLoadingHistory(false);
@@ -752,10 +756,10 @@ export default function HistoryPage() {
   );
 
   const loadHistoryWorkspace = useCallback(
-    async (message = "Loading history workspace...") => {
+    async (message = 'Loading history workspace...') => {
       await load(message);
 
-      if (String(accountId || "").trim()) {
+      if (String(accountId || '').trim()) {
         await refreshHistoryFromBackend();
       }
     },
@@ -767,7 +771,7 @@ export default function HistoryPage() {
   }, [loadHistoryWorkspace]);
 
   useEffect(() => {
-    if (!String(accountId || "").trim()) return;
+    if (!String(accountId || '').trim()) return;
     void refreshHistoryFromBackend(undefined, undefined, true);
   }, [accountId, refreshHistoryFromBackend]);
 
@@ -776,48 +780,48 @@ export default function HistoryPage() {
 
     if (status) {
       items.push({
-        title: "Current history workspace status",
+        title: 'Current history workspace status',
         subtitle: status,
-        tone: "default",
+        tone: 'default',
       });
     }
 
     if (!activeNow) {
       items.push({
-        title: "Subscription attention needed",
+        title: 'Subscription attention needed',
         subtitle:
-          "Your subscription does not currently appear active. Some fresh AI actions may be restricted until billing is restored.",
-        tone: "warn",
+          'Your subscription does not currently appear active. Some fresh AI actions may be restricted until billing is restored.',
+        tone: 'warn',
       });
     }
 
     if (creditBalance <= 0) {
       items.push({
-        title: "Credit balance is empty",
+        title: 'Credit balance is empty',
         subtitle:
-          "No visible AI credits are available right now. History remains accessible, but fresh AI actions may fail.",
-        tone: "warn",
+          'No visible AI credits are available right now. History remains accessible, but fresh AI actions may fail.',
+        tone: 'warn',
       });
     }
 
     if (dailyLimit > 0 && dailyUsage >= dailyLimit) {
       items.push({
-        title: "Daily limit reached",
+        title: 'Daily limit reached',
         subtitle:
-          "You have reached the visible daily usage limit for today. Review your plan or wait for reset.",
-        tone: "warn",
+          'You have reached the visible daily usage limit for today. Review your plan or wait for reset.',
+        tone: 'warn',
       });
     }
 
     if (pendingPlanCode) {
       items.push({
-        title: "Pending plan change detected",
+        title: 'Pending plan change detected',
         subtitle: pendingStartsAt
           ? `A pending plan change to ${pendingPlanCode} is scheduled for ${formatDate(
               pendingStartsAt
             )}.`
           : `A pending plan change to ${pendingPlanCode} is scheduled.`,
-        tone: "default",
+        tone: 'default',
       });
     }
 
@@ -837,17 +841,15 @@ export default function HistoryPage() {
 
     return historyItems.filter((item) => {
       const matchesSource =
-        sourceFilter === "all"
-          ? true
-          : String(item.source || "").toLowerCase() === sourceFilter;
+        sourceFilter === 'all' ? true : String(item.source || '').toLowerCase() === sourceFilter;
 
       if (!matchesSource) return false;
       if (!term) return true;
 
-      const question = String(item.question || "").toLowerCase();
-      const answer = String(item.answer || "").toLowerCase();
-      const language = String(item.language || "").toLowerCase();
-      const source = String(item.source || "").toLowerCase();
+      const question = String(item.question || '').toLowerCase();
+      const answer = String(item.answer || '').toLowerCase();
+      const language = String(item.language || '').toLowerCase();
+      const source = String(item.source || '').toLowerCase();
 
       return (
         question.includes(term) ||
@@ -859,47 +861,47 @@ export default function HistoryPage() {
   }, [historyItems, search, sourceFilter]);
 
   const webCount = historyItems.filter(
-    (item) => String(item.source || "").toLowerCase() === "web"
+    (item) => String(item.source || '').toLowerCase() === 'web'
   ).length;
 
   const whatsappCount = historyItems.filter(
-    (item) => String(item.source || "").toLowerCase() === "whatsapp"
+    (item) => String(item.source || '').toLowerCase() === 'whatsapp'
   ).length;
 
   const telegramCount = historyItems.filter(
-    (item) => String(item.source || "").toLowerCase() === "telegram"
+    (item) => String(item.source || '').toLowerCase() === 'telegram'
   ).length;
 
   const newestItem = historyItems[0];
   const oldestItem = historyItems[historyItems.length - 1];
 
   const handleOpenInAsk = (item: DisplayHistoryItem) => {
-    const q = encodeURIComponent(item.question || "");
-    const lang = encodeURIComponent(languageLabel(item.language || "English"));
+    const q = encodeURIComponent(item.question || '');
+    const lang = encodeURIComponent(languageLabel(item.language || 'English'));
     router.push(`/ask?q=${q}&lang=${lang}`);
   };
 
   const handleCopyQuestion = async (item: DisplayHistoryItem) => {
     try {
-      await navigator.clipboard.writeText(String(item.question || ""));
+      await navigator.clipboard.writeText(String(item.question || ''));
       setHistoryNotice({
-        title: "Question copied",
-        subtitle: "The selected history question has been copied to your clipboard.",
-        tone: "good",
+        title: 'Question copied',
+        subtitle: 'The selected history question has been copied to your clipboard.',
+        tone: 'good',
       });
     } catch {
       setHistoryNotice({
-        title: "Copy could not be completed",
+        title: 'Copy could not be completed',
         subtitle:
-          "Clipboard access failed in this browser session. You can still reopen the item in Ask.",
-        tone: "warn",
+          'Clipboard access failed in this browser session. You can still reopen the item in Ask.',
+        tone: 'warn',
       });
     }
   };
 
   const handleDeleteItem = async (item: DisplayHistoryItem) => {
     const confirmed = window.confirm(
-      "Delete this saved history item? This will remove the selected question and answer from the current history list."
+      'Delete this saved history item? This will remove the selected question and answer from the current history list.'
     );
 
     if (!confirmed) return;
@@ -908,15 +910,15 @@ export default function HistoryPage() {
     setHistoryNotice(null);
 
     try {
-      if (historyMode === "backend") {
-        const effectiveAccountId = String(accountId || "").trim();
+      if (historyMode === 'backend') {
+        const effectiveAccountId = String(accountId || '').trim();
 
         if (!effectiveAccountId) {
           setHistoryNotice({
-            title: "Account ID not ready",
+            title: 'Account ID not ready',
             subtitle:
-              "Backend delete could not continue because the workspace account ID is not available yet.",
-            tone: "warn",
+              'Backend delete could not continue because the workspace account ID is not available yet.',
+            tone: 'warn',
           });
           return;
         }
@@ -925,10 +927,10 @@ export default function HistoryPage() {
 
         if (!ok) {
           setHistoryNotice({
-            title: "Backend delete route not ready",
+            title: 'Backend delete route not ready',
             subtitle:
-              "The page is working, but backend deletion is not yet confirmed for history items. The item was not removed from the server.",
-            tone: "warn",
+              'The page is working, but backend deletion is not yet confirmed for history items. The item was not removed from the server.',
+            tone: 'warn',
           });
           return;
         }
@@ -937,21 +939,21 @@ export default function HistoryPage() {
       const nextItems = historyItems.filter((row) => row.id !== item.id);
       setHistoryItems(nextItems);
 
-      if (historyMode === "local") {
+      if (historyMode === 'local') {
         const persisted = persistLocalHistoryItems(nextItems);
 
         setHistoryNotice({
-          title: "History item deleted",
+          title: 'History item deleted',
           subtitle: persisted
-            ? "The selected saved item has been removed successfully."
-            : "The selected saved item has been removed from the page. Local storage persistence could not be confirmed automatically.",
-          tone: persisted ? "good" : "warn",
+            ? 'The selected saved item has been removed successfully.'
+            : 'The selected saved item has been removed from the page. Local storage persistence could not be confirmed automatically.',
+          tone: persisted ? 'good' : 'warn',
         });
       } else {
         setHistoryNotice({
-          title: "History item deleted",
-          subtitle: "The selected backend history item has been removed successfully.",
-          tone: "good",
+          title: 'History item deleted',
+          subtitle: 'The selected backend history item has been removed successfully.',
+          tone: 'good',
         });
       }
 
@@ -967,7 +969,7 @@ export default function HistoryPage() {
     if (!historyItems.length) return;
 
     const confirmed = window.confirm(
-      "Clear all visible history items? This action is meant for workspace cleanup."
+      'Clear all visible history items? This action is meant for workspace cleanup.'
     );
 
     if (!confirmed) return;
@@ -976,15 +978,15 @@ export default function HistoryPage() {
     setHistoryNotice(null);
 
     try {
-      if (historyMode === "backend") {
-        const effectiveAccountId = String(accountId || "").trim();
+      if (historyMode === 'backend') {
+        const effectiveAccountId = String(accountId || '').trim();
 
         if (!effectiveAccountId) {
           setHistoryNotice({
-            title: "Account ID not ready",
+            title: 'Account ID not ready',
             subtitle:
-              "Backend clear-all could not continue because the workspace account ID is not available yet.",
-            tone: "warn",
+              'Backend clear-all could not continue because the workspace account ID is not available yet.',
+            tone: 'warn',
           });
           return;
         }
@@ -993,10 +995,10 @@ export default function HistoryPage() {
 
         if (!ok) {
           setHistoryNotice({
-            title: "Backend clear-all route not ready",
+            title: 'Backend clear-all route not ready',
             subtitle:
-              "The page is working, but backend bulk deletion is not yet confirmed for history items. Nothing was removed from the server.",
-            tone: "warn",
+              'The page is working, but backend bulk deletion is not yet confirmed for history items. Nothing was removed from the server.',
+            tone: 'warn',
           });
           return;
         }
@@ -1005,21 +1007,21 @@ export default function HistoryPage() {
       setHistoryItems([]);
       setExpandedId(null);
 
-      if (historyMode === "local") {
+      if (historyMode === 'local') {
         const persisted = persistLocalHistoryItems([]);
 
         setHistoryNotice({
-          title: "History cleared",
+          title: 'History cleared',
           subtitle: persisted
-            ? "All visible local history items have been cleared successfully."
-            : "The page has been cleared, but local storage persistence could not be confirmed automatically.",
-          tone: persisted ? "good" : "warn",
+            ? 'All visible local history items have been cleared successfully.'
+            : 'The page has been cleared, but local storage persistence could not be confirmed automatically.',
+          tone: persisted ? 'good' : 'warn',
         });
       } else {
         setHistoryNotice({
-          title: "History cleared",
-          subtitle: "All backend history items have been cleared successfully.",
-          tone: "good",
+          title: 'History cleared',
+          subtitle: 'All backend history items have been cleared successfully.',
+          tone: 'good',
         });
       }
     } finally {
@@ -1029,27 +1031,27 @@ export default function HistoryPage() {
 
   return (
     <AppShell
-      title="History"
-      subtitle="Review saved tax questions and previous AI answers so users can continue work without losing continuity or repeating earlier requests."
+      title='History'
+      subtitle='Review saved tax questions and previous AI answers so users can continue work without losing continuity or repeating earlier requests.'
       actions={
         <WorkspaceActionBar
           items={[
-            { label: "Ask Tax AI", href: "/ask", tone: "primary" },
-            { label: "Credits", href: "/credits", tone: "secondary" },
+            { label: 'Ask Tax AI', href: '/ask', tone: 'primary' },
+            { label: 'Credits', href: '/credits', tone: 'secondary' },
             {
-              label: "Refresh",
+              label: 'Refresh',
               onClick: () => {
-                void loadHistoryWorkspace("Refreshing history workspace...");
+                void loadHistoryWorkspace('Refreshing history workspace...');
               },
-              tone: "secondary",
+              tone: 'secondary',
               disabled: busy || loadingHistory || deletingId !== null || clearingAll,
             },
             {
-              label: "Logout",
+              label: 'Logout',
               onClick: () => {
                 void logout();
               },
-              tone: "danger",
+              tone: 'danger',
               disabled: busy || loadingHistory || deletingId !== null || clearingAll,
             },
           ]}
@@ -1075,7 +1077,7 @@ export default function HistoryPage() {
         ))}
 
         <WorkspaceOverviewMetrics
-          mode="dashboard"
+          mode='dashboard'
           accountId={accountId}
           activeNow={activeNow}
           planCode={planCode}
@@ -1085,122 +1087,100 @@ export default function HistoryPage() {
           expiresAt={expiresAt}
         />
 
-        <CardsGrid min={220}>
+        <CardsGrid min={200}>
           <MetricCard
-            label="Saved Items"
+            label='Saved Items'
             value={String(historyItems.length)}
             tone={toneFromHistoryCount(historyItems.length)}
-            helper="Total visible question-answer items currently saved for this workspace."
+            helper='Total visible question-answer items currently saved for this workspace.'
           />
           <MetricCard
-            label="Filtered Results"
+            label='Filtered Results'
             value={String(filteredItems.length)}
-            tone={filteredItems.length > 0 ? "good" : "warn"}
-            helper="Visible results after current search and source filter are applied."
+            tone={filteredItems.length > 0 ? 'good' : 'warn'}
+            helper='Visible results after current search and source filter are applied.'
           />
           <MetricCard
-            label="Storage Mode"
-            value={historyMode === "backend" ? "Backend" : "Local"}
-            tone={historyMode === "backend" ? "good" : "warn"}
-            helper="Shows whether this page is currently reading server-backed history or local fallback history."
+            label='Storage Mode'
+            value={historyMode === 'backend' ? 'Backend' : 'Local'}
+            tone={historyMode === 'backend' ? 'good' : 'warn'}
+            helper='Shows whether this page is currently reading server-backed history or local fallback history.'
           />
           <MetricCard
-            label="Newest Item"
-            value={newestItem ? formatDate(newestItem.created_at) : "—"}
-            tone={newestItem ? "good" : "default"}
-            helper="Most recent saved entry currently visible in history."
+            label='Newest Item'
+            value={newestItem ? formatDate(newestItem.created_at) : '—'}
+            tone={newestItem ? 'good' : 'default'}
+            helper='Most recent saved entry currently visible in history.'
           />
         </CardsGrid>
 
         <TwoColumnSection leftRatio={1.08} rightRatio={0.92}>
           <WorkspaceSectionCard
-            title="History Search"
-            subtitle="Find previous questions quickly by keyword or channel source."
+            title='History Search'
+            subtitle='Find previous questions quickly by keyword or channel source.'
           >
-            <div style={{ display: "grid", gap: 14 }}>
-              <div style={{ display: "grid", gap: 8 }}>
-                <div
-                  style={{
-                    color: "var(--text)",
-                    fontWeight: 800,
-                    fontSize: 14,
-                  }}
-                >
-                  Search saved history
-                </div>
+            <div style={{ display: 'grid', gap: 14, minWidth: 0 }}>
+              <div style={{ display: 'grid', gap: 8 }}>
+                <div style={sectionLabelStyle()}>Search saved history</div>
                 <input
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search question text, answer text, source, or language..."
+                  placeholder='Search question text, answer text, source, or language...'
                   style={appInputStyle()}
                 />
               </div>
 
-              <div style={{ display: "grid", gap: 8 }}>
-                <div
-                  style={{
-                    color: "var(--text)",
-                    fontWeight: 800,
-                    fontSize: 14,
-                  }}
-                >
-                  Filter by source
-                </div>
+              <div style={{ display: 'grid', gap: 8 }}>
+                <div style={sectionLabelStyle()}>Filter by source</div>
                 <select
                   value={sourceFilter}
                   onChange={(e) => setSourceFilter(e.target.value)}
                   style={appSelectStyle()}
                 >
-                  <option value="all">All Sources</option>
-                  <option value="web">Web</option>
-                  <option value="whatsapp">WhatsApp</option>
-                  <option value="telegram">Telegram</option>
-                  <option value="ai">AI</option>
-                  <option value="cache">Cache</option>
+                  <option value='all'>All Sources</option>
+                  <option value='web'>Web</option>
+                  <option value='whatsapp'>WhatsApp</option>
+                  <option value='telegram'>Telegram</option>
+                  <option value='ai'>AI</option>
+                  <option value='cache'>Cache</option>
                 </select>
               </div>
 
-              <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+              <div style={actionGridStyle(190)}>
                 <button
                   onClick={() => {
                     void refreshHistoryFromBackend(search.trim(), sourceFilter);
                   }}
                   disabled={loadingHistory || busy || deletingId !== null || clearingAll}
                   style={{
-                    padding: "12px 16px",
-                    borderRadius: 14,
-                    fontWeight: 900,
-                    cursor: "pointer",
-                    border: "1px solid var(--brand-border)",
-                    background: "var(--button-bg)",
-                    color: "var(--text)",
+                    ...actionButtonStyle('primary'),
                     opacity:
                       loadingHistory || busy || deletingId !== null || clearingAll ? 0.6 : 1,
                   }}
                 >
-                  {loadingHistory ? "Searching..." : "Apply Search"}
+                  {loadingHistory ? 'Searching...' : 'Apply Search'}
                 </button>
 
                 <button
                   onClick={handleClearAll}
                   disabled={!historyItems.length || busy || loadingHistory || clearingAll}
                   style={{
-                    ...actionButtonStyle("danger"),
+                    ...actionButtonStyle('danger'),
                     opacity:
                       !historyItems.length || busy || loadingHistory || clearingAll ? 0.6 : 1,
                   }}
                 >
-                  {clearingAll ? "Clearing..." : "Clear All History"}
+                  {clearingAll ? 'Clearing...' : 'Clear All History'}
                 </button>
               </div>
 
               <div
                 style={{
                   borderRadius: 18,
-                  border: "1px solid var(--border)",
-                  background: "var(--surface)",
+                  border: '1px solid var(--border)',
+                  background: 'var(--surface)',
                   padding: 16,
-                  color: "var(--text-muted)",
+                  color: 'var(--text-muted)',
                   lineHeight: 1.75,
                   fontSize: 14,
                 }}
@@ -1213,45 +1193,47 @@ export default function HistoryPage() {
           </WorkspaceSectionCard>
 
           <WorkspaceSectionCard
-            title="History Breakdown"
-            subtitle="Quick operational view of where saved items came from."
+            title='History Breakdown'
+            subtitle='Quick operational view of where saved items came from.'
           >
-            <CardsGrid min={180}>
-              <MetricCard
-                label="Web"
-                value={String(webCount)}
-                tone={webCount > 0 ? "good" : "default"}
-                helper="Items saved from the web workspace."
-              />
-              <MetricCard
-                label="WhatsApp"
-                value={String(whatsappCount)}
-                tone={whatsappCount > 0 ? "good" : "default"}
-                helper="Items saved from WhatsApp usage."
-              />
-              <MetricCard
-                label="Telegram"
-                value={String(telegramCount)}
-                tone={telegramCount > 0 ? "good" : "default"}
-                helper="Items saved from Telegram usage."
-              />
-            </CardsGrid>
+            <div style={{ display: 'grid', gap: 18 }}>
+              <CardsGrid min={160}>
+                <MetricCard
+                  label='Web'
+                  value={String(webCount)}
+                  tone={webCount > 0 ? 'good' : 'default'}
+                  helper='Items saved from the web workspace.'
+                />
+                <MetricCard
+                  label='WhatsApp'
+                  value={String(whatsappCount)}
+                  tone={whatsappCount > 0 ? 'good' : 'default'}
+                  helper='Items saved from WhatsApp usage.'
+                />
+                <MetricCard
+                  label='Telegram'
+                  value={String(telegramCount)}
+                  tone={telegramCount > 0 ? 'good' : 'default'}
+                  helper='Items saved from Telegram usage.'
+                />
+              </CardsGrid>
 
-            <MetricCard
-              label="Continuity State"
-              value={historyItems.length > 0 ? "Available" : "Empty"}
-              tone={historyItems.length > 0 ? "good" : "warn"}
-              helper="Whether the user currently has any saved history to revisit."
-            />
+              <MetricCard
+                label='Continuity State'
+                value={historyItems.length > 0 ? 'Available' : 'Empty'}
+                tone={historyItems.length > 0 ? 'good' : 'warn'}
+                helper='Whether the user currently has any saved history to revisit.'
+              />
+            </div>
           </WorkspaceSectionCard>
         </TwoColumnSection>
 
         <WorkspaceSectionCard
-          title="Saved Questions and Answers"
-          subtitle="Open previous records to continue work with confidence and continuity."
+          title='Saved Questions and Answers'
+          subtitle='Open previous records to continue work with confidence and continuity.'
         >
           {filteredItems.length > 0 ? (
-            <div style={{ display: "grid", gap: 16 }}>
+            <div style={{ display: 'grid', gap: 16, minWidth: 0 }}>
               {filteredItems.map((item) => {
                 const itemId = String(item.id);
 
@@ -1261,9 +1243,7 @@ export default function HistoryPage() {
                     item={item}
                     expanded={expandedId === itemId}
                     actionBusy={deletingId === itemId || clearingAll}
-                    onToggle={() =>
-                      setExpandedId((current) => (current === itemId ? null : itemId))
-                    }
+                    onToggle={() => setExpandedId((current) => (current === itemId ? null : itemId))}
                     onOpenInAsk={() => handleOpenInAsk(item)}
                     onCopyQuestion={() => {
                       void handleCopyQuestion(item);
@@ -1277,68 +1257,68 @@ export default function HistoryPage() {
             </div>
           ) : (
             <Banner
-              title="No matching history found"
+              title='No matching history found'
               subtitle={
                 historyItems.length > 0
-                  ? "No saved items match your current search or source filter. Adjust the filters and try again."
-                  : "No question history is visible yet. Once successful tax questions are saved, they will appear here for future review."
+                  ? 'No saved items match your current search or source filter. Adjust the filters and try again.'
+                  : 'No question history is visible yet. Once successful tax questions are saved, they will appear here for future review.'
               }
-              tone={historyItems.length > 0 ? "warn" : "default"}
+              tone={historyItems.length > 0 ? 'warn' : 'default'}
             />
           )}
         </WorkspaceSectionCard>
 
         <WorkspaceSectionCard
-          title="Recommended Actions"
-          subtitle="Use history together with other workspace tools to reduce repeated work."
+          title='Recommended Actions'
+          subtitle='Use history together with other workspace tools to reduce repeated work.'
         >
-          <CardsGrid min={240}>
+          <CardsGrid min={220}>
             <ShortcutCard
-              title="Ask Tax AI"
+              title='Ask Tax AI'
               subtitle={
                 !activeNow
-                  ? "Your account may need active paid access before new questions can continue."
+                  ? 'Your account may need active paid access before new questions can continue.'
                   : creditBalance <= 0
-                  ? "Your visible credits are exhausted. Review Credits or Plans before continuing."
-                  : "Ask a new tax question when saved history is no longer enough."
+                    ? 'Your visible credits are exhausted. Review Credits or Plans before continuing.'
+                    : 'Ask a new tax question when saved history is no longer enough.'
               }
-              tone={!activeNow ? "warn" : creditBalance <= 0 ? "danger" : "good"}
-              onClick={() => router.push("/ask")}
+              tone={!activeNow ? 'warn' : creditBalance <= 0 ? 'danger' : 'good'}
+              onClick={() => router.push('/ask')}
             />
 
             <ShortcutCard
-              title="Credits"
-              subtitle="Review balance and daily usage before deciding whether to continue with fresh AI requests."
-              tone={creditBalance <= 3 ? "warn" : "default"}
-              onClick={() => router.push("/credits")}
+              title='Credits'
+              subtitle='Review balance and daily usage before deciding whether to continue with fresh AI requests.'
+              tone={creditBalance <= 3 ? 'warn' : 'default'}
+              onClick={() => router.push('/credits')}
             />
 
             <ShortcutCard
-              title="Billing"
-              subtitle="Check subscription condition, expiry, and billing readiness if access needs attention."
-              tone={!activeNow ? "warn" : "default"}
-              onClick={() => router.push("/billing")}
+              title='Billing'
+              subtitle='Check subscription condition, expiry, and billing readiness if access needs attention.'
+              tone={!activeNow ? 'warn' : 'default'}
+              onClick={() => router.push('/billing')}
             />
 
             <ShortcutCard
-              title="Help Center"
-              subtitle="Open guided help if the user needs assistance interpreting results or workspace behavior."
-              tone="default"
-              onClick={() => router.push("/help")}
+              title='Help Center'
+              subtitle='Open guided help if the user needs assistance interpreting results or workspace behavior.'
+              tone='default'
+              onClick={() => router.push('/help')}
             />
           </CardsGrid>
         </WorkspaceSectionCard>
 
         <TwoColumnSection>
           <WorkspaceSectionCard
-            title="History Notes"
-            subtitle="How this page should function in a real SaaS workflow."
+            title='History Notes'
+            subtitle='How this page should function in a real SaaS workflow.'
           >
             <div
               style={{
-                display: "grid",
+                display: 'grid',
                 gap: 10,
-                color: "var(--text-muted)",
+                color: 'var(--text-muted)',
                 fontSize: 14,
                 lineHeight: 1.75,
               }}
@@ -1352,39 +1332,39 @@ export default function HistoryPage() {
           </WorkspaceSectionCard>
 
           <WorkspaceSectionCard
-            title="Next Best Decision"
-            subtitle="Fast summary of what the user should do next."
+            title='Next Best Decision'
+            subtitle='Fast summary of what the user should do next.'
           >
-            <CardsGrid min={220}>
+            <CardsGrid min={200}>
               <MetricCard
-                label="Best Immediate Action"
+                label='Best Immediate Action'
                 value={
                   filteredItems.length > 0
-                    ? "Review or Reopen"
+                    ? 'Review or Reopen'
                     : historyItems.length > 0
-                    ? "Adjust Filters"
-                    : "Ask First Question"
+                      ? 'Adjust Filters'
+                      : 'Ask First Question'
                 }
                 tone={
                   filteredItems.length > 0
-                    ? "good"
+                    ? 'good'
                     : historyItems.length > 0
-                    ? "warn"
-                    : "default"
+                      ? 'warn'
+                      : 'default'
                 }
-                helper="Most sensible next move based on current visible history."
+                helper='Most sensible next move based on current visible history.'
               />
               <MetricCard
-                label="History Utility"
-                value={historyItems.length > 0 ? "Useful" : "Not Yet Built"}
-                tone={historyItems.length > 0 ? "good" : "warn"}
-                helper="Shows whether user continuity is already active in this workspace."
+                label='History Utility'
+                value={historyItems.length > 0 ? 'Useful' : 'Not Yet Built'}
+                tone={historyItems.length > 0 ? 'good' : 'warn'}
+                helper='Shows whether user continuity is already active in this workspace.'
               />
               <MetricCard
-                label="Oldest Item"
-                value={oldestItem ? formatDate(oldestItem.created_at) : "—"}
-                tone={oldestItem ? "default" : "warn"}
-                helper="Earliest visible entry still available in history."
+                label='Oldest Item'
+                value={oldestItem ? formatDate(oldestItem.created_at) : '—'}
+                tone={oldestItem ? 'default' : 'warn'}
+                helper='Earliest visible entry still available in history.'
               />
             </CardsGrid>
           </WorkspaceSectionCard>
