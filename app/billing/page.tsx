@@ -67,9 +67,11 @@ function snapshotItemStyle(): React.CSSProperties {
     border: "1px solid var(--border)",
     borderRadius: 18,
     background: "var(--surface)",
-    padding: 16,
+    padding: 14,
     display: "grid",
     gap: 6,
+    minWidth: 0,
+    overflowWrap: "anywhere",
   };
 }
 
@@ -78,15 +80,19 @@ function infoTextStyle(): React.CSSProperties {
     fontSize: 13,
     color: "var(--text-muted)",
     fontWeight: 700,
+    lineHeight: 1.5,
   };
 }
 
 function valueTextStyle(): React.CSSProperties {
   return {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: 800,
     color: "var(--text)",
     wordBreak: "break-word",
+    overflowWrap: "anywhere",
+    lineHeight: 1.55,
+    minWidth: 0,
   };
 }
 
@@ -381,7 +387,7 @@ export default function BillingPage() {
           title="Subscription summary"
           subtitle="The clearest view of your current plan, billing state, renewal mode, and what action may be needed next."
         >
-          <CardsGrid min={220}>
+          <CardsGrid min={180}>
             <MetricCard
               label="Current Plan"
               value={planName}
@@ -418,7 +424,7 @@ export default function BillingPage() {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "minmax(0, 1.15fr) minmax(300px, 0.9fr)",
+            gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
             gap: 18,
             alignItems: "start",
           }}
@@ -427,7 +433,7 @@ export default function BillingPage() {
             title="Subscription timeline"
             subtitle="Review the dates and scheduled changes that shape your visible subscription lifecycle."
           >
-            <CardsGrid min={220}>
+            <CardsGrid min={180}>
               <MetricCard
                 label="Started"
                 value={startsAt ? formatDate(startsAt) : "Not currently available"}
@@ -460,7 +466,13 @@ export default function BillingPage() {
             title="Payment details"
             subtitle="A short operational view of the payment details that matter for review, support, or reconciliation."
           >
-            <div style={{ display: "grid", gap: 12 }}>
+            <div
+              style={{
+                display: "grid",
+                gap: 12,
+                gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+              }}
+            >
               <div style={snapshotItemStyle()}>
                 <div style={infoTextStyle()}>Billing Email</div>
                 <div style={valueTextStyle()}>{checkoutEmail}</div>
@@ -488,7 +500,7 @@ export default function BillingPage() {
           title="Payment history"
           subtitle="Review your visible billing records, references, amounts, and status without leaving the billing workspace."
         >
-          <CardsGrid min={220}>
+          <CardsGrid min={180}>
             <MetricCard
               label="Visible Payments"
               value={String(historyCount)}
@@ -538,9 +550,10 @@ export default function BillingPage() {
                     border: "1px solid var(--border)",
                     borderRadius: 18,
                     background: "var(--surface)",
-                    padding: 16,
+                    padding: 14,
                     display: "grid",
                     gap: 12,
+                    minWidth: 0,
                   }}
                 >
                   <div
@@ -552,11 +565,26 @@ export default function BillingPage() {
                       flexWrap: "wrap",
                     }}
                   >
-                    <div style={{ display: "grid", gap: 6 }}>
-                      <div style={{ fontWeight: 900, fontSize: 17, color: "var(--text)" }}>
+                    <div style={{ display: "grid", gap: 6, minWidth: 0, flex: "1 1 220px" }}>
+                      <div
+                        style={{
+                          fontWeight: 900,
+                          fontSize: 17,
+                          color: "var(--text)",
+                          lineHeight: 1.4,
+                          overflowWrap: "anywhere",
+                        }}
+                      >
                         {row.plan_name || row.plan_code || "Payment Record"}
                       </div>
-                      <div style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6 }}>
+                      <div
+                        style={{
+                          color: "var(--text-muted)",
+                          fontSize: 14,
+                          lineHeight: 1.6,
+                          overflowWrap: "anywhere",
+                        }}
+                      >
                         {paymentEventLabel(row.event_type || "")}
                       </div>
                     </div>
@@ -568,6 +596,9 @@ export default function BillingPage() {
                         padding: "8px 12px",
                         fontWeight: 800,
                         fontSize: 13,
+                        lineHeight: 1.4,
+                        maxWidth: "100%",
+                        overflowWrap: "anywhere",
                         background:
                           paymentTone(String(row.status || "")) === "good"
                             ? "var(--success-bg)"
@@ -585,7 +616,7 @@ export default function BillingPage() {
                   <div
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                      gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
                       gap: 12,
                     }}
                   >
@@ -621,7 +652,7 @@ export default function BillingPage() {
                   <div
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                      gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
                       gap: 12,
                     }}
                   >
@@ -649,7 +680,7 @@ export default function BillingPage() {
           title="Credits and usage"
           subtitle="Credits and daily usage can explain why access feels limited even when payment looks valid."
         >
-          <CardsGrid min={220}>
+          <CardsGrid min={180}>
             <MetricCard
               label="Credits"
               value={String(creditBalance)}
@@ -675,10 +706,10 @@ export default function BillingPage() {
         >
           <div
             style={{
-              display: "flex",
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
               gap: 12,
-              flexWrap: "wrap",
-              alignItems: "center",
+              alignItems: "stretch",
             }}
           >
             <button onClick={() => router.push("/plans")} style={shellButtonPrimary()}>
@@ -704,6 +735,7 @@ export default function BillingPage() {
               color: "var(--text)",
               fontSize: 16,
               lineHeight: 1.9,
+              minWidth: 0,
             }}
           >
             <ul
@@ -713,6 +745,8 @@ export default function BillingPage() {
                 display: "grid",
                 gap: 12,
                 lineHeight: 1.8,
+                minWidth: 0,
+                overflowWrap: "anywhere",
               }}
             >
               <li>Confirm the selected plan is the one you intended to activate.</li>
