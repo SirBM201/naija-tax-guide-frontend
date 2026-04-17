@@ -760,7 +760,7 @@ const styles: Record<string, React.CSSProperties> = {
     minHeight: 76,
     padding: "18px 24px",
     borderBottom: "1px solid var(--border)",
-    background: "rgba(248,250,252,0.88)",
+    background: "transparent",
     backdropFilter: "blur(10px)",
     display: "flex",
     justifyContent: "space-between",
