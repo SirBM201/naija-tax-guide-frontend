@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useMemo, useState } from "react";
@@ -412,7 +411,7 @@ export default function PlansPage() {
       if (isApiError(error)) {
         const details =
           typeof error.data?.fix === "string"
-            ? ${error.message} — ${error.data.fix}
+            ? `${error.message} — ${error.data.fix}`
             : error.message;
         setCheckoutError(details);
       } else if (error instanceof Error) {
@@ -549,7 +548,7 @@ export default function PlansPage() {
             <MetricCard
               label="Current Plan"
               value={currentPlanName}
-              helper={Code: ${currentPlanCode || "Not currently visible"}}
+              helper={`Code: ${currentPlanCode || "Not currently visible"}`}
             />
             <MetricCard
               label="Current Status"
@@ -563,7 +562,7 @@ export default function PlansPage() {
               tone={pendingPlanCode ? "warn" : "default"}
               helper={
                 pendingPlanCode && pendingStartsAt
-                  ? Scheduled to start ${formatDate(pendingStartsAt)}.
+                  ? `Scheduled to start ${formatDate(pendingStartsAt)}.`
                   : "Shows any scheduled downgrade or pending change."
               }
             />
