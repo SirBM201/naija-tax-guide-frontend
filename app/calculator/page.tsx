@@ -59,31 +59,65 @@ export default function CalculatorPage() {
     }
   };
 
+  // Tooltip helper
+  const tooltip = (text: string) => ({ title: text });
+
+  // Shared input style
+  const inputStyle: React.CSSProperties = {
+    width: "100%",
+    padding: "14px 16px",
+    borderRadius: 14,
+    border: "1px solid var(--border)",
+    background: "var(--surface)",
+    fontSize: 16,
+    outline: "none",
+    transition: "border 0.2s",
+  };
+
+  const labelStyle: React.CSSProperties = {
+    display: "block",
+    marginBottom: 8,
+    fontWeight: 800,
+    fontSize: 14,
+    color: "var(--text)",
+  };
+
+  const formGroupStyle: React.CSSProperties = {
+    display: "grid",
+    gap: 8,
+  };
+
   const renderPAYEForm = () => (
-    <div style={{ display: "grid", gap: 16 }}>
-      <div>
-        <label style={{ display: "block", marginBottom: 6, fontWeight: 800 }}>Monthly Gross Income (₦)</label>
+    <div style={{ display: "grid", gap: 24 }}>
+      <div style={formGroupStyle}>
+        <label style={labelStyle} {...tooltip("Your total monthly income before any deductions")}>
+          Monthly Gross Income (₦)
+        </label>
         <input
           type="number"
-          style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }}
+          style={inputStyle}
           onChange={(e) => handleInputChange("monthly_gross_income", e.target.value)}
           placeholder="e.g., 500000"
         />
       </div>
-      <div>
-        <label style={{ display: "block", marginBottom: 6, fontWeight: 800 }}>Pension Contribution (₦)</label>
+      <div style={formGroupStyle}>
+        <label style={labelStyle} {...tooltip("Monthly pension contribution (usually 8% of gross)")}>
+          Pension Contribution (₦)
+        </label>
         <input
           type="number"
-          style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }}
+          style={inputStyle}
           onChange={(e) => handleInputChange("pension_contribution", e.target.value)}
           placeholder="Optional"
         />
       </div>
-      <div>
-        <label style={{ display: "block", marginBottom: 6, fontWeight: 800 }}>NHF Contribution (₦)</label>
+      <div style={formGroupStyle}>
+        <label style={labelStyle} {...tooltip("National Housing Fund contribution (2.5% of gross)")}>
+          NHF Contribution (₦)
+        </label>
         <input
           type="number"
-          style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }}
+          style={inputStyle}
           onChange={(e) => handleInputChange("nhf", e.target.value)}
           placeholder="Optional"
         />
@@ -92,20 +126,24 @@ export default function CalculatorPage() {
   );
 
   const renderVATForm = () => (
-    <div style={{ display: "grid", gap: 16 }}>
-      <div>
-        <label style={{ display: "block", marginBottom: 6, fontWeight: 800 }}>Taxable Supplies (₦)</label>
+    <div style={{ display: "grid", gap: 24 }}>
+      <div style={formGroupStyle}>
+        <label style={labelStyle} {...tooltip("Total value of taxable goods/services supplied")}>
+          Taxable Supplies (₦)
+        </label>
         <input
           type="number"
-          style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }}
+          style={inputStyle}
           onChange={(e) => handleInputChange("taxable_supplies", e.target.value)}
         />
       </div>
-      <div>
-        <label style={{ display: "block", marginBottom: 6, fontWeight: 800 }}>Input VAT (₦)</label>
+      <div style={formGroupStyle}>
+        <label style={labelStyle} {...tooltip("VAT already paid on purchases (deductible)")}>
+          Input VAT (₦)
+        </label>
         <input
           type="number"
-          style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }}
+          style={inputStyle}
           onChange={(e) => handleInputChange("input_vat", e.target.value)}
           placeholder="Optional"
         />
@@ -114,20 +152,24 @@ export default function CalculatorPage() {
   );
 
   const renderCITForm = () => (
-    <div style={{ display: "grid", gap: 16 }}>
-      <div>
-        <label style={{ display: "block", marginBottom: 6, fontWeight: 800 }}>Gross Profit (₦)</label>
+    <div style={{ display: "grid", gap: 24 }}>
+      <div style={formGroupStyle}>
+        <label style={labelStyle} {...tooltip("Total revenue minus cost of sales")}>
+          Gross Profit (₦)
+        </label>
         <input
           type="number"
-          style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }}
+          style={inputStyle}
           onChange={(e) => handleInputChange("gross_profit", e.target.value)}
         />
       </div>
-      <div>
-        <label style={{ display: "block", marginBottom: 6, fontWeight: 800 }}>Allowable Expenses (₦)</label>
+      <div style={formGroupStyle}>
+        <label style={labelStyle} {...tooltip("Allowable business expenses (e.g., rent, salaries)")}>
+          Allowable Expenses (₦)
+        </label>
         <input
           type="number"
-          style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }}
+          style={inputStyle}
           onChange={(e) => handleInputChange("allowable_expenses", e.target.value)}
         />
       </div>
@@ -138,7 +180,7 @@ export default function CalculatorPage() {
     <AppShell title="Tax Calculator" subtitle="Compute PAYE, VAT, and Company Income Tax instantly.">
       <SectionStack>
         <WorkspaceSectionCard title="Select Tax Type">
-          <div style={{ display: "flex", gap: 8, borderBottom: "1px solid var(--border)", paddingBottom: 12 }}>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", borderBottom: "1px solid var(--border)", paddingBottom: 16 }}>
             {["paye", "vat", "cit"].map((type) => (
               <button
                 key={type}
@@ -149,13 +191,16 @@ export default function CalculatorPage() {
                   setError(null);
                 }}
                 style={{
-                  padding: "10px 20px",
-                  borderRadius: 999,
-                  border: "1px solid var(--border)",
+                  padding: "12px 28px",
+                  borderRadius: 40,
+                  border: "none",
                   background: activeTab === type ? "#3b82f6" : "var(--surface-soft)",
                   color: activeTab === type ? "white" : "var(--text)",
                   fontWeight: 800,
+                  fontSize: 15,
                   cursor: "pointer",
+                  transition: "all 0.2s",
+                  boxShadow: activeTab === type ? "0 4px 12px rgba(59,130,246,0.3)" : "none",
                 }}
               >
                 {type.toUpperCase()}
@@ -172,28 +217,39 @@ export default function CalculatorPage() {
             onClick={calculate}
             disabled={loading}
             style={{
-              marginTop: 24,
+              marginTop: 32,
               width: "100%",
-              padding: "14px",
-              borderRadius: 14,
+              padding: "16px",
+              borderRadius: 16,
               border: "none",
-              background: "#3b82f6",
+              background: loading ? "#94a3b8" : "#3b82f6",
               color: "white",
               fontWeight: 900,
               fontSize: 16,
               cursor: loading ? "not-allowed" : "pointer",
-              opacity: loading ? 0.7 : 1,
+              transition: "background 0.2s",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 10,
             }}
           >
-            {loading ? "Calculating..." : "Calculate Tax"}
+            {loading ? (
+              <>
+                <span style={{ display: "inline-block", width: 18, height: 18, borderRadius: "50%", border: "2px solid white", borderTopColor: "transparent", animation: "spin 0.8s linear infinite" }} />
+                Calculating...
+              </>
+            ) : (
+              "Calculate Tax"
+            )}
           </button>
         </WorkspaceSectionCard>
 
         {error && (
           <WorkspaceSectionCard title="Error">
-            <div style={{ padding: 16, background: "rgba(244,63,94,0.1)", borderRadius: 16, color: "#dc2626" }}>
+            <div style={{ padding: 18, background: "rgba(244,63,94,0.1)", borderRadius: 16, color: "#dc2626", borderLeft: "4px solid #dc2626" }}>
               <strong>Error:</strong> {error}
-              <div style={{ fontSize: 12, marginTop: 8, color: "var(--text-muted)" }}>
+              <div style={{ fontSize: 13, marginTop: 8, color: "var(--text-muted)" }}>
                 Check the browser console (F12) for detailed logs.
               </div>
             </div>
@@ -202,12 +258,20 @@ export default function CalculatorPage() {
 
         {result && result.ok && (
           <WorkspaceSectionCard title="Result">
-            <div style={{ padding: 16, background: "var(--surface-soft)", borderRadius: 16 }}>
-              {result.answer}
+            <div style={{ padding: 20, background: "linear-gradient(135deg, rgba(16,185,129,0.08), rgba(16,185,129,0.02))", borderRadius: 20, border: "1px solid rgba(16,185,129,0.2)" }}>
+              <div style={{ fontSize: 18, fontWeight: 900, color: "#10b981", marginBottom: 8 }}>📊 Tax Summary</div>
+              <div style={{ fontSize: 16, lineHeight: 1.6 }}>{result.answer}</div>
             </div>
           </WorkspaceSectionCard>
         )}
       </SectionStack>
+
+      {/* Add simple keyframe animation for spinner */}
+      <style jsx>{`
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
     </AppShell>
   );
 }
