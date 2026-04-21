@@ -1,21 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-// Helper function to lazily create the Supabase admin client
-function getSupabaseAdminClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  // Check for environment variables at runtime
-  if (!supabaseUrl || !supabaseServiceKey) {
-    console.error("Supabase environment variables are not set.");
-    // Throwing an error here is okay because this function is only called at request time.
-    throw new Error("Supabase environment variables are not set.");
-  }
-
-  // The `createClient` function is called inside this function, not at the top level.
-  return createClient(supabaseUrl, supabaseServiceKey);
-}
 
 export async function POST(req: NextRequest) {
   try {
@@ -36,10 +19,18 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const reference = `NTG-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+    // Dynamically import Supabase only at runtime
+    const { createClient } = await import('@supabase/supabase-js');
     
-    // Get the admin client at request time, not build time.
-    const supabase = getSupabaseAdminClient();
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!supabaseUrl || !supabaseServiceKey) {
+      throw new Error('Supabase environment variables are missing');
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const reference = `NTG-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
 
     const { data, error } = await supabase
       .from('tax_filings')
@@ -86,8 +77,17 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    // Get the admin client at request time, not build time.
-    const supabase = getSupabaseAdminClient();
+    // Dynamically import Supabase only at runtime
+    const { createClient } = await import('@supabase/supabase-js');
+    
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!supabaseUrl || !supabaseServiceKey) {
+      throw new Error('Supabase environment variables are missing');
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const { data, error } = await supabase
       .from('tax_filings')
