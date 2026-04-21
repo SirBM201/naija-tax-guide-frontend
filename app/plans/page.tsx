@@ -21,8 +21,6 @@ Banner,
 
 MetricCard,
 
-formatCurrency,
-
 formatDate,
 
 } from "@/components/ui";
@@ -36,6 +34,11 @@ import { buildWorkspaceAlerts } from "@/lib/workspace-alerts";
 import { useAuth } from "@/lib/auth";
 
 import { apiJson, isApiError } from "@/lib/api";
+
+// Local currency formatter for Naira (₦)
+function formatNaira(amount: number): string {
+  return `₦${amount.toLocaleString()}`;
+}
 
 type BillingCycle = "monthly" | "quarterly" | "yearly";
 
@@ -727,7 +730,7 @@ minWidth: 0,
 >
 <div style={{ fontSize: 14, color: "var(--text-muted)" }}>Price</div>
 <div style={{ fontSize: 24, fontWeight: 900, lineHeight: 1.15, overflowWrap: "anywhere" }}>
-{formatCurrency(0, "NGN")}
+{formatNaira(0)}
 </div>
 <div style={{ fontSize: 14, color: "var(--text-muted)", overflowWrap: "anywhere" }}>
 {billingCycle}
@@ -887,7 +890,7 @@ lineHeight: 1.15,
 overflowWrap: "anywhere",
 }}
 >
-{formatCurrency(plan.price, "NGN")}
+{formatNaira(plan.price)}
 </div>
 <div style={{ fontSize: 14, color: "var(--text-muted)", overflowWrap: "anywhere" }}>
 {plan.cycle.charAt(0).toUpperCase() + plan.cycle.slice(1)}
