@@ -6,23 +6,31 @@ import AppShell from "@/components/app-shell";
 import { SectionStack } from "@/components/page-layout";
 import WorkspaceSectionCard from "@/components/workspace-section-card";
 import { apiJson } from "@/lib/api";
+import { useWorkspaceState } from "@/hooks/useWorkspaceState";
+import { useAuth } from "@/lib/auth";
 
 type TaxType = "paye" | "vat" | "cit";
 type Step = 1 | 2 | 3 | 4;
 
 export default function FileTaxPage() {
   const router = useRouter();
+  const { refreshSession } = useAuth();
+  
+  // Get accountId from workspace state
+  const { accountId, loading: workspaceLoading } = useWorkspaceState({
+    refreshSession,
+    autoLoad: true,
+    includeAccount: true,
+  });
+
   const [currentStep, setCurrentStep] = useState<Step>(1);
   const [taxType, setTaxType] = useState<TaxType>("paye");
   const [inputs, setInputs] = useState<any>({
-    // PAYE
     monthly_gross_income: 0,
     pension_contribution: 0,
     nhf: 0,
-    // VAT
     taxable_supplies: 0,
     input_vat: 0,
-    // CIT
     gross_profit: 0,
     allowable_expenses: 0,
   });
@@ -52,15 +60,19 @@ export default function FileTaxPage() {
   };
 
   const submitFiling = async () => {
+    if (!accountId) {
+      setError("Account ID not loaded. Please refresh and try again.");
+      return;
+    }
+
     setSubmitting(true);
     setError(null);
     try {
-      // Prepare data for API
       const filingData = {
         taxType,
         inputs,
         documents: documents.map(d => ({ name: d.name, size: d.size, type: d.type })),
-        userId: localStorage.getItem("nt_access_token") || "anonymous",
+        userId: accountId,
       };
       const response = await apiJson("/api/tax/file", {
         method: "POST",
@@ -68,7 +80,7 @@ export default function FileTaxPage() {
       });
       if (response.ok) {
         setSubmissionResult(response);
-        setCurrentStep(4); // move to confirmation step
+        setCurrentStep(4);
       } else {
         setError(response.error || "Submission failed");
       }
@@ -229,8 +241,8 @@ export default function FileTaxPage() {
           {error && <div style={{ color: "#dc2626", marginBottom: 16 }}>{error}</div>}
           <button
             onClick={submitFiling}
-            disabled={submitting}
-            style={{ padding: "12px 24px", background: "#10b981", border: "none", borderRadius: 12, color: "white", fontWeight: 800, cursor: submitting ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : 1 }}
+            disabled={submitting || workspaceLoading}
+            style={{ padding: "12px 24px", background: "#10b981", border: "none", borderRadius: 12, color: "white", fontWeight: 800, cursor: (submitting || workspaceLoading) ? "not-allowed" : "pointer", opacity: (submitting || workspaceLoading) ? 0.6 : 1 }}
           >
             {submitting ? "Submitting..." : "Confirm & Submit Filing"}
           </button>
