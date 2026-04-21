@@ -12,7 +12,15 @@ type TaxType = "paye" | "vat" | "cit";
 
 export default function CalculatorPage() {
   const [activeTab, setActiveTab] = useState<TaxType>("paye");
-  const [inputs, setInputs] = useState<any>({});
+  const [inputs, setInputs] = useState<any>({
+    monthly_gross_income: 0,
+    pension_contribution: 0,
+    nhf: 0,
+    taxable_supplies: 0,
+    input_vat: 0,
+    gross_profit: 0,
+    allowable_expenses: 0,
+  });
   const [result, setResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
 
@@ -47,44 +55,73 @@ export default function CalculatorPage() {
   };
 
   const renderPAYEForm = () => (
-    <div className="grid gap-4">
+    <div style={{ display: "grid", gap: 16 }}>
       <div>
-        <label>Monthly Gross Income (₦)</label>
-        <input type="number" className="w-full p-2 border rounded" onChange={(e) => handleInputChange("monthly_gross_income", e.target.value)} />
+        <label style={{ display: "block", marginBottom: 6, fontWeight: 800 }}>Monthly Gross Income (₦)</label>
+        <input
+          type="number"
+          className="w-full p-2 border rounded"
+          style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }}
+          onChange={(e) => handleInputChange("monthly_gross_income", e.target.value)}
+        />
       </div>
       <div>
-        <label>Pension Contribution (₦)</label>
-        <input type="number" className="w-full p-2 border rounded" onChange={(e) => handleInputChange("pension_contribution", e.target.value)} />
+        <label style={{ display: "block", marginBottom: 6, fontWeight: 800 }}>Pension Contribution (₦)</label>
+        <input
+          type="number"
+          style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }}
+          onChange={(e) => handleInputChange("pension_contribution", e.target.value)}
+        />
       </div>
       <div>
-        <label>NHF Contribution (₦)</label>
-        <input type="number" className="w-full p-2 border rounded" onChange={(e) => handleInputChange("nhf", e.target.value)} />
+        <label style={{ display: "block", marginBottom: 6, fontWeight: 800 }}>NHF Contribution (₦)</label>
+        <input
+          type="number"
+          style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }}
+          onChange={(e) => handleInputChange("nhf", e.target.value)}
+        />
       </div>
     </div>
   );
 
   const renderVATForm = () => (
-    <div className="grid gap-4">
+    <div style={{ display: "grid", gap: 16 }}>
       <div>
-        <label>Taxable Supplies (₦)</label>
-        <input type="number" className="w-full p-2 border rounded" onChange={(e) => handleInputChange("taxable_supplies", e.target.value)} />
+        <label style={{ display: "block", marginBottom: 6, fontWeight: 800 }}>Taxable Supplies (₦)</label>
+        <input
+          type="number"
+          style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }}
+          onChange={(e) => handleInputChange("taxable_supplies", e.target.value)}
+        />
       </div>
       <div>
-        <label>Input VAT (₦)</label>
-        <input type="number" className="w-full p-2 border rounded" onChange={(e) => handleInputChange("input_vat", e.target.value)} />
+        <label style={{ display: "block", marginBottom: 6, fontWeight: 800 }}>Input VAT (₦)</label>
+        <input
+          type="number"
+          style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }}
+          onChange={(e) => handleInputChange("input_vat", e.target.value)}
+        />
       </div>
     </div>
   );
 
   const renderCITForm = () => (
-    <div className="grid gap-4">
+    <div style={{ display: "grid", gap: 16 }}>
       <div>
-        <label>Gross Profit (₦)</label>
-        <input type="number" className="w-full p-2 border rounded" onChange={(e) => handleInputChange("gross_profit", e.target.value)} />
+        <label style={{ display: "block", marginBottom: 6, fontWeight: 800 }}>Gross Profit (₦)</label>
+        <input
+          type="number"
+          style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }}
+          onChange={(e) => handleInputChange("gross_profit", e.target.value)}
+        />
       </div>
       <div>
-        <label>Allowable Expenses (₦)</label>
-        <input type="number" className="w-full p-2 border rounded" onChange={(e) => handleInputChange("allowable_expenses", e.target.value)} />
+        <label style={{ display: "block", marginBottom: 6, fontWeight: 800 }}>Allowable Expenses (₦)</label>
+        <input
+          type="number"
+          style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }}
+          onChange={(e) => handleInputChange("allowable_expenses", e.target.value)}
+        />
       </div>
     </div>
   );
@@ -93,12 +130,20 @@ export default function CalculatorPage() {
     <AppShell title="Tax Calculator" subtitle="Compute PAYE, VAT, and Company Income Tax instantly.">
       <SectionStack>
         <WorkspaceSectionCard title="Select Tax Type">
-          <div className="flex gap-4 border-b pb-2">
+          <div style={{ display: "flex", gap: 8, borderBottom: "1px solid var(--border)", paddingBottom: 12 }}>
             {["paye", "vat", "cit"].map((type) => (
               <button
                 key={type}
                 onClick={() => setActiveTab(type as TaxType)}
-                className={`px-4 py-2 rounded-t-lg ${activeTab === type ? "bg-blue-600 text-white" : "bg-gray-200"}`}
+                style={{
+                  padding: "10px 20px",
+                  borderRadius: 999,
+                  border: "none",
+                  background: activeTab === type ? "var(--accent)" : "var(--surface-soft)",
+                  color: activeTab === type ? "white" : "var(--text)",
+                  fontWeight: 800,
+                  cursor: "pointer",
+                }}
               >
                 {type.toUpperCase()}
               </button>
@@ -110,7 +155,22 @@ export default function CalculatorPage() {
           {activeTab === "paye" && renderPAYEForm()}
           {activeTab === "vat" && renderVATForm()}
           {activeTab === "cit" && renderCITForm()}
-          <button onClick={calculate} disabled={loading} className="mt-6 w-full bg-green-600 text-white py-2 rounded">
+          <button
+            onClick={calculate}
+            disabled={loading}
+            style={{
+              marginTop: 24,
+              width: "100%",
+              padding: "14px",
+              borderRadius: 14,
+              border: "none",
+              background: "var(--accent)",
+              color: "white",
+              fontWeight: 900,
+              cursor: loading ? "not-allowed" : "pointer",
+              opacity: loading ? 0.7 : 1,
+            }}
+          >
             {loading ? "Calculating..." : "Calculate Tax"}
           </button>
         </WorkspaceSectionCard>
@@ -119,11 +179,25 @@ export default function CalculatorPage() {
           <WorkspaceSectionCard title="Result">
             {result.ok ? (
               <>
-                <div className="p-4 bg-gray-100 rounded">{result.answer}</div>
-                <button onClick={exportPDF} className="mt-4 bg-blue-600 text-white py-2 px-4 rounded">Export as PDF</button>
+                <div style={{ padding: 16, background: "var(--surface-soft)", borderRadius: 16, marginBottom: 16 }}>
+                  {result.answer}
+                </div>
+                <button
+                  onClick={exportPDF}
+                  style={{
+                    padding: "10px 16px",
+                    borderRadius: 14,
+                    border: "1px solid var(--border)",
+                    background: "var(--surface)",
+                    cursor: "pointer",
+                    fontWeight: 800,
+                  }}
+                >
+                  Export as PDF
+                </button>
               </>
             ) : (
-              <div className="text-red-600">{result.error}</div>
+              <div style={{ color: "var(--danger)" }}>{result.error}</div>
             )}
           </WorkspaceSectionCard>
         )}
