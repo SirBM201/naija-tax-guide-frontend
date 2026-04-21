@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import AppShell from "@/components/app-shell";
 import { SectionStack } from "@/components/page-layout";
@@ -16,8 +16,8 @@ export default function FileTaxPage() {
   const router = useRouter();
   const { refreshSession } = useAuth();
   
-  // Get accountId from workspace state
-  const { accountId, loading: workspaceLoading } = useWorkspaceState({
+  // Get accountId from workspace state (busy indicates loading)
+  const { accountId, busy: workspaceLoading } = useWorkspaceState({
     refreshSession,
     autoLoad: true,
     includeAccount: true,
