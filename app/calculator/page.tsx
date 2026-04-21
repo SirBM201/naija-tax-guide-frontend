@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import AppShell from "@/components/app-shell";
 import { SectionStack } from "@/components/page-layout";
 import WorkspaceSectionCard from "@/components/workspace-section-card";
@@ -9,6 +9,11 @@ import { apiJson } from "@/lib/api";
 type TaxType = "paye" | "vat" | "cit";
 
 export default function CalculatorPage() {
+  // Log when component mounts (helps track client-side rendering)
+  useEffect(() => {
+    console.log("[Calculator] Component mounted successfully");
+  }, []);
+
   const [activeTab, setActiveTab] = useState<TaxType>("paye");
   const [inputs, setInputs] = useState<any>({
     monthly_gross_income: 0,
@@ -21,22 +26,43 @@ export default function CalculatorPage() {
   });
   const [result, setResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleInputChange = (field: string, value: string) => {
-    setInputs({ ...inputs, [field]: parseFloat(value) || 0 });
+    const numValue = parseFloat(value) || 0;
+    setInputs({ ...inputs, [field]: numValue });
+    console.log(`[Calculator] Input changed: ${field} = ${numValue}`);
   };
 
   const calculate = async () => {
     setLoading(true);
+    setError(null);
+    setResult(null);
+    console.log(`[Calculator] Starting calculation for ${activeTab} with inputs:`, inputs);
+
     try {
+      const payload = { type: activeTab, inputs };
+      console.log("[Calculator] Sending request to /api/tax/calculate with payload:", payload);
+
       const res = await apiJson("/api/tax/calculate", {
         method: "POST",
-        body: JSON.stringify({ type: activeTab, inputs }),
+        body: JSON.stringify(payload),
       });
-      setResult(res);
-    } catch (err) {
-      console.error(err);
-      setResult({ ok: false, error: "Calculation failed" });
+
+      console.log("[Calculator] API response received:", res);
+
+      if (res && res.ok) {
+        setResult(res);
+        console.log("[Calculator] Calculation successful, answer:", res.answer);
+      } else {
+        const errMsg = res?.error || "Calculation returned no result";
+        setError(errMsg);
+        console.error("[Calculator] API returned error:", errMsg);
+      }
+    } catch (err: any) {
+      const errMsg = err?.message || "Calculation failed";
+      setError(errMsg);
+      console.error("[Calculator] Exception during calculation:", err);
     } finally {
       setLoading(false);
     }
@@ -50,6 +76,7 @@ export default function CalculatorPage() {
           type="number"
           style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }}
           onChange={(e) => handleInputChange("monthly_gross_income", e.target.value)}
+          placeholder="e.g., 500000"
         />
       </div>
       <div>
@@ -58,6 +85,7 @@ export default function CalculatorPage() {
           type="number"
           style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }}
           onChange={(e) => handleInputChange("pension_contribution", e.target.value)}
+          placeholder="Optional"
         />
       </div>
       <div>
@@ -66,6 +94,7 @@ export default function CalculatorPage() {
           type="number"
           style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }}
           onChange={(e) => handleInputChange("nhf", e.target.value)}
+          placeholder="Optional"
         />
       </div>
     </div>
@@ -87,6 +116,7 @@ export default function CalculatorPage() {
           type="number"
           style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }}
           onChange={(e) => handleInputChange("input_vat", e.target.value)}
+          placeholder="Optional"
         />
       </div>
     </div>
@@ -121,7 +151,12 @@ export default function CalculatorPage() {
             {["paye", "vat", "cit"].map((type) => (
               <button
                 key={type}
-                onClick={() => setActiveTab(type as TaxType)}
+                onClick={() => {
+                  console.log(`[Calculator] Tab switched to ${type}`);
+                  setActiveTab(type as TaxType);
+                  setResult(null);
+                  setError(null);
+                }}
                 style={{
                   padding: "10px 20px",
                   borderRadius: 999,
@@ -162,15 +197,22 @@ export default function CalculatorPage() {
           </button>
         </WorkspaceSectionCard>
 
-        {result && (
-          <WorkspaceSectionCard title="Result">
-            {result.ok ? (
-              <div style={{ padding: 16, background: "var(--surface-soft)", borderRadius: 16 }}>
-                {result.answer}
+        {error && (
+          <WorkspaceSectionCard title="Error">
+            <div style={{ padding: 16, background: "rgba(244,63,94,0.1)", borderRadius: 16, color: "#dc2626" }}>
+              <strong>Calculation failed:</strong> {error}
+              <div style={{ fontSize: 12, marginTop: 8, color: "var(--text-muted)" }}>
+                Check the browser console (F12) for detailed logs.
               </div>
-            ) : (
-              <div style={{ color: "var(--danger)" }}>{result.error}</div>
-            )}
+            </div>
+          </WorkspaceSectionCard>
+        )}
+
+        {result && result.ok && (
+          <WorkspaceSectionCard title="Result">
+            <div style={{ padding: 16, background: "var(--surface-soft)", borderRadius: 16 }}>
+              {result.answer}
+            </div>
           </WorkspaceSectionCard>
         )}
       </SectionStack>
