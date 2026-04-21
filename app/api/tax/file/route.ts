@@ -1,9 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
+// Lazy initialization of Supabase client (only at runtime, not build time)
+let supabase: ReturnType<typeof createClient> | null = null;
+
+function getSupabase() {
+  if (!supabase) {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    
+    if (!supabaseUrl || !supabaseServiceKey) {
+      throw new Error('Supabase environment variables are not set');
+    }
+    supabase = createClient(supabaseUrl, supabaseServiceKey);
+  }
+  return supabase;
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -25,8 +37,9 @@ export async function POST(req: NextRequest) {
     }
 
     const reference = `NTG-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+    const supabaseClient = getSupabase();
 
-    const { data, error } = await supabase
+    const { data, error } = await supabaseClient
       .from('tax_filings')
       .insert({
         user_id: userId,
@@ -71,7 +84,9 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const { data, error } = await supabase
+    const supabaseClient = getSupabase();
+
+    const { data, error } = await supabaseClient
       .from('tax_filings')
       .select('*')
       .eq('user_id', userId)
@@ -82,7 +97,6 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
     }
 
-    // Transform to match frontend expected format
     const filings = data.map(f => ({
       id: f.reference,
       taxType: f.tax_type,
