@@ -4,12 +4,10 @@ import React, { useState, useEffect } from "react";
 import AppShell from "@/components/app-shell";
 import { SectionStack } from "@/components/page-layout";
 import WorkspaceSectionCard from "@/components/workspace-section-card";
-import { apiJson } from "@/lib/api";
 
 type TaxType = "paye" | "vat" | "cit";
 
 export default function CalculatorPage() {
-  // Log when component mounts (helps track client-side rendering)
   useEffect(() => {
     console.log("[Calculator] Component mounted successfully");
   }, []);
@@ -41,28 +39,21 @@ export default function CalculatorPage() {
     console.log(`[Calculator] Starting calculation for ${activeTab} with inputs:`, inputs);
 
     try {
-      const payload = { type: activeTab, inputs };
-      console.log("[Calculator] Sending request to /api/tax/calculate with payload:", payload);
-
-      const res = await apiJson("/api/tax/calculate", {
-        method: "POST",
-        body: JSON.stringify(payload),
+      const response = await fetch('/api/tax/calculate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: activeTab, inputs }),
       });
-
+      const res = await response.json();
       console.log("[Calculator] API response received:", res);
-
-      if (res && res.ok) {
+      if (res.ok) {
         setResult(res);
-        console.log("[Calculator] Calculation successful, answer:", res.answer);
       } else {
-        const errMsg = res?.error || "Calculation returned no result";
-        setError(errMsg);
-        console.error("[Calculator] API returned error:", errMsg);
+        setError(res.error || "Calculation failed");
       }
     } catch (err: any) {
-      const errMsg = err?.message || "Calculation failed";
-      setError(errMsg);
       console.error("[Calculator] Exception during calculation:", err);
+      setError(err?.message || "Failed to fetch");
     } finally {
       setLoading(false);
     }
@@ -160,8 +151,8 @@ export default function CalculatorPage() {
                 style={{
                   padding: "10px 20px",
                   borderRadius: 999,
-                  border: "none",
-                  background: activeTab === type ? "var(--accent)" : "var(--surface-soft)",
+                  border: "1px solid var(--border)",
+                  background: activeTab === type ? "#3b82f6" : "var(--surface-soft)",
                   color: activeTab === type ? "white" : "var(--text)",
                   fontWeight: 800,
                   cursor: "pointer",
@@ -186,9 +177,10 @@ export default function CalculatorPage() {
               padding: "14px",
               borderRadius: 14,
               border: "none",
-              background: "var(--accent)",
+              background: "#3b82f6",
               color: "white",
               fontWeight: 900,
+              fontSize: 16,
               cursor: loading ? "not-allowed" : "pointer",
               opacity: loading ? 0.7 : 1,
             }}
@@ -200,7 +192,7 @@ export default function CalculatorPage() {
         {error && (
           <WorkspaceSectionCard title="Error">
             <div style={{ padding: 16, background: "rgba(244,63,94,0.1)", borderRadius: 16, color: "#dc2626" }}>
-              <strong>Calculation failed:</strong> {error}
+              <strong>Error:</strong> {error}
               <div style={{ fontSize: 12, marginTop: 8, color: "var(--text-muted)" }}>
                 Check the browser console (F12) for detailed logs.
               </div>
