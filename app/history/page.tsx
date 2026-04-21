@@ -21,6 +21,8 @@ import WorkspaceOverviewMetrics from '@/components/workspace-overview-metrics';
 import { useWorkspaceState } from '@/hooks/useWorkspaceState';
 import { getHistoryItems, type HistoryItem as LocalHistoryItem } from '@/lib/history-storage';
 
+type HistoryTab = 'qa' | 'filings';
+
 type BackendHistoryItem = {
   id?: string;
   account_id?: string;
@@ -47,6 +49,16 @@ type DisplayHistoryItem = {
   source: string;
   created_at: string;
   from_cache?: boolean;
+};
+
+type FilingRecord = {
+  id: string;
+  taxType: string;
+  inputs: any;
+  documents: any[];
+  userId: string;
+  status: string;
+  submittedAt: string;
 };
 
 type HistoryStats = {
@@ -632,11 +644,14 @@ export default function HistoryPage() {
   const router = useRouter();
   const { refreshSession, logout } = useAuth();
 
+  const [activeTab, setActiveTab] = useState<HistoryTab>('qa');
   const [historyItems, setHistoryItems] = useState<DisplayHistoryItem[]>([]);
+  const [filings, setFilings] = useState<FilingRecord[]>([]);
   const [search, setSearch] = useState('');
   const [sourceFilter, setSourceFilter] = useState('all');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [loadingFilings, setLoadingFilings] = useState(false);
   const [historyNotice, setHistoryNotice] = useState<HistoryNotice | null>(null);
   const [historyMode, setHistoryMode] = useState<HistoryMode>('local');
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -755,6 +770,28 @@ export default function HistoryPage() {
     [accountId, fallbackToLocalHistory, search, sourceFilter]
   );
 
+  const fetchFilings = useCallback(async () => {
+    setLoadingFilings(true);
+    try {
+      const effectiveAccountId = String(accountId || '').trim();
+      const res = await apiJson('/api/tax/file', {
+        method: 'GET',
+        query: effectiveAccountId ? { userId: effectiveAccountId } : undefined,
+        timeoutMs: 10000,
+      });
+      if (res.ok && Array.isArray(res.filings)) {
+        setFilings(res.filings);
+      } else {
+        setFilings([]);
+      }
+    } catch (err) {
+      console.error('Failed to fetch filings:', err);
+      setFilings([]);
+    } finally {
+      setLoadingFilings(false);
+    }
+  }, [accountId]);
+
   const loadHistoryWorkspace = useCallback(
     async (message = 'Loading history workspace...') => {
       await load(message);
@@ -774,6 +811,12 @@ export default function HistoryPage() {
     if (!String(accountId || '').trim()) return;
     void refreshHistoryFromBackend(undefined, undefined, true);
   }, [accountId, refreshHistoryFromBackend]);
+
+  useEffect(() => {
+    if (activeTab === 'filings' && accountId) {
+      void fetchFilings();
+    }
+  }, [activeTab, accountId, fetchFilings]);
 
   const alerts = useMemo<PageAlert[]>(() => {
     const items: PageAlert[] = [];
@@ -1032,7 +1075,7 @@ export default function HistoryPage() {
   return (
     <AppShell
       title='History'
-      subtitle='Review saved tax questions and previous AI answers so users can continue work without losing continuity or repeating earlier requests.'
+      subtitle='Review saved tax questions, previous AI answers, and submitted tax filings.'
       actions={
         <WorkspaceActionBar
           items={[
@@ -1041,10 +1084,14 @@ export default function HistoryPage() {
             {
               label: 'Refresh',
               onClick: () => {
-                void loadHistoryWorkspace('Refreshing history workspace...');
+                if (activeTab === 'qa') {
+                  void loadHistoryWorkspace('Refreshing history workspace...');
+                } else {
+                  void fetchFilings();
+                }
               },
               tone: 'secondary',
-              disabled: busy || loadingHistory || deletingId !== null || clearingAll,
+              disabled: busy || loadingHistory || loadingFilings || deletingId !== null || clearingAll,
             },
             {
               label: 'Logout',
@@ -1052,13 +1099,45 @@ export default function HistoryPage() {
                 void logout();
               },
               tone: 'danger',
-              disabled: busy || loadingHistory || deletingId !== null || clearingAll,
+              disabled: busy || loadingHistory || loadingFilings || deletingId !== null || clearingAll,
             },
           ]}
         />
       }
     >
       <SectionStack>
+        {/* Tab Switcher */}
+        <div style={{ display: 'flex', gap: 12, marginBottom: 24, borderBottom: '1px solid var(--border)', paddingBottom: 12 }}>
+          <button
+            onClick={() => setActiveTab('qa')}
+            style={{
+              padding: '10px 24px',
+              borderRadius: 40,
+              border: 'none',
+              background: activeTab === 'qa' ? '#3b82f6' : 'var(--surface-soft)',
+              color: activeTab === 'qa' ? 'white' : 'var(--text)',
+              fontWeight: 800,
+              cursor: 'pointer',
+            }}
+          >
+            Q&A History
+          </button>
+          <button
+            onClick={() => setActiveTab('filings')}
+            style={{
+              padding: '10px 24px',
+              borderRadius: 40,
+              border: 'none',
+              background: activeTab === 'filings' ? '#3b82f6' : 'var(--surface-soft)',
+              color: activeTab === 'filings' ? 'white' : 'var(--text)',
+              fontWeight: 800,
+              cursor: 'pointer',
+            }}
+          >
+            Tax Filings
+          </button>
+        </div>
+
         {historyNotice ? (
           <Banner
             title={historyNotice.title}
@@ -1087,288 +1166,383 @@ export default function HistoryPage() {
           expiresAt={expiresAt}
         />
 
-        <CardsGrid min={200}>
-          <MetricCard
-            label='Saved Items'
-            value={String(historyItems.length)}
-            tone={toneFromHistoryCount(historyItems.length)}
-            helper='Total visible question-answer items currently saved for this workspace.'
-          />
-          <MetricCard
-            label='Filtered Results'
-            value={String(filteredItems.length)}
-            tone={filteredItems.length > 0 ? 'good' : 'warn'}
-            helper='Visible results after current search and source filter are applied.'
-          />
-          <MetricCard
-            label='Storage Mode'
-            value={historyMode === 'backend' ? 'Backend' : 'Local'}
-            tone={historyMode === 'backend' ? 'good' : 'warn'}
-            helper='Shows whether this page is currently reading server-backed history or local fallback history.'
-          />
-          <MetricCard
-            label='Newest Item'
-            value={newestItem ? formatDate(newestItem.created_at) : '—'}
-            tone={newestItem ? 'good' : 'default'}
-            helper='Most recent saved entry currently visible in history.'
-          />
-        </CardsGrid>
-
-        <TwoColumnSection leftRatio={1.08} rightRatio={0.92}>
-          <WorkspaceSectionCard
-            title='History Search'
-            subtitle='Find previous questions quickly by keyword or channel source.'
-          >
-            <div style={{ display: 'grid', gap: 14, minWidth: 0 }}>
-              <div style={{ display: 'grid', gap: 8 }}>
-                <div style={sectionLabelStyle()}>Search saved history</div>
-                <input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder='Search question text, answer text, source, or language...'
-                  style={appInputStyle()}
-                />
-              </div>
-
-              <div style={{ display: 'grid', gap: 8 }}>
-                <div style={sectionLabelStyle()}>Filter by source</div>
-                <select
-                  value={sourceFilter}
-                  onChange={(e) => setSourceFilter(e.target.value)}
-                  style={appSelectStyle()}
-                >
-                  <option value='all'>All Sources</option>
-                  <option value='web'>Web</option>
-                  <option value='whatsapp'>WhatsApp</option>
-                  <option value='telegram'>Telegram</option>
-                  <option value='ai'>AI</option>
-                  <option value='cache'>Cache</option>
-                </select>
-              </div>
-
-              <div style={actionGridStyle(190)}>
-                <button
-                  onClick={() => {
-                    void refreshHistoryFromBackend(search.trim(), sourceFilter);
-                  }}
-                  disabled={loadingHistory || busy || deletingId !== null || clearingAll}
-                  style={{
-                    ...actionButtonStyle('primary'),
-                    opacity:
-                      loadingHistory || busy || deletingId !== null || clearingAll ? 0.6 : 1,
-                  }}
-                >
-                  {loadingHistory ? 'Searching...' : 'Apply Search'}
-                </button>
-
-                <button
-                  onClick={handleClearAll}
-                  disabled={!historyItems.length || busy || loadingHistory || clearingAll}
-                  style={{
-                    ...actionButtonStyle('danger'),
-                    opacity:
-                      !historyItems.length || busy || loadingHistory || clearingAll ? 0.6 : 1,
-                  }}
-                >
-                  {clearingAll ? 'Clearing...' : 'Clear All History'}
-                </button>
-              </div>
-
-              <div
-                style={{
-                  borderRadius: 18,
-                  border: '1px solid var(--border)',
-                  background: 'var(--surface)',
-                  padding: 16,
-                  color: 'var(--text-muted)',
-                  lineHeight: 1.75,
-                  fontSize: 14,
-                }}
-              >
-                History is part of user continuity. It should help users return to previous tax
-                guidance, compare earlier answers, reopen a saved item back into Ask, and remove
-                items that are no longer useful.
-              </div>
-            </div>
-          </WorkspaceSectionCard>
-
-          <WorkspaceSectionCard
-            title='History Breakdown'
-            subtitle='Quick operational view of where saved items came from.'
-          >
-            <div style={{ display: 'grid', gap: 18 }}>
-              <CardsGrid min={160}>
-                <MetricCard
-                  label='Web'
-                  value={String(webCount)}
-                  tone={webCount > 0 ? 'good' : 'default'}
-                  helper='Items saved from the web workspace.'
-                />
-                <MetricCard
-                  label='WhatsApp'
-                  value={String(whatsappCount)}
-                  tone={whatsappCount > 0 ? 'good' : 'default'}
-                  helper='Items saved from WhatsApp usage.'
-                />
-                <MetricCard
-                  label='Telegram'
-                  value={String(telegramCount)}
-                  tone={telegramCount > 0 ? 'good' : 'default'}
-                  helper='Items saved from Telegram usage.'
-                />
-              </CardsGrid>
-
-              <MetricCard
-                label='Continuity State'
-                value={historyItems.length > 0 ? 'Available' : 'Empty'}
-                tone={historyItems.length > 0 ? 'good' : 'warn'}
-                helper='Whether the user currently has any saved history to revisit.'
-              />
-            </div>
-          </WorkspaceSectionCard>
-        </TwoColumnSection>
-
-        <WorkspaceSectionCard
-          title='Saved Questions and Answers'
-          subtitle='Open previous records to continue work with confidence and continuity.'
-        >
-          {filteredItems.length > 0 ? (
-            <div style={{ display: 'grid', gap: 16, minWidth: 0 }}>
-              {filteredItems.map((item) => {
-                const itemId = String(item.id);
-
-                return (
-                  <HistoryItemCard
-                    key={itemId}
-                    item={item}
-                    expanded={expandedId === itemId}
-                    actionBusy={deletingId === itemId || clearingAll}
-                    onToggle={() => setExpandedId((current) => (current === itemId ? null : itemId))}
-                    onOpenInAsk={() => handleOpenInAsk(item)}
-                    onCopyQuestion={() => {
-                      void handleCopyQuestion(item);
-                    }}
-                    onDelete={() => {
-                      void handleDeleteItem(item);
-                    }}
-                  />
-                );
-              })}
-            </div>
-          ) : (
-            <Banner
-              title='No matching history found'
-              subtitle={
-                historyItems.length > 0
-                  ? 'No saved items match your current search or source filter. Adjust the filters and try again.'
-                  : 'No question history is visible yet. Once successful tax questions are saved, they will appear here for future review.'
-              }
-              tone={historyItems.length > 0 ? 'warn' : 'default'}
-            />
-          )}
-        </WorkspaceSectionCard>
-
-        <WorkspaceSectionCard
-          title='Recommended Actions'
-          subtitle='Use history together with other workspace tools to reduce repeated work.'
-        >
-          <CardsGrid min={220}>
-            <ShortcutCard
-              title='Ask Tax AI'
-              subtitle={
-                !activeNow
-                  ? 'Your account may need active paid access before new questions can continue.'
-                  : creditBalance <= 0
-                    ? 'Your visible credits are exhausted. Review Credits or Plans before continuing.'
-                    : 'Ask a new tax question when saved history is no longer enough.'
-              }
-              tone={!activeNow ? 'warn' : creditBalance <= 0 ? 'danger' : 'good'}
-              onClick={() => router.push('/ask')}
-            />
-
-            <ShortcutCard
-              title='Credits'
-              subtitle='Review balance and daily usage before deciding whether to continue with fresh AI requests.'
-              tone={creditBalance <= 3 ? 'warn' : 'default'}
-              onClick={() => router.push('/credits')}
-            />
-
-            <ShortcutCard
-              title='Billing'
-              subtitle='Check subscription condition, expiry, and billing readiness if access needs attention.'
-              tone={!activeNow ? 'warn' : 'default'}
-              onClick={() => router.push('/billing')}
-            />
-
-            <ShortcutCard
-              title='Help Center'
-              subtitle='Open guided help if the user needs assistance interpreting results or workspace behavior.'
-              tone='default'
-              onClick={() => router.push('/help')}
-            />
-          </CardsGrid>
-        </WorkspaceSectionCard>
-
-        <TwoColumnSection>
-          <WorkspaceSectionCard
-            title='History Notes'
-            subtitle='How this page should function in a real SaaS workflow.'
-          >
-            <div
-              style={{
-                display: 'grid',
-                gap: 10,
-                color: 'var(--text-muted)',
-                fontSize: 14,
-                lineHeight: 1.75,
-              }}
-            >
-              <div>1. History should make the product feel continuous, not disposable.</div>
-              <div>2. Users should be able to find earlier answers without friction.</div>
-              <div>3. Search and source filtering reduce repeated questioning.</div>
-              <div>4. Reopen in Ask should let the user continue from any saved item.</div>
-              <div>5. Delete and clear-all should support workspace cleanup.</div>
-            </div>
-          </WorkspaceSectionCard>
-
-          <WorkspaceSectionCard
-            title='Next Best Decision'
-            subtitle='Fast summary of what the user should do next.'
-          >
+        {/* Q&A History Tab */}
+        {activeTab === 'qa' && (
+          <>
             <CardsGrid min={200}>
               <MetricCard
-                label='Best Immediate Action'
-                value={
-                  filteredItems.length > 0
-                    ? 'Review or Reopen'
-                    : historyItems.length > 0
-                      ? 'Adjust Filters'
-                      : 'Ask First Question'
-                }
-                tone={
-                  filteredItems.length > 0
-                    ? 'good'
-                    : historyItems.length > 0
-                      ? 'warn'
-                      : 'default'
-                }
-                helper='Most sensible next move based on current visible history.'
+                label='Saved Items'
+                value={String(historyItems.length)}
+                tone={toneFromHistoryCount(historyItems.length)}
+                helper='Total visible question-answer items currently saved for this workspace.'
               />
               <MetricCard
-                label='History Utility'
-                value={historyItems.length > 0 ? 'Useful' : 'Not Yet Built'}
-                tone={historyItems.length > 0 ? 'good' : 'warn'}
-                helper='Shows whether user continuity is already active in this workspace.'
+                label='Filtered Results'
+                value={String(filteredItems.length)}
+                tone={filteredItems.length > 0 ? 'good' : 'warn'}
+                helper='Visible results after current search and source filter are applied.'
               />
               <MetricCard
-                label='Oldest Item'
-                value={oldestItem ? formatDate(oldestItem.created_at) : '—'}
-                tone={oldestItem ? 'default' : 'warn'}
-                helper='Earliest visible entry still available in history.'
+                label='Storage Mode'
+                value={historyMode === 'backend' ? 'Backend' : 'Local'}
+                tone={historyMode === 'backend' ? 'good' : 'warn'}
+                helper='Shows whether this page is currently reading server-backed history or local fallback history.'
+              />
+              <MetricCard
+                label='Newest Item'
+                value={newestItem ? formatDate(newestItem.created_at) : '—'}
+                tone={newestItem ? 'good' : 'default'}
+                helper='Most recent saved entry currently visible in history.'
               />
             </CardsGrid>
+
+            <TwoColumnSection leftRatio={1.08} rightRatio={0.92}>
+              <WorkspaceSectionCard
+                title='History Search'
+                subtitle='Find previous questions quickly by keyword or channel source.'
+              >
+                <div style={{ display: 'grid', gap: 14, minWidth: 0 }}>
+                  <div style={{ display: 'grid', gap: 8 }}>
+                    <div style={sectionLabelStyle()}>Search saved history</div>
+                    <input
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      placeholder='Search question text, answer text, source, or language...'
+                      style={appInputStyle()}
+                    />
+                  </div>
+
+                  <div style={{ display: 'grid', gap: 8 }}>
+                    <div style={sectionLabelStyle()}>Filter by source</div>
+                    <select
+                      value={sourceFilter}
+                      onChange={(e) => setSourceFilter(e.target.value)}
+                      style={appSelectStyle()}
+                    >
+                      <option value='all'>All Sources</option>
+                      <option value='web'>Web</option>
+                      <option value='whatsapp'>WhatsApp</option>
+                      <option value='telegram'>Telegram</option>
+                      <option value='ai'>AI</option>
+                      <option value='cache'>Cache</option>
+                    </select>
+                  </div>
+
+                  <div style={actionGridStyle(190)}>
+                    <button
+                      onClick={() => {
+                        void refreshHistoryFromBackend(search.trim(), sourceFilter);
+                      }}
+                      disabled={loadingHistory || busy || deletingId !== null || clearingAll}
+                      style={{
+                        ...actionButtonStyle('primary'),
+                        opacity:
+                          loadingHistory || busy || deletingId !== null || clearingAll ? 0.6 : 1,
+                      }}
+                    >
+                      {loadingHistory ? 'Searching...' : 'Apply Search'}
+                    </button>
+
+                    <button
+                      onClick={handleClearAll}
+                      disabled={!historyItems.length || busy || loadingHistory || clearingAll}
+                      style={{
+                        ...actionButtonStyle('danger'),
+                        opacity:
+                          !historyItems.length || busy || loadingHistory || clearingAll ? 0.6 : 1,
+                      }}
+                    >
+                      {clearingAll ? 'Clearing...' : 'Clear All History'}
+                    </button>
+                  </div>
+
+                  <div
+                    style={{
+                      borderRadius: 18,
+                      border: '1px solid var(--border)',
+                      background: 'var(--surface)',
+                      padding: 16,
+                      color: 'var(--text-muted)',
+                      lineHeight: 1.75,
+                      fontSize: 14,
+                    }}
+                  >
+                    History is part of user continuity. It should help users return to previous tax
+                    guidance, compare earlier answers, reopen a saved item back into Ask, and remove
+                    items that are no longer useful.
+                  </div>
+                </div>
+              </WorkspaceSectionCard>
+
+              <WorkspaceSectionCard
+                title='History Breakdown'
+                subtitle='Quick operational view of where saved items came from.'
+              >
+                <div style={{ display: 'grid', gap: 18 }}>
+                  <CardsGrid min={160}>
+                    <MetricCard
+                      label='Web'
+                      value={String(webCount)}
+                      tone={webCount > 0 ? 'good' : 'default'}
+                      helper='Items saved from the web workspace.'
+                    />
+                    <MetricCard
+                      label='WhatsApp'
+                      value={String(whatsappCount)}
+                      tone={whatsappCount > 0 ? 'good' : 'default'}
+                      helper='Items saved from WhatsApp usage.'
+                    />
+                    <MetricCard
+                      label='Telegram'
+                      value={String(telegramCount)}
+                      tone={telegramCount > 0 ? 'good' : 'default'}
+                      helper='Items saved from Telegram usage.'
+                    />
+                  </CardsGrid>
+
+                  <MetricCard
+                    label='Continuity State'
+                    value={historyItems.length > 0 ? 'Available' : 'Empty'}
+                    tone={historyItems.length > 0 ? 'good' : 'warn'}
+                    helper='Whether the user currently has any saved history to revisit.'
+                  />
+                </div>
+              </WorkspaceSectionCard>
+            </TwoColumnSection>
+
+            <WorkspaceSectionCard
+              title='Saved Questions and Answers'
+              subtitle='Open previous records to continue work with confidence and continuity.'
+            >
+              {filteredItems.length > 0 ? (
+                <div style={{ display: 'grid', gap: 16, minWidth: 0 }}>
+                  {filteredItems.map((item) => {
+                    const itemId = String(item.id);
+
+                    return (
+                      <HistoryItemCard
+                        key={itemId}
+                        item={item}
+                        expanded={expandedId === itemId}
+                        actionBusy={deletingId === itemId || clearingAll}
+                        onToggle={() => setExpandedId((current) => (current === itemId ? null : itemId))}
+                        onOpenInAsk={() => handleOpenInAsk(item)}
+                        onCopyQuestion={() => {
+                          void handleCopyQuestion(item);
+                        }}
+                        onDelete={() => {
+                          void handleDeleteItem(item);
+                        }}
+                      />
+                    );
+                  })}
+                </div>
+              ) : (
+                <Banner
+                  title='No matching history found'
+                  subtitle={
+                    historyItems.length > 0
+                      ? 'No saved items match your current search or source filter. Adjust the filters and try again.'
+                      : 'No question history is visible yet. Once successful tax questions are saved, they will appear here for future review.'
+                  }
+                  tone={historyItems.length > 0 ? 'warn' : 'default'}
+                />
+              )}
+            </WorkspaceSectionCard>
+
+            <WorkspaceSectionCard
+              title='Recommended Actions'
+              subtitle='Use history together with other workspace tools to reduce repeated work.'
+            >
+              <CardsGrid min={220}>
+                <ShortcutCard
+                  title='Ask Tax AI'
+                  subtitle={
+                    !activeNow
+                      ? 'Your account may need active paid access before new questions can continue.'
+                      : creditBalance <= 0
+                        ? 'Your visible credits are exhausted. Review Credits or Plans before continuing.'
+                        : 'Ask a new tax question when saved history is no longer enough.'
+                  }
+                  tone={!activeNow ? 'warn' : creditBalance <= 0 ? 'danger' : 'good'}
+                  onClick={() => router.push('/ask')}
+                />
+
+                <ShortcutCard
+                  title='Credits'
+                  subtitle='Review balance and daily usage before deciding whether to continue with fresh AI requests.'
+                  tone={creditBalance <= 3 ? 'warn' : 'default'}
+                  onClick={() => router.push('/credits')}
+                />
+
+                <ShortcutCard
+                  title='Billing'
+                  subtitle='Check subscription condition, expiry, and billing readiness if access needs attention.'
+                  tone={!activeNow ? 'warn' : 'default'}
+                  onClick={() => router.push('/billing')}
+                />
+
+                <ShortcutCard
+                  title='Help Center'
+                  subtitle='Open guided help if the user needs assistance interpreting results or workspace behavior.'
+                  tone='default'
+                  onClick={() => router.push('/help')}
+                />
+              </CardsGrid>
+            </WorkspaceSectionCard>
+
+            <TwoColumnSection>
+              <WorkspaceSectionCard
+                title='History Notes'
+                subtitle='How this page should function in a real SaaS workflow.'
+              >
+                <div
+                  style={{
+                    display: 'grid',
+                    gap: 10,
+                    color: 'var(--text-muted)',
+                    fontSize: 14,
+                    lineHeight: 1.75,
+                  }}
+                >
+                  <div>1. History should make the product feel continuous, not disposable.</div>
+                  <div>2. Users should be able to find earlier answers without friction.</div>
+                  <div>3. Search and source filtering reduce repeated questioning.</div>
+                  <div>4. Reopen in Ask should let the user continue from any saved item.</div>
+                  <div>5. Delete and clear-all should support workspace cleanup.</div>
+                </div>
+              </WorkspaceSectionCard>
+
+              <WorkspaceSectionCard
+                title='Next Best Decision'
+                subtitle='Fast summary of what the user should do next.'
+              >
+                <CardsGrid min={200}>
+                  <MetricCard
+                    label='Best Immediate Action'
+                    value={
+                      filteredItems.length > 0
+                        ? 'Review or Reopen'
+                        : historyItems.length > 0
+                          ? 'Adjust Filters'
+                          : 'Ask First Question'
+                    }
+                    tone={
+                      filteredItems.length > 0
+                        ? 'good'
+                        : historyItems.length > 0
+                          ? 'warn'
+                          : 'default'
+                    }
+                    helper='Most sensible next move based on current visible history.'
+                  />
+                  <MetricCard
+                    label='History Utility'
+                    value={historyItems.length > 0 ? 'Useful' : 'Not Yet Built'}
+                    tone={historyItems.length > 0 ? 'good' : 'warn'}
+                    helper='Shows whether user continuity is already active in this workspace.'
+                  />
+                  <MetricCard
+                    label='Oldest Item'
+                    value={oldestItem ? formatDate(oldestItem.created_at) : '—'}
+                    tone={oldestItem ? 'default' : 'warn'}
+                    helper='Earliest visible entry still available in history.'
+                  />
+                </CardsGrid>
+              </WorkspaceSectionCard>
+            </TwoColumnSection>
+          </>
+        )}
+
+        {/* Tax Filings Tab */}
+        {activeTab === 'filings' && (
+          <WorkspaceSectionCard title='Your Tax Filings' subtitle='Submitted tax filings with reference numbers and status.'>
+            {loadingFilings ? (
+              <div style={{ textAlign: 'center', padding: 40 }}>Loading your filings...</div>
+            ) : filings.length === 0 ? (
+              <Banner
+                title='No filings found'
+                subtitle="You haven't submitted any tax filings yet. Use the 'File Taxes' wizard to get started."
+                tone='default'
+              />
+            ) : (
+              <div style={{ display: 'grid', gap: 16 }}>
+                {filings.map((filing) => (
+                  <div
+                    key={filing.id}
+                    style={{
+                      border: '1px solid var(--border)',
+                      borderRadius: 18,
+                      padding: 18,
+                      background: 'var(--surface)',
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                        marginBottom: 12,
+                      }}
+                    >
+                      <strong style={{ fontSize: 18, textTransform: 'uppercase' }}>
+                        {filing.taxType} Filing
+                      </strong>
+                      <span
+                        style={{
+                          fontSize: 12,
+                          background:
+                            filing.status === 'submitted'
+                              ? 'rgba(16,185,129,0.15)'
+                              : 'var(--surface-soft)',
+                          padding: '4px 12px',
+                          borderRadius: 20,
+                          color: filing.status === 'submitted' ? '#10b981' : 'var(--text-muted)',
+                        }}
+                      >
+                        {filing.status.toUpperCase()}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 8 }}>
+                      Reference: <strong>{filing.id}</strong>
+                      <br />
+                      Submitted: {new Date(filing.submittedAt).toLocaleString()}
+                    </div>
+                    <details style={{ marginTop: 12 }}>
+                      <summary style={{ cursor: 'pointer', fontWeight: 800, fontSize: 14 }}>
+                        View filing details
+                      </summary>
+                      <pre
+                        style={{
+                          marginTop: 12,
+                          padding: 12,
+                          background: 'var(--surface-soft)',
+                          borderRadius: 12,
+                          overflowX: 'auto',
+                          fontSize: 12,
+                          lineHeight: 1.5,
+                        }}
+                      >
+                        {JSON.stringify(filing.inputs, null, 2)}
+                      </pre>
+                      {filing.documents && filing.documents.length > 0 && (
+                        <div style={{ marginTop: 12 }}>
+                          <strong>Uploaded documents:</strong>
+                          <ul style={{ marginTop: 8, paddingLeft: 20 }}>
+                            {filing.documents.map((doc, idx) => (
+                              <li key={idx}>{doc.name} ({(doc.size / 1024).toFixed(1)} KB)</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </details>
+                  </div>
+                ))}
+              </div>
+            )}
           </WorkspaceSectionCard>
-        </TwoColumnSection>
+        )}
       </SectionStack>
     </AppShell>
   );
