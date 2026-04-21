@@ -8,19 +8,10 @@ import WorkspaceSectionCard from "@/components/workspace-section-card";
 type TaxType = "paye" | "vat" | "cit";
 
 export default function CalculatorPage() {
+  // Refs must be declared first
   const resultRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    console.log("[Calculator] Component mounted successfully");
-  }, []);
-
-  // Auto-scroll to result when result appears
-  useEffect(() => {
-    if (resultRef.current) {
-      resultRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
-  }, [result]);
-
+  // State declarations
   const [activeTab, setActiveTab] = useState<TaxType>("paye");
   const [inputs, setInputs] = useState<any>({
     monthly_gross_income: 0,
@@ -34,6 +25,18 @@ export default function CalculatorPage() {
   const [result, setResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Auto-scroll to result when result appears (must come AFTER result state is declared)
+  useEffect(() => {
+    if (resultRef.current) {
+      resultRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [result]);
+
+  // Log mount (optional)
+  useEffect(() => {
+    console.log("[Calculator] Component mounted successfully");
+  }, []);
 
   const handleInputChange = (field: string, value: string) => {
     const numValue = parseFloat(value) || 0;
