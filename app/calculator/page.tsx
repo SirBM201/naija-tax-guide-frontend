@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import AppShell from "@/components/app-shell";
 import { SectionStack } from "@/components/page-layout";
 import WorkspaceSectionCard from "@/components/workspace-section-card";
@@ -8,9 +8,18 @@ import WorkspaceSectionCard from "@/components/workspace-section-card";
 type TaxType = "paye" | "vat" | "cit";
 
 export default function CalculatorPage() {
+  const resultRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     console.log("[Calculator] Component mounted successfully");
   }, []);
+
+  // Auto-scroll to result when result appears
+  useEffect(() => {
+    if (resultRef.current) {
+      resultRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [result]);
 
   const [activeTab, setActiveTab] = useState<TaxType>("paye");
   const [inputs, setInputs] = useState<any>({
@@ -59,10 +68,8 @@ export default function CalculatorPage() {
     }
   };
 
-  // Tooltip helper
   const tooltip = (text: string) => ({ title: text });
 
-  // Shared input style
   const inputStyle: React.CSSProperties = {
     width: "100%",
     padding: "14px 16px",
@@ -236,7 +243,7 @@ export default function CalculatorPage() {
           >
             {loading ? (
               <>
-                <span style={{ display: "inline-block", width: 18, height: 18, borderRadius: "50%", border: "2px solid white", borderTopColor: "transparent", animation: "spin 0.8s linear infinite" }} />
+                <span className="loading-spinner" />
                 Calculating...
               </>
             ) : (
@@ -257,21 +264,16 @@ export default function CalculatorPage() {
         )}
 
         {result && result.ok && (
-          <WorkspaceSectionCard title="Result">
-            <div style={{ padding: 20, background: "linear-gradient(135deg, rgba(16,185,129,0.08), rgba(16,185,129,0.02))", borderRadius: 20, border: "1px solid rgba(16,185,129,0.2)" }}>
-              <div style={{ fontSize: 18, fontWeight: 900, color: "#10b981", marginBottom: 8 }}>📊 Tax Summary</div>
-              <div style={{ fontSize: 16, lineHeight: 1.6 }}>{result.answer}</div>
-            </div>
-          </WorkspaceSectionCard>
+          <div ref={resultRef}>
+            <WorkspaceSectionCard title="Result">
+              <div style={{ padding: 20, background: "linear-gradient(135deg, rgba(16,185,129,0.08), rgba(16,185,129,0.02))", borderRadius: 20, border: "1px solid rgba(16,185,129,0.2)" }}>
+                <div style={{ fontSize: 18, fontWeight: 900, color: "#10b981", marginBottom: 8 }}>📊 Tax Summary</div>
+                <div style={{ fontSize: 16, lineHeight: 1.6 }}>{result.answer}</div>
+              </div>
+            </WorkspaceSectionCard>
+          </div>
         )}
       </SectionStack>
-
-      {/* Add simple keyframe animation for spinner */}
-      <style jsx>{`
-        @keyframes spin {
-          to { transform: rotate(360deg); }
-        }
-      `}</style>
     </AppShell>
   );
 }
