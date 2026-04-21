@@ -5,8 +5,6 @@ import AppShell from "@/components/app-shell";
 import { SectionStack } from "@/components/page-layout";
 import WorkspaceSectionCard from "@/components/workspace-section-card";
 import { apiJson } from "@/lib/api";
-import jsPDF from "jspdf";
-import "jspdf-autotable";
 
 type TaxType = "paye" | "vat" | "cit";
 
@@ -44,23 +42,12 @@ export default function CalculatorPage() {
     }
   };
 
-  const exportPDF = () => {
-    if (!result || !result.ok) return;
-    const doc = new jsPDF();
-    doc.text("Tax Calculation Report", 20, 20);
-    doc.text(`Tax Type: ${activeTab.toUpperCase()}`, 20, 30);
-    doc.text(`Inputs: ${JSON.stringify(inputs)}`, 20, 40);
-    doc.text(`Result: ${result.answer}`, 20, 50);
-    doc.save("tax_calculation.pdf");
-  };
-
   const renderPAYEForm = () => (
     <div style={{ display: "grid", gap: 16 }}>
       <div>
         <label style={{ display: "block", marginBottom: 6, fontWeight: 800 }}>Monthly Gross Income (₦)</label>
         <input
           type="number"
-          className="w-full p-2 border rounded"
           style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }}
           onChange={(e) => handleInputChange("monthly_gross_income", e.target.value)}
         />
@@ -178,24 +165,9 @@ export default function CalculatorPage() {
         {result && (
           <WorkspaceSectionCard title="Result">
             {result.ok ? (
-              <>
-                <div style={{ padding: 16, background: "var(--surface-soft)", borderRadius: 16, marginBottom: 16 }}>
-                  {result.answer}
-                </div>
-                <button
-                  onClick={exportPDF}
-                  style={{
-                    padding: "10px 16px",
-                    borderRadius: 14,
-                    border: "1px solid var(--border)",
-                    background: "var(--surface)",
-                    cursor: "pointer",
-                    fontWeight: 800,
-                  }}
-                >
-                  Export as PDF
-                </button>
-              </>
+              <div style={{ padding: 16, background: "var(--surface-soft)", borderRadius: 16 }}>
+                {result.answer}
+              </div>
             ) : (
               <div style={{ color: "var(--danger)" }}>{result.error}</div>
             )}
