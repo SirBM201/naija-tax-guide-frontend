@@ -6,9 +6,13 @@
   --card: rgba(255, 255, 255, 0.06);
   --card2: rgba(255, 255, 255, 0.04);
   --border: rgba(255, 255, 255, 0.12);
+  --border-focus: rgba(59, 130, 246, 0.6);
   --text: rgba(255, 255, 255, 0.92);
   --muted: rgba(255, 255, 255, 0.58);
   --accent: rgba(255, 255, 255, 0.10);
+  --accent-blue: #3b82f6;
+  --accent-green: #10b981;
+  --danger: #dc2626;
 }
 
 * {
@@ -39,6 +43,8 @@ a {
 
 button {
   font-family: inherit;
+  cursor: pointer;
+  transition: all 0.2s ease;
 }
 
 ::selection {
@@ -53,9 +59,117 @@ svg {
   max-width: 100%;
 }
 
+/* ===== FORM ELEMENTS ===== */
 input,
 select,
-textarea,
-button {
+textarea {
   max-width: 100%;
+  background: var(--card2);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px 16px;
+  font-size: 16px;
+  color: var(--text);
+  transition: border-color 0.2s, box-shadow 0.2s;
+  outline: none;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--accent-blue);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+}
+
+input::placeholder,
+select::placeholder,
+textarea::placeholder {
+  color: var(--muted);
+  opacity: 0.6;
+}
+
+/* ===== LOADING SPINNER ===== */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.loading-spinner {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+/* ===== TOOLTIP (simple native) ===== */
+[title] {
+  position: relative;
+  cursor: help;
+}
+
+/* Optional: better tooltip styling (works on hover) */
+[title]:hover::after {
+  content: attr(title);
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  background: #1e293b;
+  color: #e2e8f0;
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  white-space: nowrap;
+  z-index: 10;
+  pointer-events: none;
+  margin-bottom: 6px;
+  border: 1px solid var(--border);
+}
+
+/* ===== BUTTON STYLES (optional utilities) ===== */
+.btn-primary {
+  background: var(--accent-blue);
+  border: none;
+  border-radius: 16px;
+  padding: 14px 20px;
+  font-weight: 900;
+  font-size: 16px;
+  color: white;
+  transition: background 0.2s, transform 0.1s;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+.btn-primary:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ===== SCROLLBAR (optional, for better UX) ===== */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--card2);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
 }
