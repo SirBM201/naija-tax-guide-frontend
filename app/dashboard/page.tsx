@@ -42,6 +42,14 @@ type WorkspaceLimitsResponse = {
   };
 };
 
+type Deadline = {
+  id: string;
+  tax_type: string;
+  due_date: string;
+  reminder_days_before: number;
+  enabled: boolean;
+};
+
 type NormalizedAlert = {
   tone: "good" | "warn" | "danger";
   title: string;
@@ -242,11 +250,14 @@ export default function DashboardPage() {
     billing,
     credits,
     refreshAll,
+    accountId,
   } = useWorkspaceState();
 
   const [limitsData, setLimitsData] = useState<WorkspaceLimitsResponse | null>(null);
   const [limitsError, setLimitsError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
+  const [deadlines, setDeadlines] = useState<Deadline[]>([]);
+  const [loadingDeadlines, setLoadingDeadlines] = useState(false);
 
   const loadLimits = useCallback(async () => {
     try {
@@ -267,9 +278,33 @@ export default function DashboardPage() {
     }
   }, []);
 
+  const fetchDeadlines = useCallback(async () => {
+    if (!accountId) return;
+    setLoadingDeadlines(true);
+    try {
+      const res = await apiJson(`/api/deadlines?userId=${accountId}`, { method: "GET" });
+      if (res.ok && Array.isArray(res.deadlines)) {
+        setDeadlines(res.deadlines);
+      } else {
+        setDeadlines([]);
+      }
+    } catch (err) {
+      console.error("Failed to fetch deadlines", err);
+      setDeadlines([]);
+    } finally {
+      setLoadingDeadlines(false);
+    }
+  }, [accountId]);
+
   useEffect(() => {
     void loadLimits();
   }, [loadLimits]);
+
+  useEffect(() => {
+    if (accountId) {
+      void fetchDeadlines();
+    }
+  }, [accountId, fetchDeadlines]);
 
   const rawAlerts = useMemo(
     () =>
@@ -441,7 +476,7 @@ export default function DashboardPage() {
   async function handleRefresh() {
     setRefreshing(true);
     try {
-      await Promise.all([refreshAll(), loadLimits()]);
+      await Promise.all([refreshAll(), loadLimits(), fetchDeadlines()]);
     } finally {
       setRefreshing(false);
     }
@@ -453,6 +488,22 @@ export default function DashboardPage() {
       : linkedChannelsUsed === 0
       ? "warn"
       : "default";
+
+  // Prepare upcoming deadlines (enabled, not overdue, sorted by nearest)
+  const getDaysRemaining = (dueDate: string) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const due = new Date(dueDate);
+    due.setHours(0, 0, 0, 0);
+    return Math.ceil((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  };
+
+  const upcomingDeadlines = deadlines
+    .filter(dl => dl.enabled && getDaysRemaining(dl.due_date) >= 0)
+    .sort((a, b) => getDaysRemaining(a.due_date) - getDaysRemaining(b.due_date))
+    .slice(0, 5);
+
+  const hasUpcomingDeadlines = upcomingDeadlines.length > 0;
 
   return (
     <AppShell
@@ -525,7 +576,7 @@ export default function DashboardPage() {
               {linkedChannelsUsed} / {totalChannelLimit}
             </div>
             <div style={summarySubStyle()}>
-              WhatsApp: {whatsappLinked ? "Linked" : "Not linked"} · Telegram: {" "}
+              WhatsApp: {whatsappLinked ? "Linked" : "Not linked"} · Telegram:{" "}
               {telegramLinked ? "Linked" : "Not linked"}
             </div>
             <div style={buttonRowStyle()}>
@@ -646,7 +697,7 @@ export default function DashboardPage() {
                 <div style={snapshotTitleStyle()}>Channels</div>
                 <div style={snapshotValueStyle()}>{channelsSummary}</div>
                 <div style={snapshotMetaStyle()}>
-                  WhatsApp: {whatsappLinked ? "Linked" : "Not linked"} • Telegram: {" "}
+                  WhatsApp: {whatsappLinked ? "Linked" : "Not linked"} • Telegram:{" "}
                   {telegramLinked ? "Linked" : "Not linked"}
                 </div>
               </div>
@@ -671,6 +722,68 @@ export default function DashboardPage() {
             </div>
           </WorkspaceSectionCard>
         </ResponsiveColumns>
+
+        {/* Upcoming Deadlines Widget */}
+        <WorkspaceSectionCard
+          title="📅 Upcoming Tax Deadlines"
+          subtitle="Track important filing dates and receive reminders."
+        >
+          {loadingDeadlines ? (
+            <div>Loading deadlines...</div>
+          ) : !hasUpcomingDeadlines ? (
+            <Banner
+              title="No upcoming deadlines"
+              subtitle="Add your first deadline in the Deadlines page to get reminders."
+              tone="default"
+            />
+          ) : (
+            <div style={{ display: "grid", gap: 12 }}>
+              {upcomingDeadlines.map((dl) => {
+                const daysRemaining = getDaysRemaining(dl.due_date);
+                const isUrgent = daysRemaining <= dl.reminder_days_before;
+                return (
+                  <div
+                    key={dl.id}
+                    style={{
+                      border: "1px solid var(--border)",
+                      borderRadius: 18,
+                      padding: 16,
+                      background: isUrgent ? "rgba(245,158,11,0.1)" : "var(--surface)",
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap" }}>
+                      <strong style={{ fontSize: 16, textTransform: "uppercase" }}>{dl.tax_type}</strong>
+                      <span style={{ fontSize: 14, color: isUrgent ? "#f59e0b" : "var(--text-muted)" }}>
+                        {daysRemaining === 0 ? "Due today!" : daysRemaining === 1 ? "Tomorrow" : `${daysRemaining} days left`}
+                      </span>
+                    </div>
+                    <div style={{ marginTop: 8, fontSize: 14 }}>Due: {new Date(dl.due_date).toLocaleDateString("en-GB")}</div>
+                    {isUrgent && daysRemaining > 0 && (
+                      <div style={{ marginTop: 8, fontSize: 13, color: "#f59e0b" }}>
+                        ⚠️ Reminder: This deadline is in {daysRemaining} days!
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <div style={{ marginTop: 16 }}>
+            <button
+              onClick={() => router.push("/deadlines")}
+              style={{
+                padding: "8px 16px",
+                background: "var(--surface-soft)",
+                border: "1px solid var(--border)",
+                borderRadius: 12,
+                cursor: "pointer",
+                fontSize: 14,
+              }}
+            >
+              Manage All Deadlines →
+            </button>
+          </div>
+        </WorkspaceSectionCard>
       </SectionStack>
     </AppShell>
   );
