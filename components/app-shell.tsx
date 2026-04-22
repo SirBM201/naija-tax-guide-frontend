@@ -60,6 +60,7 @@ const navSections = [
       { href: "/ask", label: "Ask" },
       { href: "/calculator", label: "Calculator" },
       { href: "/file", label: "File Taxes" },
+      { href: "/deadlines", label: "Deadlines" },
       { href: "/channels", label: "Channels" },
       { href: "/workspace", label: "Workspace" },
       { href: "/history", label: "History" },
