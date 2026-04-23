@@ -70,7 +70,7 @@ export async function GET(req: NextRequest) {
     const sendEmailWithResend = async (to: string, subject: string, html: string) => {
       try {
         await resend.emails.send({
-          from: 'Naija Tax Guide <reminders@your-verified-domain.com>',
+          from: 'Naija Tax Guide <reminders@naijataxguides.com>',
           to: [to],
           subject: subject,
           html: html,
