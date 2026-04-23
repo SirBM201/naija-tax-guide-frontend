@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.94.0",
-    "mailtrap": "^2.0.0",
+    "resend": "^4.0.0"
     "jspdf": "^2.5.2",
     "jspdf-autotable": "^3.8.4",
     "next": "16.1.6",
