@@ -8,17 +8,15 @@ import WorkspaceSectionCard from "@/components/workspace-section-card";
 import { apiJson } from "@/lib/api";
 import { useWorkspaceState } from "@/hooks/useWorkspaceState";
 import { useAuth } from "@/lib/auth";
-import { generateTaxPDF } from "@/lib/pdf-generator";
 
 type TaxType = "paye" | "vat" | "cit";
 type Step = 1 | 2 | 3 | 4;
 
 export default function FileTaxPage() {
   const router = useRouter();
-  const { refreshSession } = useAuth();
-  const { user } = useAuth(); // For PDF user info
+  const { refreshSession, user } = useAuth();
   
-  // Get accountId from workspace state (busy indicates loading)
+  // Get accountId from workspace state
   const { accountId, busy: workspaceLoading } = useWorkspaceState({
     refreshSession,
     autoLoad: true,
@@ -38,7 +36,6 @@ export default function FileTaxPage() {
   });
   const [documents, setDocuments] = useState<File[]>([]);
   const [submitting, setSubmitting] = useState(false);
-  const [submissionResult, setSubmissionResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
 
   const handleInputChange = (field: string, value: string) => {
@@ -80,9 +77,20 @@ export default function FileTaxPage() {
         method: "POST",
         body: JSON.stringify(filingData),
       });
+      
       if (response.ok) {
-        setSubmissionResult(response);
-        setCurrentStep(4);
+        // Store summary data for the new summary page
+        const summaryData = {
+          taxType,
+          inputs,
+          documentsCount: documents.length,
+          reference: response.reference,
+          submittedAt: response.submittedAt,
+        };
+        sessionStorage.setItem("lastFilingSummary", JSON.stringify(summaryData));
+        
+        // Redirect to the dedicated summary page
+        router.push("/file/summary");
       } else {
         setError(response.error || "Submission failed");
       }
@@ -217,58 +225,20 @@ export default function FileTaxPage() {
 
   const renderStep4 = () => (
     <div>
-      {submissionResult ? (
-        <div style={{ padding: 20, background: "rgba(16,185,129,0.1)", borderRadius: 16, border: "1px solid rgba(16,185,129,0.3)" }}>
-          <div style={{ fontSize: 20, fontWeight: 900, color: "#10b981", marginBottom: 8 }}>✓ Filing Submitted!</div>
-          <div>{submissionResult.message}</div>
-          <div style={{ marginTop: 12, fontSize: 14, color: "var(--text-muted)" }}>
-            Reference: {submissionResult.reference}<br />
-            Submitted at: {new Date(submissionResult.submittedAt).toLocaleString()}
-          </div>
-          <div style={{ display: "flex", gap: 12, marginTop: 20 }}>
-            <button
-              onClick={() => {
-                const pdf = generateTaxPDF({
-                  taxType,
-                  inputs,
-                  result: `Filing submitted successfully.\nReference: ${submissionResult.reference}\nStatus: Submitted`,
-                  submittedAt: submissionResult.submittedAt,
-                  reference: submissionResult.reference,
-                  userName: user?.display_name || user?.email || undefined,
-                  userEmail: user?.email || undefined,
-                });
-                pdf.save(`filing_${taxType}_${submissionResult.reference}.pdf`);
-              }}
-              style={{ padding: "10px 20px", background: "#3b82f6", border: "none", borderRadius: 12, color: "white", fontWeight: 800, cursor: "pointer" }}
-            >
-              Download Filing Receipt
-            </button>
-            <button
-              onClick={() => router.push("/history")}
-              style={{ padding: "10px 20px", background: "#10b981", border: "none", borderRadius: 12, color: "white", fontWeight: 800, cursor: "pointer" }}
-            >
-              View Filing History
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div>
-          <p style={{ marginBottom: 16 }}>Review your filing details before submitting.</p>
-          <div style={{ background: "var(--surface-soft)", padding: 16, borderRadius: 16, marginBottom: 16 }}>
-            <strong>Tax Type:</strong> {taxType.toUpperCase()}<br />
-            <strong>Details:</strong> {JSON.stringify(inputs, null, 2)}<br />
-            <strong>Documents:</strong> {documents.length} file(s)
-          </div>
-          {error && <div style={{ color: "#dc2626", marginBottom: 16 }}>{error}</div>}
-          <button
-            onClick={submitFiling}
-            disabled={submitting || workspaceLoading}
-            style={{ padding: "12px 24px", background: "#10b981", border: "none", borderRadius: 12, color: "white", fontWeight: 800, cursor: (submitting || workspaceLoading) ? "not-allowed" : "pointer", opacity: (submitting || workspaceLoading) ? 0.6 : 1 }}
-          >
-            {submitting ? "Submitting..." : "Confirm & Submit Filing"}
-          </button>
-        </div>
-      )}
+      <p style={{ marginBottom: 16 }}>Review your filing details before submitting.</p>
+      <div style={{ background: "var(--surface-soft)", padding: 16, borderRadius: 16, marginBottom: 16 }}>
+        <strong>Tax Type:</strong> {taxType.toUpperCase()}<br />
+        <strong>Details:</strong> {JSON.stringify(inputs, null, 2)}<br />
+        <strong>Documents:</strong> {documents.length} file(s)
+      </div>
+      {error && <div style={{ color: "#dc2626", marginBottom: 16 }}>{error}</div>}
+      <button
+        onClick={submitFiling}
+        disabled={submitting || workspaceLoading}
+        style={{ padding: "12px 24px", background: "#10b981", border: "none", borderRadius: 12, color: "white", fontWeight: 800, cursor: (submitting || workspaceLoading) ? "not-allowed" : "pointer", opacity: (submitting || workspaceLoading) ? 0.6 : 1 }}
+      >
+        {submitting ? "Submitting..." : "Confirm & Submit Filing"}
+      </button>
     </div>
   );
 
@@ -281,7 +251,7 @@ export default function FileTaxPage() {
           {currentStep === 2 && renderStep2()}
           {currentStep === 3 && renderStep3()}
           {currentStep === 4 && renderStep4()}
-          {currentStep !== 4 && !submissionResult && (
+          {currentStep !== 4 && (
             <div style={{ display: "flex", justifyContent: "space-between", marginTop: 24 }}>
               {currentStep > 1 && (
                 <button onClick={prevStep} style={{ padding: "10px 20px", background: "var(--surface-soft)", border: "1px solid var(--border)", borderRadius: 12, cursor: "pointer" }}>
