@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, Suspense } from "react"; // Import Suspense
-import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import AppShell from "@/components/app-shell";
 import { SectionStack } from "@/components/page-layout";
 import WorkspaceSectionCard from "@/components/workspace-section-card";
@@ -16,17 +16,14 @@ interface FilingSummary {
   submittedAt: string;
 }
 
-// This inner component contains all the logic and uses the useSearchParams hook
+// This inner component contains the main logic and uses useSearchParams
 function FilingSummaryContent() {
   const router = useRouter();
-  const searchParams = useSearchParams(); // useSearchParams is now safely inside Suspense
   const { user } = useAuth();
-  
   const [summary, setSummary] = useState<FilingSummary | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Retrieve the filing data from sessionStorage
     const stored = sessionStorage.getItem("lastFilingSummary");
     if (stored) {
       try {
@@ -54,9 +51,7 @@ function FilingSummaryContent() {
   };
 
   if (loading) {
-    return (
-      <div className="flex justify-center py-12">Loading summary...</div>
-    );
+    return <div className="flex justify-center py-12">Loading summary...</div>;
   }
 
   if (!summary) {
@@ -83,10 +78,19 @@ function FilingSummaryContent() {
       <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
         <h4 className="font-semibold text-gray-800 mb-3">Summary Details</h4>
         <div className="grid gap-2 text-sm">
-          <div><span className="font-medium">Tax Type:</span> {summary.taxType.toUpperCase()}</div>
-          <div><span className="font-medium">Reference:</span> {summary.reference}</div>
-          <div><span className="font-medium">Submitted At:</span> {new Date(summary.submittedAt).toLocaleString()}</div>
-          <div><span className="font-medium">Documents:</span> {summary.documentsCount} file(s)</div>
+          <div>
+            <span className="font-medium">Tax Type:</span> {summary.taxType.toUpperCase()}
+          </div>
+          <div>
+            <span className="font-medium">Reference:</span> {summary.reference}
+          </div>
+          <div>
+            <span className="font-medium">Submitted At:</span>{" "}
+            {new Date(summary.submittedAt).toLocaleString()}
+          </div>
+          <div>
+            <span className="font-medium">Documents:</span> {summary.documentsCount} file(s)
+          </div>
         </div>
       </div>
 
@@ -121,13 +125,13 @@ function FilingSummaryContent() {
   );
 }
 
-// The default export wraps the inner component in <Suspense>
+// The page component wraps the content in Suspense
 export default function FilingSummaryPage() {
   return (
     <AppShell title="Filing Summary" subtitle="Review your submitted tax filing details">
       <SectionStack>
         <WorkspaceSectionCard title="Filing Confirmation">
-          <Suspense fallback={<div>Loading page...</div>}>
+          <Suspense fallback={<div>Loading summary...</div>}>
             <FilingSummaryContent />
           </Suspense>
         </WorkspaceSectionCard>
