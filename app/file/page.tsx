@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import AppShell from "@/components/app-shell";
 import { SectionStack } from "@/components/page-layout";
@@ -8,6 +8,7 @@ import WorkspaceSectionCard from "@/components/workspace-section-card";
 import { apiJson } from "@/lib/api";
 import { useWorkspaceState } from "@/hooks/useWorkspaceState";
 import { useAuth } from "@/lib/auth";
+import { generateTaxPDF } from "@/lib/pdf-generator";
 
 type TaxType = "paye" | "vat" | "cit";
 type Step = 1 | 2 | 3 | 4;
@@ -15,6 +16,7 @@ type Step = 1 | 2 | 3 | 4;
 export default function FileTaxPage() {
   const router = useRouter();
   const { refreshSession } = useAuth();
+  const { user } = useAuth(); // For PDF user info
   
   // Get accountId from workspace state (busy indicates loading)
   const { accountId, busy: workspaceLoading } = useWorkspaceState({
@@ -223,12 +225,31 @@ export default function FileTaxPage() {
             Reference: {submissionResult.reference}<br />
             Submitted at: {new Date(submissionResult.submittedAt).toLocaleString()}
           </div>
-          <button
-            onClick={() => router.push("/history")}
-            style={{ marginTop: 20, padding: "10px 20px", background: "#3b82f6", border: "none", borderRadius: 12, color: "white", fontWeight: 800, cursor: "pointer" }}
-          >
-            View Filing History
-          </button>
+          <div style={{ display: "flex", gap: 12, marginTop: 20 }}>
+            <button
+              onClick={() => {
+                const pdf = generateTaxPDF({
+                  taxType,
+                  inputs,
+                  result: `Filing submitted successfully.\nReference: ${submissionResult.reference}\nStatus: Submitted`,
+                  submittedAt: submissionResult.submittedAt,
+                  reference: submissionResult.reference,
+                  userName: user?.display_name || user?.email || undefined,
+                  userEmail: user?.email || undefined,
+                });
+                pdf.save(`filing_${taxType}_${submissionResult.reference}.pdf`);
+              }}
+              style={{ padding: "10px 20px", background: "#3b82f6", border: "none", borderRadius: 12, color: "white", fontWeight: 800, cursor: "pointer" }}
+            >
+              Download Filing Receipt
+            </button>
+            <button
+              onClick={() => router.push("/history")}
+              style={{ padding: "10px 20px", background: "#10b981", border: "none", borderRadius: 12, color: "white", fontWeight: 800, cursor: "pointer" }}
+            >
+              View Filing History
+            </button>
+          </div>
         </div>
       ) : (
         <div>
