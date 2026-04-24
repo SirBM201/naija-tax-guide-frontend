@@ -1,4 +1,3 @@
-// lib/api.ts
 import { CONFIG } from "@/lib/config";
 
 export class ApiError extends Error {
@@ -172,9 +171,11 @@ export async function apiJson<T = any>(
   const url = buildUrl(path, init.query);
 
   try {
+    // FIX: ensure credentials are always included and CORS mode is set
     const res = await fetch(url, {
-      credentials: "include",
-      ...init,
+      mode: "cors",
+      ...init,                          // apply any user-provided init first
+      credentials: "include",           // force send cookies (overwrites init.credentials)
       method,
       headers,
       body: bodyToSend,
