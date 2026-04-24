@@ -4,10 +4,14 @@ import React, { useState, useEffect, useRef } from "react";
 import AppShell from "@/components/app-shell";
 import { SectionStack } from "@/components/page-layout";
 import WorkspaceSectionCard from "@/components/workspace-section-card";
+import { useAuth } from "@/lib/auth";
+import { generateTaxPDF } from "@/lib/pdf-generator";
 
 type TaxType = "paye" | "vat" | "cit";
 
 export default function CalculatorPage() {
+  const { user } = useAuth();
+
   // Refs must be declared first
   const resultRef = useRef<HTMLDivElement>(null);
 
@@ -272,6 +276,30 @@ export default function CalculatorPage() {
               <div style={{ padding: 20, background: "linear-gradient(135deg, rgba(16,185,129,0.08), rgba(16,185,129,0.02))", borderRadius: 20, border: "1px solid rgba(16,185,129,0.2)" }}>
                 <div style={{ fontSize: 18, fontWeight: 900, color: "#10b981", marginBottom: 8 }}>📊 Tax Summary</div>
                 <div style={{ fontSize: 16, lineHeight: 1.6 }}>{result.answer}</div>
+                <button
+                  onClick={() => {
+                    const pdf = generateTaxPDF({
+                      taxType: activeTab,
+                      inputs,
+                      result: result.answer,
+                      userName: user?.display_name || user?.email || undefined,
+                      userEmail: user?.email || undefined,
+                    });
+                    pdf.save(`${activeTab.toUpperCase()}_calculation_${Date.now()}.pdf`);
+                  }}
+                  style={{
+                    marginTop: 16,
+                    padding: "8px 16px",
+                    background: "#3b82f6",
+                    border: "none",
+                    borderRadius: 12,
+                    color: "white",
+                    fontWeight: 800,
+                    cursor: "pointer",
+                  }}
+                >
+                  Download PDF Report
+                </button>
               </div>
             </WorkspaceSectionCard>
           </div>
