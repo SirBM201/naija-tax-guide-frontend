@@ -73,13 +73,15 @@ export default function FileTaxPage() {
         documents: documents.map(d => ({ name: d.name, size: d.size, type: d.type })),
         userId: accountId,
       };
-      const response = await apiJson("/api/tax/file", {
+      
+      // FIX: Remove "/api" prefix - apiJson adds it automatically from CONFIG.apiBase
+      const response = await apiJson("tax/file", {
         method: "POST",
         body: JSON.stringify(filingData),
       });
       
       if (response.ok) {
-        // Store summary data for the new summary page
+        // Store summary data for the summary page
         const summaryData = {
           taxType,
           inputs,
@@ -89,7 +91,7 @@ export default function FileTaxPage() {
         };
         sessionStorage.setItem("lastFilingSummary", JSON.stringify(summaryData));
         
-        // Redirect to the dedicated summary page
+        // Redirect to summary page
         router.push("/file/summary");
       } else {
         setError(response.error || "Submission failed");
