@@ -74,10 +74,11 @@ export default function FileTaxPage() {
         userId: accountId,
       };
       
-      // FIX: Remove "/api" prefix - apiJson adds it automatically from CONFIG.apiBase
+      // Use the token from localStorage by setting useAuthToken: true
       const response = await apiJson("tax/file", {
         method: "POST",
         body: JSON.stringify(filingData),
+        useAuthToken: true,  // Explicitly request to use auth token
       });
       
       if (response.ok) {
@@ -97,7 +98,13 @@ export default function FileTaxPage() {
         setError(response.error || "Submission failed");
       }
     } catch (err: any) {
-      setError(err.message || "Submission failed");
+      console.error("Filing submission error:", err);
+      // Display more detailed error message
+      if (err.status === 401) {
+        setError("Authentication failed. Please log out and log back in.");
+      } else {
+        setError(err.message || "Submission failed");
+      }
     } finally {
       setSubmitting(false);
     }
@@ -233,7 +240,7 @@ export default function FileTaxPage() {
         <strong>Details:</strong> {JSON.stringify(inputs, null, 2)}<br />
         <strong>Documents:</strong> {documents.length} file(s)
       </div>
-      {error && <div style={{ color: "#dc2626", marginBottom: 16 }}>{error}</div>}
+      {error && <div style={{ color: "#dc2626", marginBottom: 16, padding: 12, background: "rgba(220,38,38,0.1)", borderRadius: 8 }}>❌ {error}</div>}
       <button
         onClick={submitFiling}
         disabled={submitting || workspaceLoading}
