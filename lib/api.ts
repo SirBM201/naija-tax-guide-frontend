@@ -32,7 +32,12 @@ function isPlainObject(v: any) {
 function safeGetLocalToken(): string | null {
   try {
     if (typeof window === "undefined") return null;
-    return (window.localStorage.getItem("nt_access_token") || "").trim() || null;
+    // Try multiple possible token storage keys
+    const token = (window.localStorage.getItem("nt_access_token") || 
+                   window.localStorage.getItem("web_token") ||
+                   window.localStorage.getItem("token") ||
+                   window.localStorage.getItem("auth_token") || "").trim();
+    return token || null;
   } catch {
     return null;
   }
@@ -120,13 +125,18 @@ export async function apiJson<T = any>(
     ...(init.headers as Record<string, string>),
   };
 
-  const shouldUseToken = Boolean(init.useAuthToken);
+  // ALWAYS try to use auth token for protected endpoints
+  // For tax filing, we need authentication
+  const shouldUseToken = init.useAuthToken !== false; // Default to true unless explicitly false
   const effectiveToken = shouldUseToken
     ? ((token || "").trim() || safeGetLocalToken())
     : null;
 
   if (effectiveToken) {
     headers.Authorization = `Bearer ${effectiveToken}`;
+    console.log("Using auth token for request to:", path);
+  } else {
+    console.warn("No auth token available for request to:", path);
   }
 
   let bodyToSend: BodyInit | undefined;
@@ -182,7 +192,7 @@ export async function apiJson<T = any>(
     const res = await fetch(url, {
       mode: "cors",
       ...init,
-      credentials: "include",  // CRITICAL: sends cookies for session auth
+      credentials: "include",  // Still include cookies for session if needed
       method,
       headers,
       body: bodyToSend,
@@ -208,18 +218,12 @@ export async function apiJson<T = any>(
       // Enhanced error logging for debugging
       console.error(`API Error [${res.status}]: ${url}`, enriched);
 
-      if (
-        shouldUseToken &&
-        res.status === 401 &&
-        enriched &&
-        typeof enriched === "object" &&
-        (
-          enriched.error === "invalid_token" ||
-          enriched.error === "unauthorized" ||
-          enriched?.debug?.error === "invalid_token"
-        )
-      ) {
-        clearStoredAuthToken();
+      if (res.status === 401) {
+        console.error("Authentication failed - token may be expired or invalid");
+        // Optionally clear token on 401
+        if (shouldUseToken) {
+          clearStoredAuthToken();
+        }
       }
 
       throw new ApiError(res.status, message, enriched);
