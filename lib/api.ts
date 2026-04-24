@@ -87,7 +87,15 @@ function buildUrl(path: string, query?: ApiInit["query"]) {
     });
   }
 
-  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  // Remove any leading /api/ from path to avoid duplication
+  let cleanPath = path;
+  if (cleanPath.startsWith("/api/")) {
+    cleanPath = cleanPath.substring(4);
+  } else if (cleanPath.startsWith("api/")) {
+    cleanPath = cleanPath.substring(3);
+  }
+  
+  const normalizedPath = cleanPath.startsWith("/") ? cleanPath : `/${cleanPath}`;
   const url = new URL(`${apiRoot}${normalizedPath}`);
 
   if (query) {
@@ -171,11 +179,10 @@ export async function apiJson<T = any>(
   const url = buildUrl(path, init.query);
 
   try {
-    // FIX: ensure credentials are always included and CORS mode is set
     const res = await fetch(url, {
       mode: "cors",
-      ...init,                          // apply any user-provided init first
-      credentials: "include",           // force send cookies (overwrites init.credentials)
+      ...init,
+      credentials: "include",  // CRITICAL: sends cookies for session auth
       method,
       headers,
       body: bodyToSend,
@@ -196,7 +203,10 @@ export async function apiJson<T = any>(
         (data && (data.message || data.error || data.detail)) ||
         `Request failed (${res.status})`;
 
-      const enriched = isPlainObject(data) ? { ...data, url } : { data, url };
+      const enriched = isPlainObject(data) ? { ...data, url, status: res.status } : { data, url, status: res.status };
+
+      // Enhanced error logging for debugging
+      console.error(`API Error [${res.status}]: ${url}`, enriched);
 
       if (
         shouldUseToken &&
@@ -224,8 +234,19 @@ export async function apiJson<T = any>(
         url,
       });
     }
-
-    throw e;
+    
+    // Re-throw ApiError as-is
+    if (e instanceof ApiError) {
+      throw e;
+    }
+    
+    // Wrap network errors for better exposure
+    throw new ApiError(0, e?.message || "Network request failed", {
+      ok: false,
+      error: "network_error",
+      originalError: e?.message,
+      url,
+    });
   } finally {
     if (timeoutId) clearTimeout(timeoutId);
   }
