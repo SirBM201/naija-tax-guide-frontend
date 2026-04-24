@@ -20,6 +20,7 @@ import { CardsGrid, SectionStack, TwoColumnSection } from '@/components/page-lay
 import WorkspaceOverviewMetrics from '@/components/workspace-overview-metrics';
 import { useWorkspaceState } from '@/hooks/useWorkspaceState';
 import { getHistoryItems, type HistoryItem as LocalHistoryItem } from '@/lib/history-storage';
+import { generateTaxPDF } from '@/lib/pdf-generator';
 
 type HistoryTab = 'qa' | 'filings';
 
@@ -642,7 +643,7 @@ function HistoryItemCard({
 
 export default function HistoryPage() {
   const router = useRouter();
-  const { refreshSession, logout } = useAuth();
+  const { refreshSession, logout, user } = useAuth();
 
   const [activeTab, setActiveTab] = useState<HistoryTab>('qa');
   const [historyItems, setHistoryItems] = useState<DisplayHistoryItem[]>([]);
@@ -1537,6 +1538,34 @@ export default function HistoryPage() {
                         </div>
                       )}
                     </details>
+                    <div style={{ marginTop: 12, display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+                      <button
+                        onClick={() => {
+                          const pdf = generateTaxPDF({
+                            taxType: filing.taxType,
+                            inputs: filing.inputs,
+                            result: `Filing submitted successfully.\nReference: ${filing.id}\nStatus: ${filing.status}\nSubmitted: ${new Date(filing.submittedAt).toLocaleString()}`,
+                            submittedAt: filing.submittedAt,
+                            reference: filing.id,
+                            userName: user?.display_name || user?.email || undefined,
+                            userEmail: user?.email || undefined,
+                          });
+                          pdf.save(`filing_${filing.taxType}_${filing.id}.pdf`);
+                        }}
+                        style={{
+                          padding: '6px 12px',
+                          background: '#8b5cf6',
+                          border: 'none',
+                          borderRadius: 8,
+                          color: 'white',
+                          fontWeight: 800,
+                          cursor: 'pointer',
+                          fontSize: 12,
+                        }}
+                      >
+                        Download PDF
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
