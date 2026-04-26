@@ -1,23 +1,35 @@
 // lib/config.ts
 
-function clean(value: string | undefined | null): string {
-  return String(value || "").trim().replace(/\/$/, "");
-}
-
-const explicitApiBase =
-  clean(process.env.NEXT_PUBLIC_API_BASE_URL) ||
-  clean(process.env.NEXT_PUBLIC_API_BASE);
-
-const localFallbackApiBase = "http://localhost:5000/api";
-
 export const CONFIG = {
-  siteUrl: clean(process.env.NEXT_PUBLIC_SITE_URL) || "http://localhost:3000",
-  domain: clean(process.env.NEXT_PUBLIC_DOMAIN) || "localhost",
-  apiBase: explicitApiBase || localFallbackApiBase,
+  // Use your new API subdomain after DNS propagates
+  // For now, keep using Koyeb URL until DNS is ready
+  apiBase: process.env.NEXT_PUBLIC_API_BASE_URL || 'https://api.naijataxguides.com',
+  
+  // App information
+  appName: 'Naija Tax Guide',
+  appDescription: 'Guided step-by-step tax filing for PAYE, VAT, and Company Income Tax.',
+  
+  // Feature flags
+  features: {
+    enableTaxFiling: true,
+    enableCalculator: true,
+    enableAIAsk: true,
+  },
+  
+  // Support contact
+  supportEmail: 'support@naijataxguides.com',
 };
 
-if (!explicitApiBase && typeof window !== "undefined") {
-  console.warn(
-    `[CONFIG] NEXT_PUBLIC_API_BASE_URL / NEXT_PUBLIC_API_BASE not set. Falling back to ${localFallbackApiBase}`
-  );
+// Helper function to get full API URL
+export function getApiUrl(path: string): string {
+  const base = CONFIG.apiBase.replace(/\/$/, '');
+  const cleanPath = path.startsWith('/') ? path : `/${path}`;
+  return `${base}${cleanPath}`;
+}
+
+// Helper to check if API is using same domain
+export function isSameDomain(): boolean {
+  if (typeof window === 'undefined') return false;
+  const apiUrl = new URL(CONFIG.apiBase);
+  return apiUrl.hostname === window.location.hostname;
 }
