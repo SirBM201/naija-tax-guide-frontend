@@ -74,11 +74,11 @@ export default function FileTaxPage() {
         userId: accountId,
       };
       
-      // IMPORTANT: Do NOT send auth token - use session cookie (credentials: "include" handles it)
+      // IMPORTANT: Use Bearer token authentication (useAuthToken: true)
       const response = await apiJson("tax/file", {
         method: "POST",
         body: JSON.stringify(filingData),
-        useAuthToken: false,  // CRITICAL: Disable Bearer token, use session cookie instead
+        useAuthToken: true,  // Enable Bearer token authentication
       });
       
       if (response.ok) {
@@ -99,6 +99,7 @@ export default function FileTaxPage() {
       }
     } catch (err: any) {
       console.error("Filing submission error:", err);
+      // Display more detailed error message
       if (err.status === 401) {
         setError("Authentication failed. Please log out and log back in.");
       } else {
@@ -162,15 +163,30 @@ export default function FileTaxPage() {
     <div style={{ display: "grid", gap: 16 }}>
       <div>
         <label>Monthly Gross Income (₦)</label>
-        <input type="number" style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }} onChange={(e) => handleInputChange("monthly_gross_income", e.target.value)} />
+        <input 
+          type="number" 
+          placeholder="Enter monthly gross income"
+          style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }} 
+          onChange={(e) => handleInputChange("monthly_gross_income", e.target.value)} 
+        />
       </div>
       <div>
         <label>Pension Contribution (₦)</label>
-        <input type="number" style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }} onChange={(e) => handleInputChange("pension_contribution", e.target.value)} />
+        <input 
+          type="number" 
+          placeholder="Enter pension contribution"
+          style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }} 
+          onChange={(e) => handleInputChange("pension_contribution", e.target.value)} 
+        />
       </div>
       <div>
         <label>NHF Contribution (₦)</label>
-        <input type="number" style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }} onChange={(e) => handleInputChange("nhf", e.target.value)} />
+        <input 
+          type="number" 
+          placeholder="Enter NHF contribution"
+          style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }} 
+          onChange={(e) => handleInputChange("nhf", e.target.value)} 
+        />
       </div>
     </div>
   );
@@ -179,11 +195,21 @@ export default function FileTaxPage() {
     <div style={{ display: "grid", gap: 16 }}>
       <div>
         <label>Taxable Supplies (₦)</label>
-        <input type="number" style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }} onChange={(e) => handleInputChange("taxable_supplies", e.target.value)} />
+        <input 
+          type="number" 
+          placeholder="Enter taxable supplies"
+          style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }} 
+          onChange={(e) => handleInputChange("taxable_supplies", e.target.value)} 
+        />
       </div>
       <div>
         <label>Input VAT (₦)</label>
-        <input type="number" style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }} onChange={(e) => handleInputChange("input_vat", e.target.value)} />
+        <input 
+          type="number" 
+          placeholder="Enter input VAT"
+          style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }} 
+          onChange={(e) => handleInputChange("input_vat", e.target.value)} 
+        />
       </div>
     </div>
   );
@@ -192,11 +218,21 @@ export default function FileTaxPage() {
     <div style={{ display: "grid", gap: 16 }}>
       <div>
         <label>Gross Profit (₦)</label>
-        <input type="number" style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }} onChange={(e) => handleInputChange("gross_profit", e.target.value)} />
+        <input 
+          type="number" 
+          placeholder="Enter gross profit"
+          style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }} 
+          onChange={(e) => handleInputChange("gross_profit", e.target.value)} 
+        />
       </div>
       <div>
         <label>Allowable Expenses (₦)</label>
-        <input type="number" style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }} onChange={(e) => handleInputChange("allowable_expenses", e.target.value)} />
+        <input 
+          type="number" 
+          placeholder="Enter allowable expenses"
+          style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }} 
+          onChange={(e) => handleInputChange("allowable_expenses", e.target.value)} 
+        />
       </div>
     </div>
   );
