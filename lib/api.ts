@@ -126,7 +126,6 @@ export async function apiJson<T = any>(
   };
 
   // ALWAYS try to use auth token for protected endpoints
-  // For tax filing, we need authentication
   const shouldUseToken = init.useAuthToken !== false; // Default to true unless explicitly false
   const effectiveToken = shouldUseToken
     ? ((token || "").trim() || safeGetLocalToken())
@@ -134,9 +133,9 @@ export async function apiJson<T = any>(
 
   if (effectiveToken) {
     headers.Authorization = `Bearer ${effectiveToken}`;
-    console.log("Using auth token for request to:", path);
+    console.log("🔐 Using auth token for request to:", path);
   } else {
-    console.warn("No auth token available for request to:", path);
+    console.warn("⚠️ No auth token available for request to:", path);
   }
 
   let bodyToSend: BodyInit | undefined;
@@ -192,7 +191,7 @@ export async function apiJson<T = any>(
     const res = await fetch(url, {
       mode: "cors",
       ...init,
-      credentials: "include",  // Still include cookies for session if needed
+      credentials: "include",
       method,
       headers,
       body: bodyToSend,
@@ -216,11 +215,10 @@ export async function apiJson<T = any>(
       const enriched = isPlainObject(data) ? { ...data, url, status: res.status } : { data, url, status: res.status };
 
       // Enhanced error logging for debugging
-      console.error(`API Error [${res.status}]: ${url}`, enriched);
+      console.error(`❌ API Error [${res.status}]: ${url}`, enriched);
 
       if (res.status === 401) {
-        console.error("Authentication failed - token may be expired or invalid");
-        // Optionally clear token on 401
+        console.error("🔑 Authentication failed - token may be expired or invalid");
         if (shouldUseToken) {
           clearStoredAuthToken();
         }
@@ -229,6 +227,7 @@ export async function apiJson<T = any>(
       throw new ApiError(res.status, message, enriched);
     }
 
+    console.log(`✅ API Success: ${method} ${url}`);
     return data as T;
   } catch (e: any) {
     if (e?.name === "AbortError") {
