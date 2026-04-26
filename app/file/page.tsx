@@ -74,11 +74,11 @@ export default function FileTaxPage() {
         userId: accountId,
       };
       
-      // IMPORTANT: Use Bearer token authentication (useAuthToken: true)
+      // CRITICAL: Set useAuthToken to false - we rely on session cookie (credentials: "include")
       const response = await apiJson("tax/file", {
         method: "POST",
         body: JSON.stringify(filingData),
-        useAuthToken: true,  // Enable Bearer token authentication
+        useAuthToken: false,  // NO Bearer token - use session cookie instead
       });
       
       if (response.ok) {
@@ -101,7 +101,7 @@ export default function FileTaxPage() {
       console.error("Filing submission error:", err);
       // Display more detailed error message
       if (err.status === 401) {
-        setError("Authentication failed. Please log out and log back in.");
+        setError("Session expired. Please log out and log back in.");
       } else {
         setError(err.message || "Submission failed");
       }
