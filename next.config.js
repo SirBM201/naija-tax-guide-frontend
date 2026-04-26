@@ -1,13 +1,12 @@
-import type { NextConfig } from "next";
+/** @type {import('next').NextConfig} */
 
-// For local development - use your local backend if running
-// For production - use empty string so rewrites handle it
+// API Base URL - use environment variable or empty for rewrites
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "";
 
-const nextConfig: NextConfig = {
+const nextConfig = {
   // Rewrites to proxy API requests (helps with CORS and session cookies)
   async rewrites() {
-    // If API_BASE is set, use it; otherwise use the production backend
+    // If API_BASE is set, use it; otherwise use the Koyeb backend
     const target = API_BASE || "https://incredible-nonie-bmsconcept-37359733.koyeb.app";
     
     return [
@@ -57,4 +56,4 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+module.exports = nextConfig;
