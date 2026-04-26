@@ -1,277 +1,288 @@
-import { CONFIG } from "@/lib/config";
+"use client";
 
-export class ApiError extends Error {
-  status: number;
-  data: any;
+import React, { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import AppShell from "@/components/app-shell";
+import { SectionStack } from "@/components/page-layout";
+import WorkspaceSectionCard from "@/components/workspace-section-card";
+import { apiJson } from "@/lib/api";
+import { useWorkspaceState } from "@/hooks/useWorkspaceState";
+import { useAuth } from "@/lib/auth";
 
-  constructor(status: number, message: string, data: any) {
-    super(message);
-    this.name = "ApiError";
-    this.status = status;
-    this.data = data;
-  }
-}
+type TaxType = "paye" | "vat" | "cit";
+type Step = 1 | 2 | 3 | 4;
 
-export function isApiError(e: any): e is ApiError {
-  return e instanceof ApiError;
-}
-
-type ApiInit = Omit<RequestInit, "body"> & {
-  body?: any;
-  query?: Record<string, string | number | boolean | null | undefined>;
-  timeoutMs?: number;
-  useAuthToken?: boolean;
-};
-
-function isPlainObject(v: any) {
-  if (v === null || typeof v !== "object") return false;
-  const proto = Object.getPrototypeOf(v);
-  return proto === Object.prototype || proto === null;
-}
-
-function safeGetLocalToken(): string | null {
-  try {
-    if (typeof window === "undefined") return null;
-    // Try all possible token storage keys used by your auth system
-    const keys = ["nt_access_token", "web_token", "token", "auth_token", "access_token"];
-    for (const key of keys) {
-      const token = window.localStorage.getItem(key);
-      if (token && token.trim()) {
-        console.log(`🔑 Found token in localStorage key: ${key}`);
-        return token.trim();
-      }
-    }
-    console.warn("⚠️ No auth token found in localStorage");
-    return null;
-  } catch (error) {
-    console.error("Error reading from localStorage:", error);
-    return null;
-  }
-}
-
-export function clearStoredAuthToken() {
-  try {
-    if (typeof window === "undefined") return;
-    const keys = ["nt_access_token", "web_token", "token", "auth_token", "access_token"];
-    keys.forEach(key => window.localStorage.removeItem(key));
-    console.log("🧹 Cleared all auth tokens from localStorage");
-  } catch {
-    // ignore
-  }
-}
-
-function normalizeApiRoot(raw: string): string {
-  const v = (raw || "").trim();
-  if (!v) return "";
-
-  if (v.startsWith("/")) {
-    return "/api";
-  }
-
-  try {
-    const u = new URL(v);
-    let path = (u.pathname || "").replace(/\/+$/, "");
-
-    if (!path || path === "/") {
-      path = "/api";
-    } else if (path !== "/api") {
-      path = "/api";
-    }
-
-    u.pathname = path;
-    u.search = "";
-    u.hash = "";
-    return u.toString().replace(/\/+$/, "");
-  } catch {
-    return "";
-  }
-}
-
-function buildUrl(path: string, query?: ApiInit["query"]) {
-  const apiRoot = normalizeApiRoot(CONFIG.apiBase);
-
-  if (!apiRoot) {
-    throw new ApiError(0, "NEXT_PUBLIC_API_BASE_URL is missing or invalid.", {
-      ok: false,
-      error: "missing_api_base",
-    });
-  }
-
-  // Remove any leading /api/ from path to avoid duplication
-  let cleanPath = path;
-  if (cleanPath.startsWith("/api/")) {
-    cleanPath = cleanPath.substring(4);
-  } else if (cleanPath.startsWith("api/")) {
-    cleanPath = cleanPath.substring(3);
-  }
+const FileTaxPage: React.FC = () => {
+  const router = useRouter();
+  const { refreshSession, user } = useAuth();
   
-  const normalizedPath = cleanPath.startsWith("/") ? cleanPath : `/${cleanPath}`;
-  const url = new URL(`${apiRoot}${normalizedPath}`);
+  // Get accountId from workspace state
+  const { accountId, busy: workspaceLoading } = useWorkspaceState({
+    refreshSession,
+    autoLoad: true,
+    includeAccount: true,
+  });
 
-  if (query) {
-    for (const [k, v] of Object.entries(query)) {
-      if (v === null || v === undefined) continue;
-      url.searchParams.set(k, String(v));
-    }
-  }
+  const [currentStep, setCurrentStep] = useState<Step>(1);
+  const [taxType, setTaxType] = useState<TaxType>("paye");
+  const [inputs, setInputs] = useState<any>({
+    monthly_gross_income: 0,
+    pension_contribution: 0,
+    nhf: 0,
+    taxable_supplies: 0,
+    input_vat: 0,
+    gross_profit: 0,
+    allowable_expenses: 0,
+  });
+  const [documents, setDocuments] = useState<File[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  console.log(`📍 Built URL: ${url.toString()}`);
-  return url.toString();
-}
-
-export async function apiJson<T = any>(
-  path: string,
-  init: ApiInit = {},
-  token?: string | null
-): Promise<T> {
-  const method = (init.method || "GET").toUpperCase();
-
-  const headers: Record<string, string> = {
-    Accept: "application/json",
-    ...(init.headers as Record<string, string>),
+  const handleInputChange = (field: string, value: string) => {
+    setInputs({ ...inputs, [field]: parseFloat(value) || 0 });
   };
 
-  // Determine if we should use auth token
-  const shouldUseToken = init.useAuthToken !== false; // Default to true
-  const effectiveToken = shouldUseToken
-    ? ((token || "").trim() || safeGetLocalToken())
-    : null;
-
-  // Add Authorization header if token exists
-  if (effectiveToken) {
-    headers.Authorization = `Bearer ${effectiveToken}`;
-    console.log(`🔐 Using auth token for request to: ${path} (token length: ${effectiveToken.length})`);
-  } else if (shouldUseToken) {
-    console.warn(`⚠️ No auth token available for request to: ${path} - this may cause 401 errors`);
-  } else {
-    console.log(`🔓 Auth token disabled for request to: ${path}`);
-  }
-
-  let bodyToSend: BodyInit | undefined;
-
-  if (init.body !== undefined) {
-    const b = init.body;
-    const isFormData = typeof FormData !== "undefined" && b instanceof FormData;
-    const isURLParams =
-      typeof URLSearchParams !== "undefined" && b instanceof URLSearchParams;
-    const isBlob = typeof Blob !== "undefined" && b instanceof Blob;
-    const isArrayBuffer =
-      typeof ArrayBuffer !== "undefined" && b instanceof ArrayBuffer;
-
-    if (typeof b === "string") {
-      bodyToSend = b;
-      if (!headers["Content-Type"]) {
-        headers["Content-Type"] = "application/json";
-      }
-    } else if (isFormData || isURLParams || isBlob) {
-      bodyToSend = b as BodyInit;
-    } else if (isArrayBuffer) {
-      bodyToSend = b as BodyInit;
-      if (!headers["Content-Type"]) {
-        headers["Content-Type"] = "application/octet-stream";
-      }
-    } else if (isPlainObject(b) || Array.isArray(b)) {
-      bodyToSend = JSON.stringify(b);
-      headers["Content-Type"] = "application/json";
-    } else {
-      try {
-        bodyToSend = JSON.stringify(b);
-        headers["Content-Type"] = "application/json";
-      } catch {
-        throw new ApiError(0, "Unsupported request body type", {
-          ok: false,
-          error: "unsupported_body_type",
-        });
-      }
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      setDocuments(Array.from(e.target.files));
     }
-  }
+  };
 
-  let controller: AbortController | null = null;
-  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  const nextStep = () => {
+    setCurrentStep((prev) => (prev + 1) as Step);
+    setError(null);
+  };
 
-  if (init.timeoutMs && init.timeoutMs > 0) {
-    controller = new AbortController();
-    timeoutId = setTimeout(() => controller?.abort(), init.timeoutMs);
-  }
+  const prevStep = () => {
+    setCurrentStep((prev) => (prev - 1) as Step);
+    setError(null);
+  };
 
-  const url = buildUrl(path, init.query);
-
-  try {
-    const fetchOptions: RequestInit = {
-      mode: "cors",
-      method,
-      headers,
-      body: bodyToSend,
-      signal: controller?.signal ?? init.signal,
-      credentials: "include",
-    };
-    
-    // Don't let init override our critical settings
-    if (init.credentials === undefined) {
-      // Keep our credentials setting
+  const submitFiling = async () => {
+    if (!accountId) {
+      setError("Account ID not loaded. Please refresh and try again.");
+      return;
     }
-    
-    console.log(`🚀 Sending ${method} request to: ${url}`);
-    
-    const res = await fetch(url, fetchOptions);
 
-    const text = await res.text();
-
-    let data: any = null;
+    setSubmitting(true);
+    setError(null);
     try {
-      data = text ? JSON.parse(text) : null;
-    } catch {
-      data = text || null;
-    }
-
-    if (!res.ok) {
-      const message =
-        (data && (data.message || data.error || data.detail)) ||
-        `Request failed (${res.status})`;
-
-      const enriched = isPlainObject(data) ? { ...data, url, status: res.status } : { data, url, status: res.status };
-
-      // Enhanced error logging for debugging
-      console.error(`❌ API Error [${res.status}]: ${url}`, enriched);
-
-      if (res.status === 401) {
-        console.error("🔑 Authentication failed - token may be expired or invalid");
-        console.error("   Token present:", !!effectiveToken);
-        if (effectiveToken) {
-          console.error("   Token preview:", effectiveToken.substring(0, 20) + "...");
-        }
-        if (shouldUseToken) {
-          clearStoredAuthToken();
-        }
-      }
-
-      throw new ApiError(res.status, message, enriched);
-    }
-
-    console.log(`✅ API Success: ${method} ${url} (${res.status})`);
-    return data as T;
-  } catch (e: any) {
-    if (e?.name === "AbortError") {
-      throw new ApiError(0, "Request timeout", {
-        ok: false,
-        error: "timeout",
-        url,
+      const filingData = {
+        taxType,
+        inputs,
+        documents: documents.map(d => ({ name: d.name, size: d.size, type: d.type })),
+        userId: accountId,
+      };
+      
+      // Use the token from localStorage by setting useAuthToken: true
+      const response = await apiJson("tax/file", {
+        method: "POST",
+        body: JSON.stringify(filingData),
+        useAuthToken: true,  // Explicitly request to use auth token
       });
+      
+      if (response.ok) {
+        // Store summary data for the summary page
+        const summaryData = {
+          taxType,
+          inputs,
+          documentsCount: documents.length,
+          reference: response.reference,
+          submittedAt: response.submittedAt,
+        };
+        sessionStorage.setItem("lastFilingSummary", JSON.stringify(summaryData));
+        
+        // Redirect to summary page
+        router.push("/file/summary");
+      } else {
+        setError(response.error || "Submission failed");
+      }
+    } catch (err: any) {
+      console.error("Filing submission error:", err);
+      // Display more detailed error message
+      if (err.status === 401) {
+        setError("Authentication failed. Please log out and log back in.");
+      } else {
+        setError(err.message || "Submission failed");
+      }
+    } finally {
+      setSubmitting(false);
     }
-    
-    // Re-throw ApiError as-is
-    if (e instanceof ApiError) {
-      throw e;
-    }
-    
-    // Wrap network errors for better exposure
-    throw new ApiError(0, e?.message || "Network request failed", {
-      ok: false,
-      error: "network_error",
-      originalError: e?.message,
-      url,
-    });
-  } finally {
-    if (timeoutId) clearTimeout(timeoutId);
-  }
-}
+  };
+
+  const renderStepIndicator = () => (
+    <div style={{ display: "flex", gap: 8, marginBottom: 24, justifyContent: "space-between", borderBottom: "1px solid var(--border)", paddingBottom: 16 }}>
+      {[1, 2, 3, 4].map((step) => (
+        <div
+          key={step}
+          style={{
+            flex: 1,
+            textAlign: "center",
+            padding: 8,
+            borderRadius: 20,
+            background: currentStep >= step ? "var(--accent)" : "var(--surface-soft)",
+            color: currentStep >= step ? "white" : "var(--text-muted)",
+            fontWeight: 800,
+            fontSize: 13,
+          }}
+        >
+          Step {step}: {step === 1 ? "Tax Type" : step === 2 ? "Details" : step === 3 ? "Documents" : "Confirm"}
+        </div>
+      ))}
+    </div>
+  );
+
+  const renderStep1 = () => (
+    <div>
+      <p style={{ marginBottom: 16, color: "var(--text-muted)" }}>
+        Select the type of tax you want to file.
+      </p>
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+        {["paye", "vat", "cit"].map((type) => (
+          <button
+            key={type}
+            onClick={() => setTaxType(type as TaxType)}
+            style={{
+              padding: "12px 24px",
+              borderRadius: 40,
+              border: "1px solid var(--border)",
+              background: taxType === type ? "#3b82f6" : "var(--surface-soft)",
+              color: taxType === type ? "white" : "var(--text)",
+              fontWeight: 800,
+              cursor: "pointer",
+            }}
+          >
+            {type.toUpperCase()}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
+  const renderPAYEDetails = () => (
+    <div style={{ display: "grid", gap: 16 }}>
+      <div>
+        <label>Monthly Gross Income (₦)</label>
+        <input type="number" style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }} onChange={(e) => handleInputChange("monthly_gross_income", e.target.value)} />
+      </div>
+      <div>
+        <label>Pension Contribution (₦)</label>
+        <input type="number" style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }} onChange={(e) => handleInputChange("pension_contribution", e.target.value)} />
+      </div>
+      <div>
+        <label>NHF Contribution (₦)</label>
+        <input type="number" style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }} onChange={(e) => handleInputChange("nhf", e.target.value)} />
+      </div>
+    </div>
+  );
+
+  const renderVATDetails = () => (
+    <div style={{ display: "grid", gap: 16 }}>
+      <div>
+        <label>Taxable Supplies (₦)</label>
+        <input type="number" style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }} onChange={(e) => handleInputChange("taxable_supplies", e.target.value)} />
+      </div>
+      <div>
+        <label>Input VAT (₦)</label>
+        <input type="number" style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }} onChange={(e) => handleInputChange("input_vat", e.target.value)} />
+      </div>
+    </div>
+  );
+
+  const renderCITDetails = () => (
+    <div style={{ display: "grid", gap: 16 }}>
+      <div>
+        <label>Gross Profit (₦)</label>
+        <input type="number" style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }} onChange={(e) => handleInputChange("gross_profit", e.target.value)} />
+      </div>
+      <div>
+        <label>Allowable Expenses (₦)</label>
+        <input type="number" style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }} onChange={(e) => handleInputChange("allowable_expenses", e.target.value)} />
+      </div>
+    </div>
+  );
+
+  const renderStep2 = () => (
+    <div>
+      <p style={{ marginBottom: 16, color: "var(--text-muted)" }}>
+        Enter your financial details for {taxType.toUpperCase()}.
+      </p>
+      {taxType === "paye" && renderPAYEDetails()}
+      {taxType === "vat" && renderVATDetails()}
+      {taxType === "cit" && renderCITDetails()}
+    </div>
+  );
+
+  const renderStep3 = () => (
+    <div>
+      <p style={{ marginBottom: 16, color: "var(--text-muted)" }}>
+        Upload supporting documents (optional). Accepted: PDF, JPG, PNG.
+      </p>
+      <input type="file" multiple accept=".pdf,.jpg,.jpeg,.png" onChange={handleFileUpload} style={{ marginBottom: 16 }} />
+      {documents.length > 0 && (
+        <div style={{ marginTop: 12 }}>
+          <strong>Uploaded files:</strong>
+          <ul>
+            {documents.map((doc, idx) => (
+              <li key={idx}>{doc.name} ({(doc.size / 1024).toFixed(1)} KB)</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+
+  const renderStep4 = () => (
+    <div>
+      <p style={{ marginBottom: 16 }}>Review your filing details before submitting.</p>
+      <div style={{ background: "var(--surface-soft)", padding: 16, borderRadius: 16, marginBottom: 16 }}>
+        <strong>Tax Type:</strong> {taxType.toUpperCase()}<br />
+        <strong>Details:</strong> {JSON.stringify(inputs, null, 2)}<br />
+        <strong>Documents:</strong> {documents.length} file(s)
+      </div>
+      {error && <div style={{ color: "#dc2626", marginBottom: 16, padding: 12, background: "rgba(220,38,38,0.1)", borderRadius: 8 }}>❌ {error}</div>}
+      <button
+        onClick={submitFiling}
+        disabled={submitting || workspaceLoading}
+        style={{ padding: "12px 24px", background: "#10b981", border: "none", borderRadius: 12, color: "white", fontWeight: 800, cursor: (submitting || workspaceLoading) ? "not-allowed" : "pointer", opacity: (submitting || workspaceLoading) ? 0.6 : 1 }}
+      >
+        {submitting ? "Submitting..." : "Confirm & Submit Filing"}
+      </button>
+    </div>
+  );
+
+  return (
+    <AppShell title="File Your Taxes" subtitle="Guided step-by-step tax filing for PAYE, VAT, and Company Income Tax.">
+      <SectionStack>
+        <WorkspaceSectionCard title="Filing Wizard">
+          {renderStepIndicator()}
+          {currentStep === 1 && renderStep1()}
+          {currentStep === 2 && renderStep2()}
+          {currentStep === 3 && renderStep3()}
+          {currentStep === 4 && renderStep4()}
+          {currentStep !== 4 && (
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 24 }}>
+              {currentStep > 1 && (
+                <button onClick={prevStep} style={{ padding: "10px 20px", background: "var(--surface-soft)", border: "1px solid var(--border)", borderRadius: 12, cursor: "pointer" }}>
+                  Back
+                </button>
+              )}
+              {currentStep < 3 && (
+                <button onClick={nextStep} style={{ padding: "10px 20px", background: "#3b82f6", border: "none", borderRadius: 12, color: "white", fontWeight: 800, cursor: "pointer", marginLeft: "auto" }}>
+                  Next
+                </button>
+              )}
+              {currentStep === 3 && (
+                <button onClick={nextStep} style={{ padding: "10px 20px", background: "#3b82f6", border: "none", borderRadius: 12, color: "white", fontWeight: 800, cursor: "pointer", marginLeft: "auto" }}>
+                  Review & Submit
+                </button>
+              )}
+            </div>
+          )}
+        </WorkspaceSectionCard>
+      </SectionStack>
+    </AppShell>
+  );
+};
+
+export default FileTaxPage;
