@@ -1,9 +1,8 @@
 // lib/config.ts
 
 export const CONFIG = {
-  // Use your new API subdomain after DNS propagates
-  // For now, keep using Koyeb URL until DNS is ready
-  apiBase: process.env.NEXT_PUBLIC_API_BASE_URL || 'https://api.naijataxguides.com',
+  // Use relative path for API calls (they will be proxied by Next.js rewrites)
+  apiBase: process.env.NEXT_PUBLIC_API_BASE_URL || '',
   
   // App information
   appName: 'Naija Tax Guide',
@@ -30,6 +29,11 @@ export function getApiUrl(path: string): string {
 // Helper to check if API is using same domain
 export function isSameDomain(): boolean {
   if (typeof window === 'undefined') return false;
-  const apiUrl = new URL(CONFIG.apiBase);
-  return apiUrl.hostname === window.location.hostname;
+  if (!CONFIG.apiBase) return true; // Using relative paths
+  try {
+    const apiUrl = new URL(CONFIG.apiBase);
+    return apiUrl.hostname === window.location.hostname;
+  } catch {
+    return false;
+  }
 }
