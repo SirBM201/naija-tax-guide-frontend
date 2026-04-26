@@ -304,7 +304,7 @@ function LoginPageContent() {
   const { setToken, setHasSession, refreshSession, logout, hasSession, authReady } =
     useAuth();
 
-  const [email, setEmail] = useState("bms.concept@hotmail.com");
+  const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
   const [notice, setNotice] = useState<NoticeState>({
     tone: "default",
@@ -389,13 +389,17 @@ function LoginPageContent() {
 
   const sendOtp = async () => {
     const normalizedEmail = email.trim().toLowerCase();
-    if (!normalizedEmail) return;
+    if (!normalizedEmail) {
+      setNotice({ tone: "warn", text: "Please enter your email address." });
+      return;
+    }
 
     setBusy(true);
     setNotice({ tone: "default", text: "Sending sign-in OTP..." });
 
     try {
-      const data = await apiJson<RequestOtpResp>("/web/auth/request-otp", {
+      // FIX: Changed from "/web/auth/request-otp" to "web/auth/request-otp" (removed leading slash)
+      const data = await apiJson<RequestOtpResp>("web/auth/request-otp", {
         method: "POST",
         timeoutMs: 25000,
         body: { contact: normalizedEmail, purpose: "web_login" },
@@ -414,10 +418,11 @@ function LoginPageContent() {
       } else {
         setNotice({
           tone: "warn",
-          text: "OTP could not be sent right now. Please confirm the email address and try again.",
+          text: data?.message || "OTP could not be sent right now. Please confirm the email address and try again.",
         });
       }
-    } catch {
+    } catch (error: any) {
+      console.error("OTP request error:", error);
       setNotice({ tone: "danger", text: requestOtpMessage() });
     } finally {
       setBusy(false);
@@ -427,13 +432,17 @@ function LoginPageContent() {
   const verifyOtp = async () => {
     const normalizedEmail = email.trim().toLowerCase();
     const code = otp.trim();
-    if (!normalizedEmail || !code) return;
+    if (!normalizedEmail || !code) {
+      setNotice({ tone: "warn", text: "Please enter both email and OTP code." });
+      return;
+    }
 
     setBusy(true);
     setNotice({ tone: "default", text: "Verifying sign-in OTP..." });
 
     try {
-      const data = await apiJson<VerifyOtpResp>("/web/auth/verify-otp", {
+      // FIX: Changed from "/web/auth/verify-otp" to "web/auth/verify-otp" (removed leading slash)
+      const data = await apiJson<VerifyOtpResp>("web/auth/verify-otp", {
         method: "POST",
         timeoutMs: 25000,
         body: {
@@ -447,7 +456,7 @@ function LoginPageContent() {
       if (!data?.ok) {
         setNotice({
           tone: "warn",
-          text: "That OTP could not be accepted. Request a new code and try again.",
+          text: data?.message || "That OTP could not be accepted. Request a new code and try again.",
         });
         return;
       }
@@ -475,7 +484,8 @@ function LoginPageContent() {
           router.replace(finalPath);
         }, 250);
       }
-    } catch {
+    } catch (error: any) {
+      console.error("OTP verification error:", error);
       setNotice({ tone: "danger", text: verifyOtpMessage() });
     } finally {
       setBusy(false);
