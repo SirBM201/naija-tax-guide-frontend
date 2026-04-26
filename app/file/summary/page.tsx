@@ -16,7 +16,6 @@ interface FilingSummary {
   submittedAt: string;
 }
 
-// This inner component contains the main logic and uses useSearchParams
 function FilingSummaryContent() {
   const router = useRouter();
   const { user } = useAuth();
@@ -78,19 +77,10 @@ function FilingSummaryContent() {
       <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
         <h4 className="font-semibold text-gray-800 mb-3">Summary Details</h4>
         <div className="grid gap-2 text-sm">
-          <div>
-            <span className="font-medium">Tax Type:</span> {summary.taxType.toUpperCase()}
-          </div>
-          <div>
-            <span className="font-medium">Reference:</span> {summary.reference}
-          </div>
-          <div>
-            <span className="font-medium">Submitted At:</span>{" "}
-            {new Date(summary.submittedAt).toLocaleString()}
-          </div>
-          <div>
-            <span className="font-medium">Documents:</span> {summary.documentsCount} file(s)
-          </div>
+          <div><span className="font-medium">Tax Type:</span> {summary.taxType.toUpperCase()}</div>
+          <div><span className="font-medium">Reference:</span> {summary.reference}</div>
+          <div><span className="font-medium">Submitted At:</span> {new Date(summary.submittedAt).toLocaleString()}</div>
+          <div><span className="font-medium">Documents:</span> {summary.documentsCount} file(s)</div>
         </div>
       </div>
 
@@ -125,7 +115,6 @@ function FilingSummaryContent() {
   );
 }
 
-// The page component wraps the content in Suspense
 export default function FilingSummaryPage() {
   return (
     <AppShell title="Filing Summary" subtitle="Review your submitted tax filing details">
