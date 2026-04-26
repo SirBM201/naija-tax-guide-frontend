@@ -29,7 +29,6 @@ function isPlainObject(v: any) {
   return proto === Object.prototype || proto === null;
 }
 
-// Enhanced token retrieval - checks all possible locations
 function safeGetLocalToken(): string | null {
   try {
     if (typeof window === "undefined") return null;
@@ -41,11 +40,12 @@ function safeGetLocalToken(): string | null {
       "token",
       "auth_token",
       "access_token",
-      "supabase.auth.token"
+      "sb-access-token",
+      "sb-refresh-token"
     ];
     
     for (const key of tokenKeys) {
-      const value = window.localStorage.getItem(key);
+      const value = localStorage.getItem(key);
       if (value && value.trim() && value !== "undefined" && value !== "null") {
         console.log(`✅ Found token in localStorage key: ${key}`);
         return value.trim();
@@ -54,7 +54,7 @@ function safeGetLocalToken(): string | null {
     
     // Also check sessionStorage
     for (const key of tokenKeys) {
-      const value = window.sessionStorage.getItem(key);
+      const value = sessionStorage.getItem(key);
       if (value && value.trim() && value !== "undefined" && value !== "null") {
         console.log(`✅ Found token in sessionStorage key: ${key}`);
         return value.trim();
@@ -72,7 +72,7 @@ function safeGetLocalToken(): string | null {
 export function clearStoredAuthToken() {
   try {
     if (typeof window === "undefined") return;
-    const keys = ["nt_access_token", "web_token", "token", "auth_token", "access_token", "supabase.auth.token"];
+    const keys = ["nt_access_token", "web_token", "token", "auth_token", "access_token", "sb-access-token", "sb-refresh-token"];
     keys.forEach(key => {
       localStorage.removeItem(key);
       sessionStorage.removeItem(key);
@@ -162,7 +162,7 @@ export async function apiJson<T = any>(
   // If we have a token, add it to headers
   if (effectiveToken) {
     headers.Authorization = `Bearer ${effectiveToken}`;
-    console.log(`🔐 Using auth token for: ${path} (${effectiveToken.substring(0, 20)}...)`);
+    console.log(`🔐 Using Bearer token for: ${path}`);
   } else if (shouldUseToken) {
     console.warn(`⚠️ No token for: ${path} - this will fail with 401`);
   }
@@ -250,10 +250,6 @@ export async function apiJson<T = any>(
       if (res.status === 401) {
         console.error("🔑 Authentication failed!");
         console.error("   Token present:", !!effectiveToken);
-        if (effectiveToken) {
-          console.error("   Token preview:", effectiveToken.substring(0, 30));
-        }
-        // Don't auto-clear token on 401 - let the user handle it
       }
 
       throw new ApiError(res.status, message, enriched);
