@@ -12,7 +12,7 @@ import { useAuth } from "@/lib/auth";
 type TaxType = "paye" | "vat" | "cit";
 type Step = 1 | 2 | 3 | 4;
 
-const FileTaxPage: React.FC = () => {
+export default function FileTaxPage() {
   const router = useRouter();
   const { refreshSession, user } = useAuth();
   
@@ -74,11 +74,11 @@ const FileTaxPage: React.FC = () => {
         userId: accountId,
       };
       
-      // Use the token from localStorage by setting useAuthToken: true
+      // IMPORTANT: Do NOT send auth token - use session cookie (credentials: "include" handles it)
       const response = await apiJson("tax/file", {
         method: "POST",
         body: JSON.stringify(filingData),
-        useAuthToken: true,  // Explicitly request to use auth token
+        useAuthToken: false,  // CRITICAL: Disable Bearer token, use session cookie instead
       });
       
       if (response.ok) {
@@ -99,7 +99,6 @@ const FileTaxPage: React.FC = () => {
       }
     } catch (err: any) {
       console.error("Filing submission error:", err);
-      // Display more detailed error message
       if (err.status === 401) {
         setError("Authentication failed. Please log out and log back in.");
       } else {
@@ -283,6 +282,4 @@ const FileTaxPage: React.FC = () => {
       </SectionStack>
     </AppShell>
   );
-};
-
-export default FileTaxPage;
+}
