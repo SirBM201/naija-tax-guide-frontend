@@ -29,16 +29,42 @@ function isPlainObject(v: any) {
   return proto === Object.prototype || proto === null;
 }
 
+// Enhanced token retrieval - checks all possible locations
 function safeGetLocalToken(): string | null {
   try {
     if (typeof window === "undefined") return null;
-    // Try multiple possible token storage keys
-    const token = (window.localStorage.getItem("nt_access_token") || 
-                   window.localStorage.getItem("web_token") ||
-                   window.localStorage.getItem("token") ||
-                   window.localStorage.getItem("auth_token") || "").trim();
-    return token || null;
-  } catch {
+    
+    // Check all possible token storage keys
+    const tokenKeys = [
+      "nt_access_token",
+      "web_token", 
+      "token",
+      "auth_token",
+      "access_token",
+      "supabase.auth.token"
+    ];
+    
+    for (const key of tokenKeys) {
+      const value = window.localStorage.getItem(key);
+      if (value && value.trim() && value !== "undefined" && value !== "null") {
+        console.log(`✅ Found token in localStorage key: ${key}`);
+        return value.trim();
+      }
+    }
+    
+    // Also check sessionStorage
+    for (const key of tokenKeys) {
+      const value = window.sessionStorage.getItem(key);
+      if (value && value.trim() && value !== "undefined" && value !== "null") {
+        console.log(`✅ Found token in sessionStorage key: ${key}`);
+        return value.trim();
+      }
+    }
+    
+    console.warn("⚠️ No auth token found in any storage location");
+    return null;
+  } catch (error) {
+    console.error("Error reading from storage:", error);
     return null;
   }
 }
@@ -46,10 +72,12 @@ function safeGetLocalToken(): string | null {
 export function clearStoredAuthToken() {
   try {
     if (typeof window === "undefined") return;
-    window.localStorage.removeItem("nt_access_token");
-    window.localStorage.removeItem("web_token");
-    window.localStorage.removeItem("token");
-    window.localStorage.removeItem("auth_token");
+    const keys = ["nt_access_token", "web_token", "token", "auth_token", "access_token", "supabase.auth.token"];
+    keys.forEach(key => {
+      localStorage.removeItem(key);
+      sessionStorage.removeItem(key);
+    });
+    console.log("🧹 Cleared all auth tokens");
   } catch {
     // ignore
   }
@@ -125,17 +153,18 @@ export async function apiJson<T = any>(
     ...(init.headers as Record<string, string>),
   };
 
-  // ALWAYS try to use auth token for protected endpoints
-  const shouldUseToken = init.useAuthToken !== false; // Default to true unless explicitly false
-  const effectiveToken = shouldUseToken
+  // Always try to use auth token for protected endpoints
+  const shouldUseToken = init.useAuthToken !== false;
+  let effectiveToken = shouldUseToken
     ? ((token || "").trim() || safeGetLocalToken())
     : null;
 
+  // If we have a token, add it to headers
   if (effectiveToken) {
     headers.Authorization = `Bearer ${effectiveToken}`;
-    console.log("🔐 Using auth token for request to:", path);
-  } else {
-    console.warn("⚠️ No auth token available for request to:", path);
+    console.log(`🔐 Using auth token for: ${path} (${effectiveToken.substring(0, 20)}...)`);
+  } else if (shouldUseToken) {
+    console.warn(`⚠️ No token for: ${path} - this will fail with 401`);
   }
 
   let bodyToSend: BodyInit | undefined;
@@ -188,15 +217,17 @@ export async function apiJson<T = any>(
   const url = buildUrl(path, init.query);
 
   try {
-    const res = await fetch(url, {
-      mode: "cors",
-      ...init,
-      credentials: "include",
+    const fetchOptions: RequestInit = {
       method,
       headers,
       body: bodyToSend,
       signal: controller?.signal ?? init.signal,
-    });
+      credentials: "include",
+    };
+    
+    console.log(`🚀 ${method} ${url}`);
+    
+    const res = await fetch(url, fetchOptions);
 
     const text = await res.text();
 
@@ -214,20 +245,21 @@ export async function apiJson<T = any>(
 
       const enriched = isPlainObject(data) ? { ...data, url, status: res.status } : { data, url, status: res.status };
 
-      // Enhanced error logging for debugging
-      console.error(`❌ API Error [${res.status}]: ${url}`, enriched);
+      console.error(`❌ API Error ${res.status}: ${url}`, enriched);
 
       if (res.status === 401) {
-        console.error("🔑 Authentication failed - token may be expired or invalid");
-        if (shouldUseToken) {
-          clearStoredAuthToken();
+        console.error("🔑 Authentication failed!");
+        console.error("   Token present:", !!effectiveToken);
+        if (effectiveToken) {
+          console.error("   Token preview:", effectiveToken.substring(0, 30));
         }
+        // Don't auto-clear token on 401 - let the user handle it
       }
 
       throw new ApiError(res.status, message, enriched);
     }
 
-    console.log(`✅ API Success: ${method} ${url}`);
+    console.log(`✅ ${method} ${url} - ${res.status}`);
     return data as T;
   } catch (e: any) {
     if (e?.name === "AbortError") {
@@ -238,12 +270,10 @@ export async function apiJson<T = any>(
       });
     }
     
-    // Re-throw ApiError as-is
     if (e instanceof ApiError) {
       throw e;
     }
     
-    // Wrap network errors for better exposure
     throw new ApiError(0, e?.message || "Network request failed", {
       ok: false,
       error: "network_error",
