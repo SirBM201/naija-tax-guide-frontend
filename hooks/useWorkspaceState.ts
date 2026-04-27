@@ -247,6 +247,7 @@ export function useWorkspaceState(options?: UseWorkspaceStateOptions) {
 
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState(loadingMessage);
+  const [accountId, setAccountId] = useState<string | null>(null);
 
   const [accountRaw, setAccountRaw] = useState<WorkspaceAccountResp | null>(null);
   const [billingRaw, setBillingRaw] = useState<WorkspaceBillingResp | null>(null);
@@ -268,7 +269,7 @@ export function useWorkspaceState(options?: UseWorkspaceStateOptions) {
         }
 
         const accountRequest: Promise<WorkspaceAccountResp | null> = includeAccount
-          ? apiJson<WorkspaceAccountResp>("/web/auth/me", {
+          ? apiJson<WorkspaceAccountResp>("web/auth/me", {
               method: "GET",
               timeoutMs: 20000,
               useAuthToken: false,
@@ -276,7 +277,7 @@ export function useWorkspaceState(options?: UseWorkspaceStateOptions) {
           : Promise.resolve(null);
 
         const billingRequest: Promise<WorkspaceBillingResp | null> = includeBilling
-          ? apiJson<WorkspaceBillingResp>("/billing/me", {
+          ? apiJson<WorkspaceBillingResp>("billing/me", {
               method: "GET",
               timeoutMs: 20000,
               useAuthToken: false,
@@ -284,7 +285,7 @@ export function useWorkspaceState(options?: UseWorkspaceStateOptions) {
           : Promise.resolve(null);
 
         const debugRequest: Promise<WorkspaceDebugStateResp | null> = includeDebug
-          ? apiJson<WorkspaceDebugStateResp>("/billing/debug-state", {
+          ? apiJson<WorkspaceDebugStateResp>("billing/debug-state", {
               method: "GET",
               timeoutMs: 20000,
               useAuthToken: false,
@@ -292,7 +293,7 @@ export function useWorkspaceState(options?: UseWorkspaceStateOptions) {
           : Promise.resolve(null);
 
         const linkStatusRequest: Promise<WorkspaceLinkStatusResp | null> = includeLinkStatus
-          ? apiJson<WorkspaceLinkStatusResp>("/link/status", { method: "GET", timeoutMs: 20000, useAuthToken: false }).catch(() => null)
+          ? apiJson<WorkspaceLinkStatusResp>("link/status", { method: "GET", timeoutMs: 20000, useAuthToken: false }).catch(() => null)
           : Promise.resolve(null);
 
         const [accountResult, billingResult, debugResult, linkStatusResult] = await Promise.all([
@@ -302,7 +303,14 @@ export function useWorkspaceState(options?: UseWorkspaceStateOptions) {
           linkStatusRequest,
         ]);
 
-        if (accountResult) setAccountRaw(accountResult);
+        if (accountResult) {
+          setAccountRaw(accountResult);
+          // Extract account_id from the response
+          if (accountResult.ok && accountResult.account_id) {
+            setAccountId(accountResult.account_id);
+          }
+        }
+        
         if (billingResult) setBillingRaw(billingResult);
         if (debugResult) setDebugStateRaw(debugResult);
         if (linkStatusResult) setLinkStatusRaw(linkStatusResult);
@@ -343,7 +351,8 @@ export function useWorkspaceState(options?: UseWorkspaceStateOptions) {
   const guard = billingRaw?.guard || pickGuard(debugStateRaw);
 
   const derived = useMemo(() => {
-    const accountId =
+    const finalAccountId =
+      accountId ||
       accountRaw?.account_id ||
       billingRaw?.account_id ||
       debugStateRaw?.account_id ||
@@ -392,8 +401,8 @@ export function useWorkspaceState(options?: UseWorkspaceStateOptions) {
     const usageRemaining = dailyLimit > 0 ? Math.max(dailyLimit - dailyUsage, 0) : null;
 
     const profile: WorkspaceProfile = {
-      id: accountId,
-      account_id: accountId,
+      id: finalAccountId,
+      account_id: finalAccountId,
       email,
       full_name: accountRaw?.full_name || null,
       display_name: accountRaw?.display_name || accountRaw?.full_name || null,
@@ -523,7 +532,7 @@ export function useWorkspaceState(options?: UseWorkspaceStateOptions) {
     };
 
     return {
-      accountId,
+      accountId: finalAccountId,
       email,
       sub: subscription,
       summary,
@@ -546,7 +555,7 @@ export function useWorkspaceState(options?: UseWorkspaceStateOptions) {
       usage,
       channelLinks,
     };
-  }, [accountRaw, billingRaw, debugStateRaw, sub, summary, guard]);
+  }, [accountId, accountRaw, billingRaw, debugStateRaw, sub, summary, guard, linkStatusRaw]);
 
   const refreshAll = useCallback(async () => {
     await load("Refreshing workspace...");
@@ -555,6 +564,7 @@ export function useWorkspaceState(options?: UseWorkspaceStateOptions) {
   return {
     busy,
     status,
+    accountId,
     accountRaw,
     billingRaw,
     debugStateRaw,
