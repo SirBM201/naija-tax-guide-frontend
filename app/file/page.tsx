@@ -176,23 +176,79 @@ export default function FileTaxPage() {
 
   const renderPAYEDetails = () => (
     <div style={{ display: "grid", gap: 16 }}>
-      <div><label>Monthly Gross Income (₦)</label><input type="number" style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }} onChange={(e) => handleInputChange("monthly_gross_income", e.target.value)} /></div>
-      <div><label>Pension Contribution (₦)</label><input type="number" style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }} onChange={(e) => handleInputChange("pension_contribution", e.target.value)} /></div>
-      <div><label>NHF Contribution (₦)</label><input type="number" style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }} onChange={(e) => handleInputChange("nhf", e.target.value)} /></div>
+      <div>
+        <label>Monthly Gross Income (₦)</label>
+        <input 
+          type="number" 
+          placeholder="Enter monthly gross income"
+          style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }} 
+          onChange={(e) => handleInputChange("monthly_gross_income", e.target.value)} 
+        />
+      </div>
+      <div>
+        <label>Pension Contribution (₦)</label>
+        <input 
+          type="number" 
+          placeholder="Enter pension contribution"
+          style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }} 
+          onChange={(e) => handleInputChange("pension_contribution", e.target.value)} 
+        />
+      </div>
+      <div>
+        <label>NHF Contribution (₦)</label>
+        <input 
+          type="number" 
+          placeholder="Enter NHF contribution"
+          style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }} 
+          onChange={(e) => handleInputChange("nhf", e.target.value)} 
+        />
+      </div>
     </div>
   );
 
   const renderVATDetails = () => (
     <div style={{ display: "grid", gap: 16 }}>
-      <div><label>Taxable Supplies (₦)</label><input type="number" style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }} onChange={(e) => handleInputChange("taxable_supplies", e.target.value)} /></div>
-      <div><label>Input VAT (₦)</label><input type="number" style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }} onChange={(e) => handleInputChange("input_vat", e.target.value)} /></div>
+      <div>
+        <label>Taxable Supplies (₦)</label>
+        <input 
+          type="number" 
+          placeholder="Enter taxable supplies"
+          style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }} 
+          onChange={(e) => handleInputChange("taxable_supplies", e.target.value)} 
+        />
+      </div>
+      <div>
+        <label>Input VAT (₦)</label>
+        <input 
+          type="number" 
+          placeholder="Enter input VAT"
+          style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }} 
+          onChange={(e) => handleInputChange("input_vat", e.target.value)} 
+        />
+      </div>
     </div>
   );
 
   const renderCITDetails = () => (
     <div style={{ display: "grid", gap: 16 }}>
-      <div><label>Gross Profit (₦)</label><input type="number" style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }} onChange={(e) => handleInputChange("gross_profit", e.target.value)} /></div>
-      <div><label>Allowable Expenses (₦)</label><input type="number" style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }} onChange={(e) => handleInputChange("allowable_expenses", e.target.value)} /></div>
+      <div>
+        <label>Gross Profit (₦)</label>
+        <input 
+          type="number" 
+          placeholder="Enter gross profit"
+          style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }} 
+          onChange={(e) => handleInputChange("gross_profit", e.target.value)} 
+        />
+      </div>
+      <div>
+        <label>Allowable Expenses (₦)</label>
+        <input 
+          type="number" 
+          placeholder="Enter allowable expenses"
+          style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }} 
+          onChange={(e) => handleInputChange("allowable_expenses", e.target.value)} 
+        />
+      </div>
     </div>
   );
 
@@ -212,7 +268,11 @@ export default function FileTaxPage() {
       {documents.length > 0 && (
         <div style={{ marginTop: 12 }}>
           <strong>Uploaded files:</strong>
-          <ul>{documents.map((doc, idx) => (<li key={idx}>{doc.name} ({(doc.size / 1024).toFixed(1)} KB)</li>))}</ul>
+          <ul>
+            {documents.map((doc, idx) => (
+              <li key={idx}>{doc.name} ({(doc.size / 1024).toFixed(1)} KB)</li>
+            ))}
+          </ul>
         </div>
       )}
     </div>
@@ -227,7 +287,11 @@ export default function FileTaxPage() {
         <strong>Documents:</strong> {documents.length} file(s)
       </div>
       {error && <div style={{ color: "#dc2626", marginBottom: 16, padding: 12, background: "rgba(220,38,38,0.1)", borderRadius: 8 }}>❌ {error}</div>}
-      <button onClick={submitFiling} disabled={submitting} style={{ padding: "12px 24px", background: "#10b981", border: "none", borderRadius: 12, color: "white", fontWeight: 800, cursor: submitting ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : 1 }}>
+      <button
+        onClick={submitFiling}
+        disabled={submitting}
+        style={{ padding: "12px 24px", background: "#10b981", border: "none", borderRadius: 12, color: "white", fontWeight: 800, cursor: submitting ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : 1 }}
+      >
         {submitting ? "Submitting..." : "Confirm & Submit Filing"}
       </button>
     </div>
@@ -237,18 +301,32 @@ export default function FileTaxPage() {
     <AppShell title="File Your Taxes" subtitle="Guided step-by-step tax filing for PAYE, VAT, and Company Income Tax.">
       <SectionStack>
         <WorkspaceSectionCard title="Filing Wizard">
-          {renderStepIndicator()}
-          {currentStep === 1 && renderStep1()}
-          {currentStep === 2 && renderStep2()}
-          {currentStep === 3 && renderStep3()}
-          {currentStep === 4 && renderStep4()}
-          {currentStep !== 4 && (
-            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 24 }}>
-              {currentStep > 1 && (<button onClick={prevStep} style={{ padding: "10px 20px", background: "var(--surface-soft)", border: "1px solid var(--border)", borderRadius: 12, cursor: "pointer" }}>Back</button>)}
-              {currentStep < 3 && (<button onClick={nextStep} style={{ padding: "10px 20px", background: "#3b82f6", border: "none", borderRadius: 12, color: "white", fontWeight: 800, cursor: "pointer", marginLeft: "auto" }}>Next</button>)}
-              {currentStep === 3 && (<button onClick={nextStep} style={{ padding: "10px 20px", background: "#3b82f6", border: "none", borderRadius: 12, color: "white", fontWeight: 800, cursor: "pointer", marginLeft: "auto" }}>Review & Submit</button>)}
-            </div>
-          )}
+          <div style={{ maxHeight: "calc(100vh - 200px)", overflowY: "auto", paddingRight: "8px" }}>
+            {renderStepIndicator()}
+            {currentStep === 1 && renderStep1()}
+            {currentStep === 2 && renderStep2()}
+            {currentStep === 3 && renderStep3()}
+            {currentStep === 4 && renderStep4()}
+            {currentStep !== 4 && (
+              <div style={{ display: "flex", justifyContent: "space-between", marginTop: 24 }}>
+                {currentStep > 1 && (
+                  <button onClick={prevStep} style={{ padding: "10px 20px", background: "var(--surface-soft)", border: "1px solid var(--border)", borderRadius: 12, cursor: "pointer" }}>
+                    Back
+                  </button>
+                )}
+                {currentStep < 3 && (
+                  <button onClick={nextStep} style={{ padding: "10px 20px", background: "#3b82f6", border: "none", borderRadius: 12, color: "white", fontWeight: 800, cursor: "pointer", marginLeft: "auto" }}>
+                    Next
+                  </button>
+                )}
+                {currentStep === 3 && (
+                  <button onClick={nextStep} style={{ padding: "10px 20px", background: "#3b82f6", border: "none", borderRadius: 12, color: "white", fontWeight: 800, cursor: "pointer", marginLeft: "auto" }}>
+                    Review & Submit
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
         </WorkspaceSectionCard>
       </SectionStack>
     </AppShell>
