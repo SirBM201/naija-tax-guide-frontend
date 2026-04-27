@@ -6,7 +6,6 @@ import AppShell from "@/components/app-shell";
 import { SectionStack } from "@/components/page-layout";
 import WorkspaceSectionCard from "@/components/workspace-section-card";
 import { apiJson } from "@/lib/api";
-import { useWorkspaceState } from "@/hooks/useWorkspaceState";
 import { useAuth } from "@/lib/auth";
 
 type TaxType = "paye" | "vat" | "cit";
@@ -14,17 +13,11 @@ type Step = 1 | 2 | 3 | 4;
 
 export default function FileTaxPage() {
   const router = useRouter();
-  const { refreshSession, user, hasSession, authReady } = useAuth();
+  const { refreshSession, hasSession, authReady } = useAuth();
   
-  // Get accountId from workspace state
-  const { accountId, busy: workspaceLoading, errorDetails, status } = useWorkspaceState({
-    refreshSession,
-    autoLoad: true,
-    includeAccount: true,
-  });
-
   const [currentStep, setCurrentStep] = useState<Step>(1);
   const [taxType, setTaxType] = useState<TaxType>("paye");
+  const [accountId, setAccountId] = useState<string | null>(null);
   const [inputs, setInputs] = useState<any>({
     monthly_gross_income: 0,
     pension_contribution: 0,
@@ -38,32 +31,75 @@ export default function FileTaxPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [debugInfo, setDebugInfo] = useState<any>({});
+  const [loadingAttempts, setLoadingAttempts] = useState(0);
 
-  // Debug logging
-  useEffect(() => {
-    const debug = {
-      authReady,
-      workspaceLoading,
-      hasSession,
-      accountId,
-      isLoading,
-      errorDetails,
-      status,
-    };
-    setDebugInfo(debug);
-    console.log("🔍 [FileTaxPage] Debug:", debug);
-  }, [authReady, workspaceLoading, hasSession, accountId, isLoading, errorDetails, status]);
-
-  // Wait for auth to be ready and accountId to load
-  useEffect(() => {
-    if (authReady && !workspaceLoading) {
-      const timer = setTimeout(() => {
+  // Fetch account ID directly
+  const fetchAccountId = async () => {
+    try {
+      console.log(`🔍 Fetching account ID (attempt ${loadingAttempts + 1})...`);
+      const response = await apiJson<{ ok: boolean; account_id?: string; from_session?: boolean }>("web/auth/me", {
+        method: "GET",
+        useAuthToken: false,
+      });
+      
+      console.log("📡 Account response:", response);
+      
+      if (response?.ok && response?.account_id) {
+        console.log("✅ Account ID found:", response.account_id);
+        setAccountId(response.account_id);
         setIsLoading(false);
-      }, 500);
-      return () => clearTimeout(timer);
+        return true;
+      } else {
+        console.warn("⚠️ No account_id in response:", response);
+        return false;
+      }
+    } catch (err) {
+      console.error("❌ Failed to fetch account ID:", err);
+      return false;
     }
-  }, [authReady, workspaceLoading]);
+  };
+
+  // Try to load account ID with retries
+  useEffect(() => {
+    let mounted = true;
+    let retryTimeout: NodeJS.Timeout;
+    
+    const loadAccount = async () => {
+      if (!authReady) {
+        console.log("⏳ Auth not ready yet...");
+        return;
+      }
+      
+      if (!hasSession) {
+        console.log("🚫 No active session, redirecting to login...");
+        router.push("/login");
+        return;
+      }
+      
+      const success = await fetchAccountId();
+      
+      if (!success && mounted && loadingAttempts < 5) {
+        // Retry after delay
+        retryTimeout = setTimeout(() => {
+          if (mounted) {
+            setLoadingAttempts(prev => prev + 1);
+          }
+        }, 1000);
+      } else if (success && mounted) {
+        setIsLoading(false);
+      } else if (loadingAttempts >= 5 && mounted) {
+        setError("Could not load account information after multiple attempts. Please refresh the page.");
+        setIsLoading(false);
+      }
+    };
+    
+    loadAccount();
+    
+    return () => {
+      mounted = false;
+      if (retryTimeout) clearTimeout(retryTimeout);
+    };
+  }, [authReady, hasSession, loadingAttempts, router]);
 
   const handleInputChange = (field: string, value: string) => {
     setInputs({ ...inputs, [field]: parseFloat(value) || 0 });
@@ -86,15 +122,13 @@ export default function FileTaxPage() {
   };
 
   const submitFiling = async () => {
-    console.log("🔍 [submitFiling] Starting - AccountId:", accountId, "HasSession:", hasSession);
-    
     if (!hasSession) {
       setError("No active session. Please log in first.");
       return;
     }
     
     if (!accountId) {
-      setError(`Account ID not loaded. Debug: ${JSON.stringify(debugInfo)}`);
+      setError("Account ID not loaded. Please wait a moment and try again.");
       return;
     }
 
@@ -108,7 +142,7 @@ export default function FileTaxPage() {
         userId: accountId,
       };
       
-      console.log("🔍 [submitFiling] Sending data:", filingData);
+      console.log("📤 Submitting filing:", filingData);
       
       const response = await apiJson("tax/file", {
         method: "POST",
@@ -116,7 +150,7 @@ export default function FileTaxPage() {
         useAuthToken: false,
       });
       
-      console.log("🔍 [submitFiling] Response:", response);
+      console.log("📥 Filing response:", response);
       
       if (response.ok) {
         const summaryData = {
@@ -132,7 +166,7 @@ export default function FileTaxPage() {
         setError(response.error || "Submission failed");
       }
     } catch (err: any) {
-      console.error("❌ [submitFiling] Error:", err);
+      console.error("❌ Filing error:", err);
       if (err.status === 401) {
         setError("Session expired. Please log out and log back in.");
       } else {
@@ -150,9 +184,9 @@ export default function FileTaxPage() {
         <SectionStack>
           <WorkspaceSectionCard title="Loading">
             <div style={{ textAlign: "center", padding: "40px" }}>
-              Loading your account information...
+              <div>Loading your account information...</div>
               <div style={{ fontSize: "12px", marginTop: "16px", color: "var(--text-muted)" }}>
-                Status: {status}
+                Attempt {loadingAttempts + 1} of 5
               </div>
             </div>
           </WorkspaceSectionCard>
@@ -182,20 +216,14 @@ export default function FileTaxPage() {
     );
   }
 
-  // Show error if accountId is still not loaded
-  if (!accountId) {
+  // Show error state
+  if (error) {
     return (
-      <AppShell title="File Your Taxes" subtitle="Account Loading Issue">
+      <AppShell title="File Your Taxes" subtitle="Error">
         <SectionStack>
-          <WorkspaceSectionCard title="Account Not Loaded">
+          <WorkspaceSectionCard title="Error Loading Account">
             <div style={{ textAlign: "center", padding: "40px" }}>
-              <p style={{ color: "#dc2626", marginBottom: "16px" }}>❌ Could not load account information</p>
-              <details style={{ textAlign: "left", background: "var(--surface-soft)", padding: "16px", borderRadius: "8px", marginTop: "16px" }}>
-                <summary style={{ cursor: "pointer", fontWeight: "bold" }}>Debug Information</summary>
-                <pre style={{ fontSize: "11px", marginTop: "12px", overflow: "auto", maxHeight: "300px" }}>
-                  {JSON.stringify(debugInfo, null, 2)}
-                </pre>
-              </details>
+              <p style={{ color: "#dc2626" }}>❌ {error}</p>
               <button
                 onClick={() => window.location.reload()}
                 style={{ padding: "10px 20px", background: "#3b82f6", color: "white", border: "none", borderRadius: 8, cursor: "pointer", marginTop: 16 }}
