@@ -1,8 +1,8 @@
 // lib/config.ts
 
 export const CONFIG = {
-  // Empty string means use relative paths (will be proxied by Next.js rewrites)
-  apiBase: process.env.NEXT_PUBLIC_API_BASE_URL || '',
+  // Empty string = use relative paths (proxied by Next.js rewrites)
+  apiBase: '',
   
   // App information
   appName: 'Naija Tax Guide',
@@ -28,12 +28,5 @@ export function getApiUrl(path: string): string {
 
 // Helper to check if API is using same domain
 export function isSameDomain(): boolean {
-  if (typeof window === 'undefined') return false;
-  if (!CONFIG.apiBase) return true; // Using relative paths
-  try {
-    const apiUrl = new URL(CONFIG.apiBase);
-    return apiUrl.hostname === window.location.hostname;
-  } catch {
-    return false;
-  }
+  return true; // Always true because we're using rewrites
 }
