@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import AppShell from "@/components/app-shell";
 import { SectionStack } from "@/components/page-layout";
 import WorkspaceSectionCard from "@/components/workspace-section-card";
-import { apiJson } from "@/lib/api";
 
 type TaxType = "paye" | "vat" | "cit";
 type Step = 1 | 2 | 3 | 4;
@@ -31,25 +30,29 @@ export default function FileTaxPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
-  // Check authentication and get account ID
+  // Direct fetch to check authentication and get account ID
   useEffect(() => {
     let mounted = true;
     
     const checkAuth = async () => {
       try {
-        console.log("🔍 Checking authentication...");
+        console.log("🔍 Checking authentication via direct fetch...");
         
-        // First, check if we have a session by calling /web/auth/me
-        const response = await apiJson<{ ok: boolean; account_id?: string }>("web/auth/me", {
+        // Use relative URL - Next.js rewrites will handle proxy
+        const response = await fetch("/api/web/auth/me", {
           method: "GET",
-          useAuthToken: false,
+          credentials: "include",
+          headers: {
+            "Accept": "application/json",
+          },
         });
         
-        console.log("📡 Auth response:", response);
+        const data = await response.json();
+        console.log("📡 Auth response:", data);
         
-        if (response?.ok && response?.account_id) {
-          console.log("✅ Authenticated! Account ID:", response.account_id);
-          setAccountId(response.account_id);
+        if (response.ok && data?.ok && data?.account_id) {
+          console.log("✅ Authenticated! Account ID:", data.account_id);
+          setAccountId(data.account_id);
           setIsAuthenticated(true);
         } else {
           console.log("❌ Not authenticated");
@@ -115,26 +118,30 @@ export default function FileTaxPage() {
       
       console.log("📤 Filing data:", filingData);
       
-      const response = await apiJson("tax/file", {
+      const response = await fetch("/api/tax/file", {
         method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
         body: JSON.stringify(filingData),
-        useAuthToken: false,
       });
       
-      console.log("📥 Filing response:", response);
+      const data = await response.json();
+      console.log("📥 Filing response:", data);
       
-      if (response.ok) {
+      if (response.ok && data.ok) {
         const summaryData = {
           taxType,
           inputs,
           documentsCount: documents.length,
-          reference: response.reference,
-          submittedAt: response.submittedAt,
+          reference: data.reference,
+          submittedAt: data.submittedAt,
         };
         sessionStorage.setItem("lastFilingSummary", JSON.stringify(summaryData));
         router.push("/file/summary");
       } else {
-        setError(response.error || "Submission failed");
+        setError(data.error || "Submission failed");
       }
     } catch (err: any) {
       console.error("❌ Filing error:", err);
