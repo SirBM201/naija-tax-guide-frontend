@@ -248,6 +248,7 @@ export function useWorkspaceState(options?: UseWorkspaceStateOptions) {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState(loadingMessage);
   const [accountId, setAccountId] = useState<string | null>(null);
+  const [errorDetails, setErrorDetails] = useState<string | null>(null);
 
   const [accountRaw, setAccountRaw] = useState<WorkspaceAccountResp | null>(null);
   const [billingRaw, setBillingRaw] = useState<WorkspaceBillingResp | null>(null);
@@ -258,23 +259,28 @@ export function useWorkspaceState(options?: UseWorkspaceStateOptions) {
     async (nextLoadingMessage?: string) => {
       setBusy(true);
       setStatus(nextLoadingMessage || loadingMessage);
+      setErrorDetails(null);
 
       try {
-        // First, ensure session is valid
+        console.log("🔍 [useWorkspaceState] Starting load...");
+        
         if (refreshSession && revalidateSessionOnLoad) {
           try {
+            console.log("🔍 [useWorkspaceState] Refreshing session...");
             const sessionValid = await refreshSession();
+            console.log(`🔍 [useWorkspaceState] Session valid: ${sessionValid}`);
             if (!sessionValid) {
-              console.log("Session not valid, skipping account load");
+              console.warn("⚠️ [useWorkspaceState] Session not valid, skipping account load");
               setBusy(false);
               return;
             }
-          } catch {
-            // ignore
+          } catch (err) {
+            console.error("❌ [useWorkspaceState] Session refresh error:", err);
           }
         }
 
         // Small delay to ensure session is fully set
+        console.log("🔍 [useWorkspaceState] Waiting 500ms for session...");
         await new Promise(resolve => setTimeout(resolve, 500));
 
         const accountRequest: Promise<WorkspaceAccountResp | null> = includeAccount
@@ -283,7 +289,8 @@ export function useWorkspaceState(options?: UseWorkspaceStateOptions) {
               timeoutMs: 20000,
               useAuthToken: false,
             }).catch((err) => {
-              console.error("Account request failed:", err);
+              console.error("❌ [useWorkspaceState] Account request failed:", err);
+              setErrorDetails(`Account request failed: ${err.message || JSON.stringify(err)}`);
               return null;
             })
           : Promise.resolve(null);
@@ -293,7 +300,10 @@ export function useWorkspaceState(options?: UseWorkspaceStateOptions) {
               method: "GET",
               timeoutMs: 20000,
               useAuthToken: false,
-            }).catch(() => null)
+            }).catch((err) => {
+              console.error("❌ [useWorkspaceState] Billing request failed:", err);
+              return null;
+            })
           : Promise.resolve(null);
 
         const debugRequest: Promise<WorkspaceDebugStateResp | null> = includeDebug
@@ -301,13 +311,20 @@ export function useWorkspaceState(options?: UseWorkspaceStateOptions) {
               method: "GET",
               timeoutMs: 20000,
               useAuthToken: false,
-            }).catch(() => null)
+            }).catch((err) => {
+              console.error("❌ [useWorkspaceState] Debug request failed:", err);
+              return null;
+            })
           : Promise.resolve(null);
 
         const linkStatusRequest: Promise<WorkspaceLinkStatusResp | null> = includeLinkStatus
-          ? apiJson<WorkspaceLinkStatusResp>("link/status", { method: "GET", timeoutMs: 20000, useAuthToken: false }).catch(() => null)
+          ? apiJson<WorkspaceLinkStatusResp>("link/status", { method: "GET", timeoutMs: 20000, useAuthToken: false }).catch((err) => {
+              console.error("❌ [useWorkspaceState] Link status request failed:", err);
+              return null;
+            })
           : Promise.resolve(null);
 
+        console.log("🔍 [useWorkspaceState] Sending parallel requests...");
         const [accountResult, billingResult, debugResult, linkStatusResult] = await Promise.all([
           accountRequest,
           billingRequest,
@@ -315,25 +332,38 @@ export function useWorkspaceState(options?: UseWorkspaceStateOptions) {
           linkStatusRequest,
         ]);
 
-        console.log("Account result:", accountResult);
+        console.log("🔍 [useWorkspaceState] Account result:", JSON.stringify(accountResult, null, 2));
         
         if (accountResult) {
           setAccountRaw(accountResult);
-          // Extract account_id from the response - works with both formats
+          // Extract account_id from the response
           if (accountResult.account_id) {
-            console.log("Setting accountId to:", accountResult.account_id);
+            console.log("✅ [useWorkspaceState] Setting accountId to:", accountResult.account_id);
             setAccountId(accountResult.account_id);
-          } else if (accountResult.ok && accountResult.account_id) {
-            console.log("Setting accountId from ok response:", accountResult.account_id);
-            setAccountId(accountResult.account_id);
+          } else {
+            console.warn("⚠️ [useWorkspaceState] accountResult has no account_id:", accountResult);
+            setErrorDetails("API returned success but no account_id field");
           }
+        } else {
+          console.error("❌ [useWorkspaceState] accountResult is null");
+          setErrorDetails("Account API request returned null");
         }
         
-        if (billingResult) setBillingRaw(billingResult);
-        if (debugResult) setDebugStateRaw(debugResult);
-        if (linkStatusResult) setLinkStatusRaw(linkStatusResult);
+        if (billingResult) {
+          console.log("✅ [useWorkspaceState] Billing result received");
+          setBillingRaw(billingResult);
+        }
+        if (debugResult) {
+          console.log("✅ [useWorkspaceState] Debug result received");
+          setDebugStateRaw(debugResult);
+        }
+        if (linkStatusResult) {
+          console.log("✅ [useWorkspaceState] Link status result received");
+          setLinkStatusRaw(linkStatusResult);
+        }
 
         const successCount = [accountResult, billingResult, debugResult, linkStatusResult].filter(Boolean).length;
+        console.log(`🔍 [useWorkspaceState] Success count: ${successCount}/4`);
 
         if (successCount >= 2) {
           setStatus("Ready.");
@@ -343,10 +373,12 @@ export function useWorkspaceState(options?: UseWorkspaceStateOptions) {
           setStatus("Workspace load failed.");
         }
       } catch (error) {
-        console.error("Workspace load error:", error);
+        console.error("❌ [useWorkspaceState] Workspace load error:", error);
         setStatus("Workspace load failed.");
+        setErrorDetails(error instanceof Error ? error.message : String(error));
       } finally {
         setBusy(false);
+        console.log("🔍 [useWorkspaceState] Load completed. accountId:", accountId);
       }
     },
     [
@@ -357,11 +389,13 @@ export function useWorkspaceState(options?: UseWorkspaceStateOptions) {
       includeLinkStatus,
       loadingMessage,
       revalidateSessionOnLoad,
+      accountId,
     ]
   );
 
   useEffect(() => {
     if (!autoLoad) return;
+    console.log("🔍 [useWorkspaceState] Auto-load triggered");
     void load();
   }, [autoLoad, load]);
 
@@ -573,8 +607,9 @@ export function useWorkspaceState(options?: UseWorkspaceStateOptions) {
       credits,
       usage,
       channelLinks,
+      errorDetails,
     };
-  }, [accountId, accountRaw, billingRaw, debugStateRaw, sub, summary, guard, linkStatusRaw]);
+  }, [accountId, accountRaw, billingRaw, debugStateRaw, sub, summary, guard, linkStatusRaw, errorDetails]);
 
   const refreshAll = useCallback(async () => {
     await load("Refreshing workspace...");
@@ -584,6 +619,7 @@ export function useWorkspaceState(options?: UseWorkspaceStateOptions) {
     busy,
     status,
     accountId,
+    errorDetails,
     accountRaw,
     billingRaw,
     debugStateRaw,
