@@ -14,9 +14,9 @@ type Step = 1 | 2 | 3 | 4;
 
 export default function FileTaxPage() {
   const router = useRouter();
-  const { refreshSession, user } = useAuth();
+  const { refreshSession, user, hasSession, authReady } = useAuth();
   
-  // Get accountId from workspace state - with loading state
+  // Get accountId from workspace state
   const { accountId, busy: workspaceLoading } = useWorkspaceState({
     refreshSession,
     autoLoad: true,
@@ -37,14 +37,14 @@ export default function FileTaxPage() {
   const [documents, setDocuments] = useState<File[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isLoadingAccount, setIsLoadingAccount] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Wait for accountId to load
+  // Wait for auth to be ready and accountId to load
   useEffect(() => {
-    if (!workspaceLoading) {
-      setIsLoadingAccount(false);
+    if (authReady && !workspaceLoading) {
+      setIsLoading(false);
     }
-  }, [workspaceLoading]);
+  }, [authReady, workspaceLoading]);
 
   const handleInputChange = (field: string, value: string) => {
     setInputs({ ...inputs, [field]: parseFloat(value) || 0 });
@@ -67,14 +67,15 @@ export default function FileTaxPage() {
   };
 
   const submitFiling = async () => {
-    // Check if accountId is loaded
-    if (isLoadingAccount || workspaceLoading) {
-      setError("Loading account information. Please wait...");
+    // First check if we have a session
+    if (!hasSession) {
+      setError("No active session. Please log in first.");
       return;
     }
     
+    // Then check for accountId
     if (!accountId) {
-      setError("Account ID not loaded. Please refresh the page and try again.");
+      setError("Account ID not loaded. Please wait or refresh the page.");
       return;
     }
 
@@ -91,11 +92,10 @@ export default function FileTaxPage() {
       const response = await apiJson("tax/file", {
         method: "POST",
         body: JSON.stringify(filingData),
-        useAuthToken: false,  // Use session cookie
+        useAuthToken: false,
       });
       
       if (response.ok) {
-        // Store summary data for the summary page
         const summaryData = {
           taxType,
           inputs,
@@ -104,8 +104,6 @@ export default function FileTaxPage() {
           submittedAt: response.submittedAt,
         };
         sessionStorage.setItem("lastFilingSummary", JSON.stringify(summaryData));
-        
-        // Redirect to summary page
         router.push("/file/summary");
       } else {
         setError(response.error || "Submission failed");
@@ -122,14 +120,35 @@ export default function FileTaxPage() {
     }
   };
 
-  // Show loading state while accountId is being loaded
-  if (isLoadingAccount) {
+  // Show loading state
+  if (isLoading) {
     return (
-      <AppShell title="File Your Taxes" subtitle="Loading your account information...">
+      <AppShell title="File Your Taxes" subtitle="Loading your account...">
         <SectionStack>
           <WorkspaceSectionCard title="Loading">
             <div style={{ textAlign: "center", padding: "40px" }}>
-              Loading your account... Please wait.
+              Loading your account information...
+            </div>
+          </WorkspaceSectionCard>
+        </SectionStack>
+      </AppShell>
+    );
+  }
+
+  // Show login required state
+  if (!hasSession) {
+    return (
+      <AppShell title="File Your Taxes" subtitle="Authentication Required">
+        <SectionStack>
+          <WorkspaceSectionCard title="Not Logged In">
+            <div style={{ textAlign: "center", padding: "40px" }}>
+              <p>Please log in to file your taxes.</p>
+              <button
+                onClick={() => router.push("/login")}
+                style={{ padding: "10px 20px", background: "#3b82f6", color: "white", border: "none", borderRadius: 8, cursor: "pointer", marginTop: 16 }}
+              >
+                Go to Login
+              </button>
             </div>
           </WorkspaceSectionCard>
         </SectionStack>
@@ -299,14 +318,14 @@ export default function FileTaxPage() {
       <p style={{ marginBottom: 16 }}>Review your filing details before submitting.</p>
       <div style={{ background: "var(--surface-soft)", padding: 16, borderRadius: 16, marginBottom: 16 }}>
         <strong>Tax Type:</strong> {taxType.toUpperCase()}<br />
-        <strong>Details:</strong> <pre style={{ whiteSpace: "pre-wrap", margin: 0 }}>{JSON.stringify(inputs, null, 2)}</pre><br />
+        <strong>Details:</strong> <pre style={{ whiteSpace: "pre-wrap", margin: 0, fontSize: "12px" }}>{JSON.stringify(inputs, null, 2)}</pre><br />
         <strong>Documents:</strong> {documents.length} file(s)
       </div>
       {error && <div style={{ color: "#dc2626", marginBottom: 16, padding: 12, background: "rgba(220,38,38,0.1)", borderRadius: 8 }}>❌ {error}</div>}
       <button
         onClick={submitFiling}
-        disabled={submitting || workspaceLoading || isLoadingAccount}
-        style={{ padding: "12px 24px", background: "#10b981", border: "none", borderRadius: 12, color: "white", fontWeight: 800, cursor: (submitting || workspaceLoading || isLoadingAccount) ? "not-allowed" : "pointer", opacity: (submitting || workspaceLoading || isLoadingAccount) ? 0.6 : 1 }}
+        disabled={submitting}
+        style={{ padding: "12px 24px", background: "#10b981", border: "none", borderRadius: 12, color: "white", fontWeight: 800, cursor: submitting ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : 1 }}
       >
         {submitting ? "Submitting..." : "Confirm & Submit Filing"}
       </button>
