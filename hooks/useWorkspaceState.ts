@@ -273,7 +273,10 @@ export function useWorkspaceState(options?: UseWorkspaceStateOptions) {
               method: "GET",
               timeoutMs: 20000,
               useAuthToken: false,
-            }).catch(() => null)
+            }).catch((err) => {
+              console.error("Account request failed:", err);
+              return null;
+            })
           : Promise.resolve(null);
 
         const billingRequest: Promise<WorkspaceBillingResp | null> = includeBilling
@@ -303,10 +306,17 @@ export function useWorkspaceState(options?: UseWorkspaceStateOptions) {
           linkStatusRequest,
         ]);
 
+        console.log("Account result:", accountResult);
+        
         if (accountResult) {
           setAccountRaw(accountResult);
-          // Extract account_id from the response
+          // CRITICAL FIX: Extract account_id from the response
           if (accountResult.ok && accountResult.account_id) {
+            console.log("Setting accountId to:", accountResult.account_id);
+            setAccountId(accountResult.account_id);
+          } else if (accountResult.account_id) {
+            // Some responses might have ok but not explicitly set
+            console.log("Setting accountId from account_id field:", accountResult.account_id);
             setAccountId(accountResult.account_id);
           }
         }
@@ -324,7 +334,8 @@ export function useWorkspaceState(options?: UseWorkspaceStateOptions) {
         } else {
           setStatus("Workspace load failed.");
         }
-      } catch {
+      } catch (error) {
+        console.error("Workspace load error:", error);
         setStatus("Workspace load failed.");
       } finally {
         setBusy(false);
