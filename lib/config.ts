@@ -1,4 +1,4 @@
-// lib/config.ts
+// lib/config.ts - This is correct, no changes needed
 
 export const CONFIG = {
   // Use relative path for API calls (they will be proxied by Next.js rewrites)
