@@ -4,7 +4,7 @@
 const BACKEND_URL = "https://incredible-nonie-bmsconcept-37359733.koyeb.app";
 
 const nextConfig = {
-  // Rewrites to proxy API requests directly to Koyeb
+  // Rewrites to proxy ALL API requests directly to Koyeb
   async rewrites() {
     return [
       {
