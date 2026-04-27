@@ -59,7 +59,6 @@ function safeGetLocalToken(): string | null {
       }
     }
     
-    console.warn("⚠️ No auth token found in any storage location");
     return null;
   } catch (error) {
     console.error("Error reading from storage:", error);
@@ -75,60 +74,13 @@ export function clearStoredAuthToken() {
       localStorage.removeItem(key);
       sessionStorage.removeItem(key);
     });
-    console.log("🧹 Cleared all auth tokens");
   } catch {
     // ignore
   }
 }
 
-function normalizeApiRoot(raw: string): string {
-  const v = (raw || "").trim();
-  if (!v) return "";
-
-  if (v.startsWith("/")) {
-    return "/api";
-  }
-
-  try {
-    const u = new URL(v);
-    let path = (u.pathname || "").replace(/\/+$/, "");
-
-    if (!path || path === "/") {
-      path = "/api";
-    } else if (path !== "/api") {
-      path = "/api";
-    }
-
-    u.pathname = path;
-    u.search = "";
-    u.hash = "";
-    return u.toString().replace(/\/+$/, "");
-  } catch {
-    return "";
-  }
-}
-
 function buildUrl(path: string, query?: ApiInit["query"]) {
-  // Check if API base is configured
-  if (!CONFIG.apiBase) {
-    console.error("❌ NEXT_PUBLIC_API_BASE_URL is not set in environment variables");
-    throw new ApiError(0, "API configuration missing. Please set NEXT_PUBLIC_API_BASE_URL.", {
-      ok: false,
-      error: "missing_api_base",
-      help: "Add NEXT_PUBLIC_API_BASE_URL to your Vercel environment variables",
-    });
-  }
-
-  const apiRoot = normalizeApiRoot(CONFIG.apiBase);
-
-  if (!apiRoot) {
-    throw new ApiError(0, "NEXT_PUBLIC_API_BASE_URL is missing or invalid.", {
-      ok: false,
-      error: "missing_api_base",
-      help: "Current value: " + CONFIG.apiBase,
-    });
-  }
-
+  // Use relative path - Next.js rewrites will handle proxy
   let cleanPath = path;
   if (cleanPath.startsWith("/api/")) {
     cleanPath = cleanPath.substring(4);
@@ -137,16 +89,19 @@ function buildUrl(path: string, query?: ApiInit["query"]) {
   }
   
   const normalizedPath = cleanPath.startsWith("/") ? cleanPath : `/${cleanPath}`;
-  const url = new URL(`${apiRoot}${normalizedPath}`);
+  const url = `/api${normalizedPath}`;
 
   if (query) {
+    const params = new URLSearchParams();
     for (const [k, v] of Object.entries(query)) {
       if (v === null || v === undefined) continue;
-      url.searchParams.set(k, String(v));
+      params.set(k, String(v));
     }
+    const qs = params.toString();
+    return qs ? `${url}?${qs}` : url;
   }
 
-  return url.toString();
+  return url;
 }
 
 export async function apiJson<T = any>(
@@ -169,8 +124,6 @@ export async function apiJson<T = any>(
   if (effectiveToken) {
     headers.Authorization = `Bearer ${effectiveToken}`;
     console.log(`🔐 Using Bearer token for: ${path}`);
-  } else if (shouldUseToken) {
-    console.warn(`⚠️ No token for: ${path} - this will fail with 401`);
   }
 
   let bodyToSend: BodyInit | undefined;
@@ -255,7 +208,6 @@ export async function apiJson<T = any>(
 
       if (res.status === 401) {
         console.error("🔑 Authentication failed!");
-        console.error("   Token present:", !!effectiveToken);
       }
 
       throw new ApiError(res.status, message, enriched);
