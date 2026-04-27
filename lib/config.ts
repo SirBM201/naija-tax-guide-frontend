@@ -1,7 +1,7 @@
-// lib/config.ts - This is correct, no changes needed
+// lib/config.ts
 
 export const CONFIG = {
-  // Use relative path for API calls (they will be proxied by Next.js rewrites)
+  // Empty string means use relative paths (will be proxied by Next.js rewrites)
   apiBase: process.env.NEXT_PUBLIC_API_BASE_URL || '',
   
   // App information
