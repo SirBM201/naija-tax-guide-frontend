@@ -114,7 +114,8 @@ async function probeCookieSession(): Promise<{
   raw?: unknown;
 }> {
   try {
-    const data = await apiJson<WebMeResp>("/web/auth/me", {
+    // Remove leading slash - apiJson adds /api prefix automatically
+    const data = await apiJson<WebMeResp>("web/auth/me", {
       method: "GET",
       timeoutMs: 12000,
       useAuthToken: false,
@@ -357,7 +358,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(async () => {
     try {
-      await apiJson("/web/auth/logout", {
+      await apiJson("web/auth/logout", {
         method: "POST",
         timeoutMs: 12000,
         useAuthToken: false,
