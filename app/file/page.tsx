@@ -16,7 +16,7 @@ export default function FileTaxPage() {
   const router = useRouter();
   const { refreshSession, user } = useAuth();
   
-  // Get accountId from workspace state
+  // Get accountId from workspace state - with loading state
   const { accountId, busy: workspaceLoading } = useWorkspaceState({
     refreshSession,
     autoLoad: true,
@@ -37,6 +37,14 @@ export default function FileTaxPage() {
   const [documents, setDocuments] = useState<File[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isLoadingAccount, setIsLoadingAccount] = useState(true);
+
+  // Wait for accountId to load
+  useEffect(() => {
+    if (!workspaceLoading) {
+      setIsLoadingAccount(false);
+    }
+  }, [workspaceLoading]);
 
   const handleInputChange = (field: string, value: string) => {
     setInputs({ ...inputs, [field]: parseFloat(value) || 0 });
@@ -59,8 +67,14 @@ export default function FileTaxPage() {
   };
 
   const submitFiling = async () => {
+    // Check if accountId is loaded
+    if (isLoadingAccount || workspaceLoading) {
+      setError("Loading account information. Please wait...");
+      return;
+    }
+    
     if (!accountId) {
-      setError("Account ID not loaded. Please refresh and try again.");
+      setError("Account ID not loaded. Please refresh the page and try again.");
       return;
     }
 
@@ -74,11 +88,10 @@ export default function FileTaxPage() {
         userId: accountId,
       };
       
-      // CRITICAL: Set useAuthToken to false - we rely on session cookie (credentials: "include")
       const response = await apiJson("tax/file", {
         method: "POST",
         body: JSON.stringify(filingData),
-        useAuthToken: false,  // NO Bearer token - use session cookie instead
+        useAuthToken: false,  // Use session cookie
       });
       
       if (response.ok) {
@@ -99,7 +112,6 @@ export default function FileTaxPage() {
       }
     } catch (err: any) {
       console.error("Filing submission error:", err);
-      // Display more detailed error message
       if (err.status === 401) {
         setError("Session expired. Please log out and log back in.");
       } else {
@@ -109,6 +121,21 @@ export default function FileTaxPage() {
       setSubmitting(false);
     }
   };
+
+  // Show loading state while accountId is being loaded
+  if (isLoadingAccount) {
+    return (
+      <AppShell title="File Your Taxes" subtitle="Loading your account information...">
+        <SectionStack>
+          <WorkspaceSectionCard title="Loading">
+            <div style={{ textAlign: "center", padding: "40px" }}>
+              Loading your account... Please wait.
+            </div>
+          </WorkspaceSectionCard>
+        </SectionStack>
+      </AppShell>
+    );
+  }
 
   const renderStepIndicator = () => (
     <div style={{ display: "flex", gap: 8, marginBottom: 24, justifyContent: "space-between", borderBottom: "1px solid var(--border)", paddingBottom: 16 }}>
@@ -272,14 +299,14 @@ export default function FileTaxPage() {
       <p style={{ marginBottom: 16 }}>Review your filing details before submitting.</p>
       <div style={{ background: "var(--surface-soft)", padding: 16, borderRadius: 16, marginBottom: 16 }}>
         <strong>Tax Type:</strong> {taxType.toUpperCase()}<br />
-        <strong>Details:</strong> {JSON.stringify(inputs, null, 2)}<br />
+        <strong>Details:</strong> <pre style={{ whiteSpace: "pre-wrap", margin: 0 }}>{JSON.stringify(inputs, null, 2)}</pre><br />
         <strong>Documents:</strong> {documents.length} file(s)
       </div>
       {error && <div style={{ color: "#dc2626", marginBottom: 16, padding: 12, background: "rgba(220,38,38,0.1)", borderRadius: 8 }}>❌ {error}</div>}
       <button
         onClick={submitFiling}
-        disabled={submitting || workspaceLoading}
-        style={{ padding: "12px 24px", background: "#10b981", border: "none", borderRadius: 12, color: "white", fontWeight: 800, cursor: (submitting || workspaceLoading) ? "not-allowed" : "pointer", opacity: (submitting || workspaceLoading) ? 0.6 : 1 }}
+        disabled={submitting || workspaceLoading || isLoadingAccount}
+        style={{ padding: "12px 24px", background: "#10b981", border: "none", borderRadius: 12, color: "white", fontWeight: 800, cursor: (submitting || workspaceLoading || isLoadingAccount) ? "not-allowed" : "pointer", opacity: (submitting || workspaceLoading || isLoadingAccount) ? 0.6 : 1 }}
       >
         {submitting ? "Submitting..." : "Confirm & Submit Filing"}
       </button>
