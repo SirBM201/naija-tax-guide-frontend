@@ -17,7 +17,7 @@ export default function FileTaxPage() {
   const { refreshSession, user, hasSession, authReady } = useAuth();
   
   // Get accountId from workspace state
-  const { accountId, busy: workspaceLoading } = useWorkspaceState({
+  const { accountId, busy: workspaceLoading, errorDetails, status } = useWorkspaceState({
     refreshSession,
     autoLoad: true,
     includeAccount: true,
@@ -38,28 +38,32 @@ export default function FileTaxPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [debugInfo, setDebugInfo] = useState<any>({});
+
+  // Debug logging
+  useEffect(() => {
+    const debug = {
+      authReady,
+      workspaceLoading,
+      hasSession,
+      accountId,
+      isLoading,
+      errorDetails,
+      status,
+    };
+    setDebugInfo(debug);
+    console.log("🔍 [FileTaxPage] Debug:", debug);
+  }, [authReady, workspaceLoading, hasSession, accountId, isLoading, errorDetails, status]);
 
   // Wait for auth to be ready and accountId to load
   useEffect(() => {
     if (authReady && !workspaceLoading) {
-      // Give a little extra time for accountId to be set
       const timer = setTimeout(() => {
         setIsLoading(false);
       }, 500);
       return () => clearTimeout(timer);
     }
   }, [authReady, workspaceLoading]);
-
-  // Debug logging
-  useEffect(() => {
-    console.log("FileTaxPage Debug:", {
-      authReady,
-      workspaceLoading,
-      hasSession,
-      accountId,
-      isLoading,
-    });
-  }, [authReady, workspaceLoading, hasSession, accountId, isLoading]);
 
   const handleInputChange = (field: string, value: string) => {
     setInputs({ ...inputs, [field]: parseFloat(value) || 0 });
@@ -82,18 +86,15 @@ export default function FileTaxPage() {
   };
 
   const submitFiling = async () => {
-    // Debug logging
-    console.log("Submitting filing - AccountId:", accountId, "HasSession:", hasSession);
+    console.log("🔍 [submitFiling] Starting - AccountId:", accountId, "HasSession:", hasSession);
     
-    // First check if we have a session
     if (!hasSession) {
       setError("No active session. Please log in first.");
       return;
     }
     
-    // Then check for accountId
     if (!accountId) {
-      setError("Account ID not loaded. Please wait a moment and try again.");
+      setError(`Account ID not loaded. Debug: ${JSON.stringify(debugInfo)}`);
       return;
     }
 
@@ -107,7 +108,7 @@ export default function FileTaxPage() {
         userId: accountId,
       };
       
-      console.log("Sending filing data:", filingData);
+      console.log("🔍 [submitFiling] Sending data:", filingData);
       
       const response = await apiJson("tax/file", {
         method: "POST",
@@ -115,7 +116,7 @@ export default function FileTaxPage() {
         useAuthToken: false,
       });
       
-      console.log("Filing response:", response);
+      console.log("🔍 [submitFiling] Response:", response);
       
       if (response.ok) {
         const summaryData = {
@@ -131,7 +132,7 @@ export default function FileTaxPage() {
         setError(response.error || "Submission failed");
       }
     } catch (err: any) {
-      console.error("Filing submission error:", err);
+      console.error("❌ [submitFiling] Error:", err);
       if (err.status === 401) {
         setError("Session expired. Please log out and log back in.");
       } else {
@@ -150,6 +151,9 @@ export default function FileTaxPage() {
           <WorkspaceSectionCard title="Loading">
             <div style={{ textAlign: "center", padding: "40px" }}>
               Loading your account information...
+              <div style={{ fontSize: "12px", marginTop: "16px", color: "var(--text-muted)" }}>
+                Status: {status}
+              </div>
             </div>
           </WorkspaceSectionCard>
         </SectionStack>
@@ -178,17 +182,26 @@ export default function FileTaxPage() {
     );
   }
 
-  // Show if accountId is still not loaded but we have session
+  // Show error if accountId is still not loaded
   if (!accountId) {
     return (
-      <AppShell title="File Your Taxes" subtitle="Loading Account">
+      <AppShell title="File Your Taxes" subtitle="Account Loading Issue">
         <SectionStack>
-          <WorkspaceSectionCard title="Loading Account">
+          <WorkspaceSectionCard title="Account Not Loaded">
             <div style={{ textAlign: "center", padding: "40px" }}>
-              <p>Loading your account information...</p>
-              <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "16px" }}>
-                If this takes too long, please refresh the page.
-              </p>
+              <p style={{ color: "#dc2626", marginBottom: "16px" }}>❌ Could not load account information</p>
+              <details style={{ textAlign: "left", background: "var(--surface-soft)", padding: "16px", borderRadius: "8px", marginTop: "16px" }}>
+                <summary style={{ cursor: "pointer", fontWeight: "bold" }}>Debug Information</summary>
+                <pre style={{ fontSize: "11px", marginTop: "12px", overflow: "auto", maxHeight: "300px" }}>
+                  {JSON.stringify(debugInfo, null, 2)}
+                </pre>
+              </details>
+              <button
+                onClick={() => window.location.reload()}
+                style={{ padding: "10px 20px", background: "#3b82f6", color: "white", border: "none", borderRadius: 8, cursor: "pointer", marginTop: 16 }}
+              >
+                Refresh Page
+              </button>
             </div>
           </WorkspaceSectionCard>
         </SectionStack>
@@ -324,84 +337,4 @@ export default function FileTaxPage() {
   );
 
   const renderStep2 = () => (
-    <div>
-      <p style={{ marginBottom: 16, color: "var(--text-muted)" }}>
-        Enter your financial details for {taxType.toUpperCase()}.
-      </p>
-      {taxType === "paye" && renderPAYEDetails()}
-      {taxType === "vat" && renderVATDetails()}
-      {taxType === "cit" && renderCITDetails()}
-    </div>
-  );
-
-  const renderStep3 = () => (
-    <div>
-      <p style={{ marginBottom: 16, color: "var(--text-muted)" }}>
-        Upload supporting documents (optional). Accepted: PDF, JPG, PNG.
-      </p>
-      <input type="file" multiple accept=".pdf,.jpg,.jpeg,.png" onChange={handleFileUpload} style={{ marginBottom: 16 }} />
-      {documents.length > 0 && (
-        <div style={{ marginTop: 12 }}>
-          <strong>Uploaded files:</strong>
-          <ul>
-            {documents.map((doc, idx) => (
-              <li key={idx}>{doc.name} ({(doc.size / 1024).toFixed(1)} KB)</li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </div>
-  );
-
-  const renderStep4 = () => (
-    <div>
-      <p style={{ marginBottom: 16 }}>Review your filing details before submitting.</p>
-      <div style={{ background: "var(--surface-soft)", padding: 16, borderRadius: 16, marginBottom: 16 }}>
-        <strong>Tax Type:</strong> {taxType.toUpperCase()}<br />
-        <strong>Details:</strong> <pre style={{ whiteSpace: "pre-wrap", margin: 0, fontSize: "12px" }}>{JSON.stringify(inputs, null, 2)}</pre><br />
-        <strong>Documents:</strong> {documents.length} file(s)
-      </div>
-      {error && <div style={{ color: "#dc2626", marginBottom: 16, padding: 12, background: "rgba(220,38,38,0.1)", borderRadius: 8 }}>❌ {error}</div>}
-      <button
-        onClick={submitFiling}
-        disabled={submitting}
-        style={{ padding: "12px 24px", background: "#10b981", border: "none", borderRadius: 12, color: "white", fontWeight: 800, cursor: submitting ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : 1 }}
-      >
-        {submitting ? "Submitting..." : "Confirm & Submit Filing"}
-      </button>
-    </div>
-  );
-
-  return (
-    <AppShell title="File Your Taxes" subtitle="Guided step-by-step tax filing for PAYE, VAT, and Company Income Tax.">
-      <SectionStack>
-        <WorkspaceSectionCard title="Filing Wizard">
-          {renderStepIndicator()}
-          {currentStep === 1 && renderStep1()}
-          {currentStep === 2 && renderStep2()}
-          {currentStep === 3 && renderStep3()}
-          {currentStep === 4 && renderStep4()}
-          {currentStep !== 4 && (
-            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 24 }}>
-              {currentStep > 1 && (
-                <button onClick={prevStep} style={{ padding: "10px 20px", background: "var(--surface-soft)", border: "1px solid var(--border)", borderRadius: 12, cursor: "pointer" }}>
-                  Back
-                </button>
-              )}
-              {currentStep < 3 && (
-                <button onClick={nextStep} style={{ padding: "10px 20px", background: "#3b82f6", border: "none", borderRadius: 12, color: "white", fontWeight: 800, cursor: "pointer", marginLeft: "auto" }}>
-                  Next
-                </button>
-              )}
-              {currentStep === 3 && (
-                <button onClick={nextStep} style={{ padding: "10px 20px", background: "#3b82f6", border: "none", borderRadius: 12, color: "white", fontWeight: 800, cursor: "pointer", marginLeft: "auto" }}>
-                  Review & Submit
-                </button>
-              )}
-            </div>
-          )}
-        </WorkspaceSectionCard>
-      </SectionStack>
-    </AppShell>
-  );
-}
+    <
