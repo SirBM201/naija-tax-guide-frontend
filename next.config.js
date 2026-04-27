@@ -1,12 +1,15 @@
 /** @type {import('next').NextConfig} */
 
+// Direct proxy to Koyeb backend - no environment variable needed
+const BACKEND_URL = "https://incredible-nonie-bmsconcept-37359733.koyeb.app";
+
 const nextConfig = {
-  // Rewrites to proxy API requests to Koyeb (same domain proxy)
+  // Rewrites to proxy API requests directly to Koyeb
   async rewrites() {
     return [
       {
         source: "/api/:path*",
-        destination: "https://incredible-nonie-bmsconcept-37359733.koyeb.app/api/:path*",
+        destination: `${BACKEND_URL}/api/:path*`,
       },
     ];
   },
@@ -14,7 +17,7 @@ const nextConfig = {
   // Image optimization settings
   images: {
     unoptimized: true,
-    domains: ['www.naijataxguides.com', 'api.naijataxguides.com'],
+    domains: ['www.naijataxguides.com'],
   },
   
   // Enable React strict mode
