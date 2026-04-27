@@ -42,9 +42,24 @@ export default function FileTaxPage() {
   // Wait for auth to be ready and accountId to load
   useEffect(() => {
     if (authReady && !workspaceLoading) {
-      setIsLoading(false);
+      // Give a little extra time for accountId to be set
+      const timer = setTimeout(() => {
+        setIsLoading(false);
+      }, 500);
+      return () => clearTimeout(timer);
     }
   }, [authReady, workspaceLoading]);
+
+  // Debug logging
+  useEffect(() => {
+    console.log("FileTaxPage Debug:", {
+      authReady,
+      workspaceLoading,
+      hasSession,
+      accountId,
+      isLoading,
+    });
+  }, [authReady, workspaceLoading, hasSession, accountId, isLoading]);
 
   const handleInputChange = (field: string, value: string) => {
     setInputs({ ...inputs, [field]: parseFloat(value) || 0 });
@@ -67,6 +82,9 @@ export default function FileTaxPage() {
   };
 
   const submitFiling = async () => {
+    // Debug logging
+    console.log("Submitting filing - AccountId:", accountId, "HasSession:", hasSession);
+    
     // First check if we have a session
     if (!hasSession) {
       setError("No active session. Please log in first.");
@@ -75,7 +93,7 @@ export default function FileTaxPage() {
     
     // Then check for accountId
     if (!accountId) {
-      setError("Account ID not loaded. Please wait or refresh the page.");
+      setError("Account ID not loaded. Please wait a moment and try again.");
       return;
     }
 
@@ -89,11 +107,15 @@ export default function FileTaxPage() {
         userId: accountId,
       };
       
+      console.log("Sending filing data:", filingData);
+      
       const response = await apiJson("tax/file", {
         method: "POST",
         body: JSON.stringify(filingData),
         useAuthToken: false,
       });
+      
+      console.log("Filing response:", response);
       
       if (response.ok) {
         const summaryData = {
@@ -149,6 +171,24 @@ export default function FileTaxPage() {
               >
                 Go to Login
               </button>
+            </div>
+          </WorkspaceSectionCard>
+        </SectionStack>
+      </AppShell>
+    );
+  }
+
+  // Show if accountId is still not loaded but we have session
+  if (!accountId) {
+    return (
+      <AppShell title="File Your Taxes" subtitle="Loading Account">
+        <SectionStack>
+          <WorkspaceSectionCard title="Loading Account">
+            <div style={{ textAlign: "center", padding: "40px" }}>
+              <p>Loading your account information...</p>
+              <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "16px" }}>
+                If this takes too long, please refresh the page.
+              </p>
             </div>
           </WorkspaceSectionCard>
         </SectionStack>
