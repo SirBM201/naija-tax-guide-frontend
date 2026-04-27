@@ -260,13 +260,22 @@ export function useWorkspaceState(options?: UseWorkspaceStateOptions) {
       setStatus(nextLoadingMessage || loadingMessage);
 
       try {
+        // First, ensure session is valid
         if (refreshSession && revalidateSessionOnLoad) {
           try {
-            await refreshSession();
+            const sessionValid = await refreshSession();
+            if (!sessionValid) {
+              console.log("Session not valid, skipping account load");
+              setBusy(false);
+              return;
+            }
           } catch {
             // ignore
           }
         }
+
+        // Small delay to ensure session is fully set
+        await new Promise(resolve => setTimeout(resolve, 500));
 
         const accountRequest: Promise<WorkspaceAccountResp | null> = includeAccount
           ? apiJson<WorkspaceAccountResp>("web/auth/me", {
@@ -310,13 +319,12 @@ export function useWorkspaceState(options?: UseWorkspaceStateOptions) {
         
         if (accountResult) {
           setAccountRaw(accountResult);
-          // CRITICAL FIX: Extract account_id from the response
-          if (accountResult.ok && accountResult.account_id) {
+          // Extract account_id from the response - works with both formats
+          if (accountResult.account_id) {
             console.log("Setting accountId to:", accountResult.account_id);
             setAccountId(accountResult.account_id);
-          } else if (accountResult.account_id) {
-            // Some responses might have ok but not explicitly set
-            console.log("Setting accountId from account_id field:", accountResult.account_id);
+          } else if (accountResult.ok && accountResult.account_id) {
+            console.log("Setting accountId from ok response:", accountResult.account_id);
             setAccountId(accountResult.account_id);
           }
         }
