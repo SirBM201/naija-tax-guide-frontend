@@ -30,27 +30,22 @@ type AuthDebugValue =
 type AuthContextValue = {
   token: string | null;
   setToken: (t: string | null) => void;
-
   hasSession: boolean;
   setHasSession: (v: boolean) => void;
-
   authReady: boolean;
-
   logout: () => Promise<void>;
   requireAuth: () => boolean;
   refreshSession: () => Promise<boolean>;
-
   hasSeenWelcome: boolean;
   setHasSeenWelcome: (v: boolean) => void;
   markWelcomeSeen: () => void;
-
   lastAuthDebug: AuthDebugValue;
   clearAuthDebug: () => void;
-
   loading: boolean;
   bypassEnabled: boolean;
   user: AuthUserLike | null;
   me: AuthUserLike | null;
+  accountId: string | null;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -114,7 +109,6 @@ async function probeCookieSession(): Promise<{
   raw?: unknown;
 }> {
   try {
-    // Remove leading slash - apiJson adds /api prefix automatically
     const data = await apiJson<WebMeResp>("web/auth/me", {
       method: "GET",
       timeoutMs: 12000,
@@ -156,6 +150,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [hasSeenWelcome, _setHasSeenWelcome] = useState<boolean>(false);
   const [lastAuthDebug, _setLastAuthDebug] = useState<AuthDebugValue>(null);
   const [authReady, setAuthReady] = useState(false);
+  const [accountId, setAccountId] = useState<string | null>(null);
 
   const [sessionAccountId, setSessionAccountId] = useState<string | null>(null);
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
@@ -250,6 +245,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setSessionEmail(res.email ?? null);
         setSessionDisplayName(res.display_name ?? null);
         setSessionPhone(res.phone_e164 ?? null);
+        setAccountId(res.account_id ?? null);
 
         setLastAuthDebug({
           at: new Date().toISOString(),
@@ -273,6 +269,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setSessionEmail(null);
         setSessionDisplayName(null);
         setSessionPhone(null);
+        setAccountId(null);
 
         setLastAuthDebug({
           at: new Date().toISOString(),
@@ -318,6 +315,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setSessionEmail(res.email ?? null);
     setSessionDisplayName(res.display_name ?? null);
     setSessionPhone(res.phone_e164 ?? null);
+    setAccountId(res.account_id ?? null);
 
     if (res.ok) {
       clearStoredAuthToken();
@@ -380,6 +378,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setSessionEmail(null);
     setSessionDisplayName(null);
     setSessionPhone(null);
+    setAccountId(null);
 
     try {
       localStorage.removeItem(LS_TOKEN_KEY);
@@ -421,6 +420,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       bypassEnabled,
       user: derivedUser,
       me: derivedUser,
+      accountId,
     }),
     [
       token,
@@ -438,6 +438,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       clearAuthDebug,
       bypassEnabled,
       derivedUser,
+      accountId,
     ]
   );
 
