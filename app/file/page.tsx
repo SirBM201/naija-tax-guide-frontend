@@ -1,20 +1,22 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import AppShell from "@/components/app-shell";
 import { SectionStack } from "@/components/page-layout";
 import WorkspaceSectionCard from "@/components/workspace-section-card";
+import { apiJson } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 
 type TaxType = "paye" | "vat" | "cit";
 type Step = 1 | 2 | 3 | 4;
 
 export default function FileTaxPage() {
   const router = useRouter();
+  const { hasSession, accountId, authReady, loading } = useAuth();
   
   const [currentStep, setCurrentStep] = useState<Step>(1);
   const [taxType, setTaxType] = useState<TaxType>("paye");
-  const [accountId, setAccountId] = useState<string | null>(null);
   const [inputs, setInputs] = useState<any>({
     monthly_gross_income: 0,
     pension_contribution: 0,
@@ -27,53 +29,40 @@ export default function FileTaxPage() {
   const [documents, setDocuments] = useState<File[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
-  // Direct fetch to check authentication and get account ID
-  useEffect(() => {
-    let mounted = true;
-    
-    const checkAuth = async () => {
-      try {
-        console.log("🔍 Checking authentication via direct fetch...");
-        
-        // Use relative URL - Next.js rewrites will handle proxy
-        const response = await fetch("/api/web/auth/me", {
-          method: "GET",
-          credentials: "include",
-          headers: {
-            "Accept": "application/json",
-          },
-        });
-        
-        const data = await response.json();
-        console.log("📡 Auth response:", data);
-        
-        if (response.ok && data?.ok && data?.account_id) {
-          console.log("✅ Authenticated! Account ID:", data.account_id);
-          setAccountId(data.account_id);
-          setIsAuthenticated(true);
-        } else {
-          console.log("❌ Not authenticated");
-          setIsAuthenticated(false);
-        }
-      } catch (err) {
-        console.error("❌ Auth check error:", err);
-        setIsAuthenticated(false);
-      } finally {
-        if (mounted) {
-          setIsLoading(false);
-        }
-      }
-    };
-    
-    checkAuth();
-    
-    return () => {
-      mounted = false;
-    };
-  }, []);
+  // Show loading state
+  if (loading || !authReady) {
+    return (
+      <AppShell title="File Your Taxes" subtitle="Loading...">
+        <SectionStack>
+          <WorkspaceSectionCard title="Loading">
+            <div style={{ textAlign: "center", padding: "40px" }}>Loading your account...</div>
+          </WorkspaceSectionCard>
+        </SectionStack>
+      </AppShell>
+    );
+  }
+
+  // Show login required state
+  if (!hasSession) {
+    return (
+      <AppShell title="File Your Taxes" subtitle="Authentication Required">
+        <SectionStack>
+          <WorkspaceSectionCard title="Not Logged In">
+            <div style={{ textAlign: "center", padding: "40px" }}>
+              <p>Please log in to file your taxes.</p>
+              <button
+                onClick={() => router.push("/login")}
+                style={{ padding: "10px 20px", background: "#3b82f6", color: "white", border: "none", borderRadius: 8, cursor: "pointer", marginTop: 16 }}
+              >
+                Go to Login
+              </button>
+            </div>
+          </WorkspaceSectionCard>
+        </SectionStack>
+      </AppShell>
+    );
+  }
 
   const handleInputChange = (field: string, value: string) => {
     setInputs({ ...inputs, [field]: parseFloat(value) || 0 });
@@ -96,11 +85,6 @@ export default function FileTaxPage() {
   };
 
   const submitFiling = async () => {
-    if (!isAuthenticated) {
-      setError("Please log in to file taxes.");
-      return;
-    }
-    
     if (!accountId) {
       setError("Account not loaded. Please refresh.");
       return;
@@ -116,76 +100,32 @@ export default function FileTaxPage() {
         userId: accountId,
       };
       
-      console.log("📤 Filing data:", filingData);
-      
-      const response = await fetch("/api/tax/file", {
+      const response = await apiJson("tax/file", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include",
         body: JSON.stringify(filingData),
+        useAuthToken: false,
       });
       
-      const data = await response.json();
-      console.log("📥 Filing response:", data);
-      
-      if (response.ok && data.ok) {
+      if (response.ok) {
         const summaryData = {
           taxType,
           inputs,
           documentsCount: documents.length,
-          reference: data.reference,
-          submittedAt: data.submittedAt,
+          reference: response.reference,
+          submittedAt: response.submittedAt,
         };
         sessionStorage.setItem("lastFilingSummary", JSON.stringify(summaryData));
         router.push("/file/summary");
       } else {
-        setError(data.error || "Submission failed");
+        setError(response.error || "Submission failed");
       }
     } catch (err: any) {
-      console.error("❌ Filing error:", err);
+      console.error("Filing error:", err);
       setError(err.message || "Submission failed");
     } finally {
       setSubmitting(false);
     }
   };
-
-  // Show loading state
-  if (isLoading) {
-    return (
-      <AppShell title="File Your Taxes" subtitle="Loading...">
-        <SectionStack>
-          <WorkspaceSectionCard title="Loading">
-            <div style={{ textAlign: "center", padding: "40px" }}>
-              Loading your account...
-            </div>
-          </WorkspaceSectionCard>
-        </SectionStack>
-      </AppShell>
-    );
-  }
-
-  // Show login required state
-  if (!isAuthenticated) {
-    return (
-      <AppShell title="File Your Taxes" subtitle="Authentication Required">
-        <SectionStack>
-          <WorkspaceSectionCard title="Not Logged In">
-            <div style={{ textAlign: "center", padding: "40px" }}>
-              <p>Please log in to file your taxes.</p>
-              <button
-                onClick={() => router.push("/login")}
-                style={{ padding: "10px 20px", background: "#3b82f6", color: "white", border: "none", borderRadius: 8, cursor: "pointer", marginTop: 16 }}
-              >
-                Go to Login
-              </button>
-            </div>
-          </WorkspaceSectionCard>
-        </SectionStack>
-      </AppShell>
-    );
-  }
 
   const renderStepIndicator = () => (
     <div style={{ display: "flex", gap: 8, marginBottom: 24, justifyContent: "space-between", borderBottom: "1px solid var(--border)", paddingBottom: 16 }}>
