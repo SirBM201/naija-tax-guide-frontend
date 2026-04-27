@@ -337,4 +337,84 @@ export default function FileTaxPage() {
   );
 
   const renderStep2 = () => (
-    <
+    <div>
+      <p style={{ marginBottom: 16, color: "var(--text-muted)" }}>
+        Enter your financial details for {taxType.toUpperCase()}.
+      </p>
+      {taxType === "paye" && renderPAYEDetails()}
+      {taxType === "vat" && renderVATDetails()}
+      {taxType === "cit" && renderCITDetails()}
+    </div>
+  );
+
+  const renderStep3 = () => (
+    <div>
+      <p style={{ marginBottom: 16, color: "var(--text-muted)" }}>
+        Upload supporting documents (optional). Accepted: PDF, JPG, PNG.
+      </p>
+      <input type="file" multiple accept=".pdf,.jpg,.jpeg,.png" onChange={handleFileUpload} style={{ marginBottom: 16 }} />
+      {documents.length > 0 && (
+        <div style={{ marginTop: 12 }}>
+          <strong>Uploaded files:</strong>
+          <ul>
+            {documents.map((doc, idx) => (
+              <li key={idx}>{doc.name} ({(doc.size / 1024).toFixed(1)} KB)</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+
+  const renderStep4 = () => (
+    <div>
+      <p style={{ marginBottom: 16 }}>Review your filing details before submitting.</p>
+      <div style={{ background: "var(--surface-soft)", padding: 16, borderRadius: 16, marginBottom: 16 }}>
+        <strong>Tax Type:</strong> {taxType.toUpperCase()}<br />
+        <strong>Details:</strong> <pre style={{ whiteSpace: "pre-wrap", margin: 0, fontSize: "12px" }}>{JSON.stringify(inputs, null, 2)}</pre><br />
+        <strong>Documents:</strong> {documents.length} file(s)
+      </div>
+      {error && <div style={{ color: "#dc2626", marginBottom: 16, padding: 12, background: "rgba(220,38,38,0.1)", borderRadius: 8 }}>❌ {error}</div>}
+      <button
+        onClick={submitFiling}
+        disabled={submitting}
+        style={{ padding: "12px 24px", background: "#10b981", border: "none", borderRadius: 12, color: "white", fontWeight: 800, cursor: submitting ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : 1 }}
+      >
+        {submitting ? "Submitting..." : "Confirm & Submit Filing"}
+      </button>
+    </div>
+  );
+
+  return (
+    <AppShell title="File Your Taxes" subtitle="Guided step-by-step tax filing for PAYE, VAT, and Company Income Tax.">
+      <SectionStack>
+        <WorkspaceSectionCard title="Filing Wizard">
+          {renderStepIndicator()}
+          {currentStep === 1 && renderStep1()}
+          {currentStep === 2 && renderStep2()}
+          {currentStep === 3 && renderStep3()}
+          {currentStep === 4 && renderStep4()}
+          {currentStep !== 4 && (
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 24 }}>
+              {currentStep > 1 && (
+                <button onClick={prevStep} style={{ padding: "10px 20px", background: "var(--surface-soft)", border: "1px solid var(--border)", borderRadius: 12, cursor: "pointer" }}>
+                  Back
+                </button>
+              )}
+              {currentStep < 3 && (
+                <button onClick={nextStep} style={{ padding: "10px 20px", background: "#3b82f6", border: "none", borderRadius: 12, color: "white", fontWeight: 800, cursor: "pointer", marginLeft: "auto" }}>
+                  Next
+                </button>
+              )}
+              {currentStep === 3 && (
+                <button onClick={nextStep} style={{ padding: "10px 20px", background: "#3b82f6", border: "none", borderRadius: 12, color: "white", fontWeight: 800, cursor: "pointer", marginLeft: "auto" }}>
+                  Review & Submit
+                </button>
+              )}
+            </div>
+          )}
+        </WorkspaceSectionCard>
+      </SectionStack>
+    </AppShell>
+  );
+}
