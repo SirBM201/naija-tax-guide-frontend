@@ -13,7 +13,7 @@ type Step = 1 | 2 | 3 | 4;
 
 export default function FileTaxPage() {
   const router = useRouter();
-  const { refreshSession, hasSession, authReady } = useAuth();
+  const { hasSession, authReady } = useAuth();
   
   const [currentStep, setCurrentStep] = useState<Step>(1);
   const [taxType, setTaxType] = useState<TaxType>("paye");
@@ -31,75 +31,44 @@ export default function FileTaxPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [loadingAttempts, setLoadingAttempts] = useState(0);
 
-  // Fetch account ID directly
-  const fetchAccountId = async () => {
-    try {
-      console.log(`🔍 Fetching account ID (attempt ${loadingAttempts + 1})...`);
-      const response = await apiJson<{ ok: boolean; account_id?: string; from_session?: boolean }>("web/auth/me", {
-        method: "GET",
-        useAuthToken: false,
-      });
-      
-      console.log("📡 Account response:", response);
-      
-      if (response?.ok && response?.account_id) {
-        console.log("✅ Account ID found:", response.account_id);
-        setAccountId(response.account_id);
-        setIsLoading(false);
-        return true;
-      } else {
-        console.warn("⚠️ No account_id in response:", response);
-        return false;
-      }
-    } catch (err) {
-      console.error("❌ Failed to fetch account ID:", err);
-      return false;
-    }
-  };
-
-  // Try to load account ID with retries
+  // Directly fetch account ID from the working endpoint
   useEffect(() => {
     let mounted = true;
-    let retryTimeout: NodeJS.Timeout;
     
-    const loadAccount = async () => {
-      if (!authReady) {
-        console.log("⏳ Auth not ready yet...");
-        return;
-      }
-      
-      if (!hasSession) {
-        console.log("🚫 No active session, redirecting to login...");
-        router.push("/login");
-        return;
-      }
-      
-      const success = await fetchAccountId();
-      
-      if (!success && mounted && loadingAttempts < 5) {
-        // Retry after delay
-        retryTimeout = setTimeout(() => {
-          if (mounted) {
-            setLoadingAttempts(prev => prev + 1);
-          }
-        }, 1000);
-      } else if (success && mounted) {
-        setIsLoading(false);
-      } else if (loadingAttempts >= 5 && mounted) {
-        setError("Could not load account information after multiple attempts. Please refresh the page.");
-        setIsLoading(false);
+    const fetchAccountId = async () => {
+      try {
+        console.log("🔍 Fetching account ID from web/auth/me...");
+        const response = await apiJson<{ ok: boolean; account_id?: string }>("web/auth/me", {
+          method: "GET",
+          useAuthToken: false,
+        });
+        
+        console.log("📡 Response:", response);
+        
+        if (response?.ok && response?.account_id) {
+          setAccountId(response.account_id);
+          setIsLoading(false);
+        } else if (mounted) {
+          setError("Could not load account information. Please refresh.");
+          setIsLoading(false);
+        }
+      } catch (err) {
+        console.error("❌ Error:", err);
+        if (mounted) {
+          setError("Could not load account information. Please refresh.");
+          setIsLoading(false);
+        }
       }
     };
     
-    loadAccount();
-    
-    return () => {
-      mounted = false;
-      if (retryTimeout) clearTimeout(retryTimeout);
-    };
-  }, [authReady, hasSession, loadingAttempts, router]);
+    if (authReady && hasSession) {
+      fetchAccountId();
+    } else if (authReady && !hasSession) {
+      setError("Please log in to file taxes.");
+      setIsLoading(false);
+    }
+  }, [authReady, hasSession]);
 
   const handleInputChange = (field: string, value: string) => {
     setInputs({ ...inputs, [field]: parseFloat(value) || 0 });
@@ -128,7 +97,7 @@ export default function FileTaxPage() {
     }
     
     if (!accountId) {
-      setError("Account ID not loaded. Please wait a moment and try again.");
+      setError("Account ID not loaded. Please wait.");
       return;
     }
 
@@ -142,15 +111,11 @@ export default function FileTaxPage() {
         userId: accountId,
       };
       
-      console.log("📤 Submitting filing:", filingData);
-      
       const response = await apiJson("tax/file", {
         method: "POST",
         body: JSON.stringify(filingData),
         useAuthToken: false,
       });
-      
-      console.log("📥 Filing response:", response);
       
       if (response.ok) {
         const summaryData = {
@@ -167,27 +132,19 @@ export default function FileTaxPage() {
       }
     } catch (err: any) {
       console.error("❌ Filing error:", err);
-      if (err.status === 401) {
-        setError("Session expired. Please log out and log back in.");
-      } else {
-        setError(err.message || "Submission failed");
-      }
+      setError(err.message || "Submission failed");
     } finally {
       setSubmitting(false);
     }
   };
 
-  // Show loading state
   if (isLoading) {
     return (
       <AppShell title="File Your Taxes" subtitle="Loading your account...">
         <SectionStack>
           <WorkspaceSectionCard title="Loading">
             <div style={{ textAlign: "center", padding: "40px" }}>
-              <div>Loading your account information...</div>
-              <div style={{ fontSize: "12px", marginTop: "16px", color: "var(--text-muted)" }}>
-                Attempt {loadingAttempts + 1} of 5
-              </div>
+              Loading your account information...
             </div>
           </WorkspaceSectionCard>
         </SectionStack>
@@ -195,7 +152,26 @@ export default function FileTaxPage() {
     );
   }
 
-  // Show login required state
+  if (error) {
+    return (
+      <AppShell title="File Your Taxes" subtitle="Error">
+        <SectionStack>
+          <WorkspaceSectionCard title="Error">
+            <div style={{ textAlign: "center", padding: "40px" }}>
+              <p style={{ color: "#dc2626" }}>❌ {error}</p>
+              <button
+                onClick={() => window.location.reload()}
+                style={{ padding: "10px 20px", background: "#3b82f6", color: "white", border: "none", borderRadius: 8, cursor: "pointer", marginTop: 16 }}
+              >
+                Refresh Page
+              </button>
+            </div>
+          </WorkspaceSectionCard>
+        </SectionStack>
+      </AppShell>
+    );
+  }
+
   if (!hasSession) {
     return (
       <AppShell title="File Your Taxes" subtitle="Authentication Required">
@@ -208,27 +184,6 @@ export default function FileTaxPage() {
                 style={{ padding: "10px 20px", background: "#3b82f6", color: "white", border: "none", borderRadius: 8, cursor: "pointer", marginTop: 16 }}
               >
                 Go to Login
-              </button>
-            </div>
-          </WorkspaceSectionCard>
-        </SectionStack>
-      </AppShell>
-    );
-  }
-
-  // Show error state
-  if (error) {
-    return (
-      <AppShell title="File Your Taxes" subtitle="Error">
-        <SectionStack>
-          <WorkspaceSectionCard title="Error Loading Account">
-            <div style={{ textAlign: "center", padding: "40px" }}>
-              <p style={{ color: "#dc2626" }}>❌ {error}</p>
-              <button
-                onClick={() => window.location.reload()}
-                style={{ padding: "10px 20px", background: "#3b82f6", color: "white", border: "none", borderRadius: 8, cursor: "pointer", marginTop: 16 }}
-              >
-                Refresh Page
               </button>
             </div>
           </WorkspaceSectionCard>
@@ -261,9 +216,7 @@ export default function FileTaxPage() {
 
   const renderStep1 = () => (
     <div>
-      <p style={{ marginBottom: 16, color: "var(--text-muted)" }}>
-        Select the type of tax you want to file.
-      </p>
+      <p style={{ marginBottom: 16, color: "var(--text-muted)" }}>Select the type of tax you want to file.</p>
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
         {["paye", "vat", "cit"].map((type) => (
           <button
@@ -288,87 +241,29 @@ export default function FileTaxPage() {
 
   const renderPAYEDetails = () => (
     <div style={{ display: "grid", gap: 16 }}>
-      <div>
-        <label>Monthly Gross Income (₦)</label>
-        <input 
-          type="number" 
-          placeholder="Enter monthly gross income"
-          style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }} 
-          onChange={(e) => handleInputChange("monthly_gross_income", e.target.value)} 
-        />
-      </div>
-      <div>
-        <label>Pension Contribution (₦)</label>
-        <input 
-          type="number" 
-          placeholder="Enter pension contribution"
-          style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }} 
-          onChange={(e) => handleInputChange("pension_contribution", e.target.value)} 
-        />
-      </div>
-      <div>
-        <label>NHF Contribution (₦)</label>
-        <input 
-          type="number" 
-          placeholder="Enter NHF contribution"
-          style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }} 
-          onChange={(e) => handleInputChange("nhf", e.target.value)} 
-        />
-      </div>
+      <div><label>Monthly Gross Income (₦)</label><input type="number" style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }} onChange={(e) => handleInputChange("monthly_gross_income", e.target.value)} /></div>
+      <div><label>Pension Contribution (₦)</label><input type="number" style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }} onChange={(e) => handleInputChange("pension_contribution", e.target.value)} /></div>
+      <div><label>NHF Contribution (₦)</label><input type="number" style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }} onChange={(e) => handleInputChange("nhf", e.target.value)} /></div>
     </div>
   );
 
   const renderVATDetails = () => (
     <div style={{ display: "grid", gap: 16 }}>
-      <div>
-        <label>Taxable Supplies (₦)</label>
-        <input 
-          type="number" 
-          placeholder="Enter taxable supplies"
-          style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }} 
-          onChange={(e) => handleInputChange("taxable_supplies", e.target.value)} 
-        />
-      </div>
-      <div>
-        <label>Input VAT (₦)</label>
-        <input 
-          type="number" 
-          placeholder="Enter input VAT"
-          style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }} 
-          onChange={(e) => handleInputChange("input_vat", e.target.value)} 
-        />
-      </div>
+      <div><label>Taxable Supplies (₦)</label><input type="number" style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }} onChange={(e) => handleInputChange("taxable_supplies", e.target.value)} /></div>
+      <div><label>Input VAT (₦)</label><input type="number" style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }} onChange={(e) => handleInputChange("input_vat", e.target.value)} /></div>
     </div>
   );
 
   const renderCITDetails = () => (
     <div style={{ display: "grid", gap: 16 }}>
-      <div>
-        <label>Gross Profit (₦)</label>
-        <input 
-          type="number" 
-          placeholder="Enter gross profit"
-          style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }} 
-          onChange={(e) => handleInputChange("gross_profit", e.target.value)} 
-        />
-      </div>
-      <div>
-        <label>Allowable Expenses (₦)</label>
-        <input 
-          type="number" 
-          placeholder="Enter allowable expenses"
-          style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }} 
-          onChange={(e) => handleInputChange("allowable_expenses", e.target.value)} 
-        />
-      </div>
+      <div><label>Gross Profit (₦)</label><input type="number" style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }} onChange={(e) => handleInputChange("gross_profit", e.target.value)} /></div>
+      <div><label>Allowable Expenses (₦)</label><input type="number" style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)" }} onChange={(e) => handleInputChange("allowable_expenses", e.target.value)} /></div>
     </div>
   );
 
   const renderStep2 = () => (
     <div>
-      <p style={{ marginBottom: 16, color: "var(--text-muted)" }}>
-        Enter your financial details for {taxType.toUpperCase()}.
-      </p>
+      <p style={{ marginBottom: 16, color: "var(--text-muted)" }}>Enter your financial details for {taxType.toUpperCase()}.</p>
       {taxType === "paye" && renderPAYEDetails()}
       {taxType === "vat" && renderVATDetails()}
       {taxType === "cit" && renderCITDetails()}
@@ -377,18 +272,12 @@ export default function FileTaxPage() {
 
   const renderStep3 = () => (
     <div>
-      <p style={{ marginBottom: 16, color: "var(--text-muted)" }}>
-        Upload supporting documents (optional). Accepted: PDF, JPG, PNG.
-      </p>
+      <p style={{ marginBottom: 16, color: "var(--text-muted)" }}>Upload supporting documents (optional). Accepted: PDF, JPG, PNG.</p>
       <input type="file" multiple accept=".pdf,.jpg,.jpeg,.png" onChange={handleFileUpload} style={{ marginBottom: 16 }} />
       {documents.length > 0 && (
         <div style={{ marginTop: 12 }}>
           <strong>Uploaded files:</strong>
-          <ul>
-            {documents.map((doc, idx) => (
-              <li key={idx}>{doc.name} ({(doc.size / 1024).toFixed(1)} KB)</li>
-            ))}
-          </ul>
+          <ul>{documents.map((doc, idx) => (<li key={idx}>{doc.name} ({(doc.size / 1024).toFixed(1)} KB)</li>))}</ul>
         </div>
       )}
     </div>
@@ -403,11 +292,7 @@ export default function FileTaxPage() {
         <strong>Documents:</strong> {documents.length} file(s)
       </div>
       {error && <div style={{ color: "#dc2626", marginBottom: 16, padding: 12, background: "rgba(220,38,38,0.1)", borderRadius: 8 }}>❌ {error}</div>}
-      <button
-        onClick={submitFiling}
-        disabled={submitting}
-        style={{ padding: "12px 24px", background: "#10b981", border: "none", borderRadius: 12, color: "white", fontWeight: 800, cursor: submitting ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : 1 }}
-      >
+      <button onClick={submitFiling} disabled={submitting} style={{ padding: "12px 24px", background: "#10b981", border: "none", borderRadius: 12, color: "white", fontWeight: 800, cursor: submitting ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : 1 }}>
         {submitting ? "Submitting..." : "Confirm & Submit Filing"}
       </button>
     </div>
@@ -424,21 +309,9 @@ export default function FileTaxPage() {
           {currentStep === 4 && renderStep4()}
           {currentStep !== 4 && (
             <div style={{ display: "flex", justifyContent: "space-between", marginTop: 24 }}>
-              {currentStep > 1 && (
-                <button onClick={prevStep} style={{ padding: "10px 20px", background: "var(--surface-soft)", border: "1px solid var(--border)", borderRadius: 12, cursor: "pointer" }}>
-                  Back
-                </button>
-              )}
-              {currentStep < 3 && (
-                <button onClick={nextStep} style={{ padding: "10px 20px", background: "#3b82f6", border: "none", borderRadius: 12, color: "white", fontWeight: 800, cursor: "pointer", marginLeft: "auto" }}>
-                  Next
-                </button>
-              )}
-              {currentStep === 3 && (
-                <button onClick={nextStep} style={{ padding: "10px 20px", background: "#3b82f6", border: "none", borderRadius: 12, color: "white", fontWeight: 800, cursor: "pointer", marginLeft: "auto" }}>
-                  Review & Submit
-                </button>
-              )}
+              {currentStep > 1 && (<button onClick={prevStep} style={{ padding: "10px 20px", background: "var(--surface-soft)", border: "1px solid var(--border)", borderRadius: 12, cursor: "pointer" }}>Back</button>)}
+              {currentStep < 3 && (<button onClick={nextStep} style={{ padding: "10px 20px", background: "#3b82f6", border: "none", borderRadius: 12, color: "white", fontWeight: 800, cursor: "pointer", marginLeft: "auto" }}>Next</button>)}
+              {currentStep === 3 && (<button onClick={nextStep} style={{ padding: "10px 20px", background: "#3b82f6", border: "none", borderRadius: 12, color: "white", fontWeight: 800, cursor: "pointer", marginLeft: "auto" }}>Review & Submit</button>)}
             </div>
           )}
         </WorkspaceSectionCard>
