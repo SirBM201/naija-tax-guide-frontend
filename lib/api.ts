@@ -46,7 +46,6 @@ function safeGetLocalToken(): string | null {
     for (const key of tokenKeys) {
       const value = localStorage.getItem(key);
       if (value && value.trim() && value !== "undefined" && value !== "null") {
-        console.log(`✅ Found token in localStorage key: ${key}`);
         return value.trim();
       }
     }
@@ -54,7 +53,6 @@ function safeGetLocalToken(): string | null {
     for (const key of tokenKeys) {
       const value = sessionStorage.getItem(key);
       if (value && value.trim() && value !== "undefined" && value !== "null") {
-        console.log(`✅ Found token in sessionStorage key: ${key}`);
         return value.trim();
       }
     }
@@ -80,16 +78,18 @@ export function clearStoredAuthToken() {
 }
 
 function buildUrl(path: string, query?: ApiInit["query"]) {
-  // Use relative path - Next.js rewrites will handle proxy
+  // Remove leading slash if present
   let cleanPath = path;
-  if (cleanPath.startsWith("/api/")) {
-    cleanPath = cleanPath.substring(4);
-  } else if (cleanPath.startsWith("api/")) {
-    cleanPath = cleanPath.substring(3);
+  if (cleanPath.startsWith("/")) {
+    cleanPath = cleanPath.substring(1);
   }
   
-  const normalizedPath = cleanPath.startsWith("/") ? cleanPath : `/${cleanPath}`;
-  const url = `/api${normalizedPath}`;
+  // Remove any /api/ prefix to avoid duplication
+  if (cleanPath.startsWith("api/")) {
+    cleanPath = cleanPath.substring(4);
+  }
+  
+  const url = `/api/${cleanPath}`;
 
   if (query) {
     const params = new URLSearchParams();
@@ -123,7 +123,6 @@ export async function apiJson<T = any>(
 
   if (effectiveToken) {
     headers.Authorization = `Bearer ${effectiveToken}`;
-    console.log(`🔐 Using Bearer token for: ${path}`);
   }
 
   let bodyToSend: BodyInit | undefined;
@@ -184,8 +183,6 @@ export async function apiJson<T = any>(
       credentials: "include",
     };
     
-    console.log(`🚀 ${method} ${url}`);
-    
     const res = await fetch(url, fetchOptions);
 
     const text = await res.text();
@@ -204,16 +201,9 @@ export async function apiJson<T = any>(
 
       const enriched = isPlainObject(data) ? { ...data, url, status: res.status } : { data, url, status: res.status };
 
-      console.error(`❌ API Error ${res.status}: ${url}`, enriched);
-
-      if (res.status === 401) {
-        console.error("🔑 Authentication failed!");
-      }
-
       throw new ApiError(res.status, message, enriched);
     }
 
-    console.log(`✅ ${method} ${url} - ${res.status}`);
     return data as T;
   } catch (e: any) {
     if (e?.name === "AbortError") {
