@@ -33,7 +33,6 @@ function safeGetLocalToken(): string | null {
   try {
     if (typeof window === "undefined") return null;
     
-    // Check all possible token storage keys
     const tokenKeys = [
       "nt_access_token",
       "web_token", 
@@ -52,7 +51,6 @@ function safeGetLocalToken(): string | null {
       }
     }
     
-    // Also check sessionStorage
     for (const key of tokenKeys) {
       const value = sessionStorage.getItem(key);
       if (value && value.trim() && value !== "undefined" && value !== "null") {
@@ -111,16 +109,26 @@ function normalizeApiRoot(raw: string): string {
 }
 
 function buildUrl(path: string, query?: ApiInit["query"]) {
+  // Check if API base is configured
+  if (!CONFIG.apiBase) {
+    console.error("❌ NEXT_PUBLIC_API_BASE_URL is not set in environment variables");
+    throw new ApiError(0, "API configuration missing. Please set NEXT_PUBLIC_API_BASE_URL.", {
+      ok: false,
+      error: "missing_api_base",
+      help: "Add NEXT_PUBLIC_API_BASE_URL to your Vercel environment variables",
+    });
+  }
+
   const apiRoot = normalizeApiRoot(CONFIG.apiBase);
 
   if (!apiRoot) {
     throw new ApiError(0, "NEXT_PUBLIC_API_BASE_URL is missing or invalid.", {
       ok: false,
       error: "missing_api_base",
+      help: "Current value: " + CONFIG.apiBase,
     });
   }
 
-  // Remove any leading /api/ from path to avoid duplication
   let cleanPath = path;
   if (cleanPath.startsWith("/api/")) {
     cleanPath = cleanPath.substring(4);
@@ -153,13 +161,11 @@ export async function apiJson<T = any>(
     ...(init.headers as Record<string, string>),
   };
 
-  // Always try to use auth token for protected endpoints
   const shouldUseToken = init.useAuthToken !== false;
   let effectiveToken = shouldUseToken
     ? ((token || "").trim() || safeGetLocalToken())
     : null;
 
-  // If we have a token, add it to headers
   if (effectiveToken) {
     headers.Authorization = `Bearer ${effectiveToken}`;
     console.log(`🔐 Using Bearer token for: ${path}`);
