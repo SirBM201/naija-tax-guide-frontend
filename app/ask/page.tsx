@@ -539,7 +539,8 @@ function AskPageContent() {
     setCitations([]);
 
     try {
-      const data = await apiJson<AskResp>("/ask", {
+      // FIXED: Changed from "/ask" to "/web/ask"
+      const data = await apiJson<AskResp>("/web/ask", {
         method: "POST",
         timeoutMs: 45000,
         useAuthToken: false,
