@@ -109,10 +109,9 @@ type ApiErrorShape = {
   fix?: string;
 };
 
-// Use the same-origin Next.js /api rewrite instead of calling Koyeb directly.
-// This keeps the web login cookie attached reliably and avoids workspace auth failures
-// caused by cross-site cookie/CORS differences between Vercel and Koyeb.
-const API_BASE = "";
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/+$/, "") ||
+  "https://incredible-nonie-bmsconcept-37359733.koyeb.app";
 
 function formatDate(value?: string) {
   if (!value) return "—";
@@ -797,7 +796,7 @@ export default function WorkspacePage() {
 
     if (workspacePlanFull) {
       setAddError(
-        "Your current workspace plan is full. Upgrade your plan or remove an existing member first."
+        "Your current team-member slots are full. This only affects adding extra workspace members; it does not mean your WhatsApp or Telegram channel slots are full. Upgrade your plan or remove an existing member first."
       );
       return;
     }
@@ -920,18 +919,17 @@ export default function WorkspacePage() {
             <div style={styles.heroAlert}>
               <div>
                 <h2 style={{ ...styles.heroTitle, color: "#9a3412" }}>
-                  Workspace plan is currently full
+                  Team member slots are full
                 </h2>
                 <div style={{ ...styles.heroText, color: "#9a3412" }}>
-                  You are using {usedSlots} of {maxWorkspaceUsers} allowed workspace slot
-                  {maxWorkspaceUsers === 1 ? "" : "s"} on the <strong>{planName}</strong>.
-                  Upgrade your plan to add more members, or remove an existing member first.
+                  You are using {usedSlots} of {maxWorkspaceUsers} allowed workspace user slot
+                  {maxWorkspaceUsers === 1 ? "" : "s"} on the <strong>{planName}</strong>. This means you cannot add another team member on this plan. It does <strong>not</strong> mean your WhatsApp or Telegram channel slots are full.
                 </div>
               </div>
 
               <div style={styles.actionRow}>
                 <a href="/plans" style={styles.buttonWarning}>
-                  Upgrade to add more members
+                  Upgrade team slots
                 </a>
                 <a href="/billing" style={styles.buttonSecondary}>
                   Go to Billing
@@ -1035,6 +1033,9 @@ export default function WorkspacePage() {
 
                 <div style={styles.card}>
                   <h3 style={styles.sectionTitle}>Channel limits</h3>
+                  <div style={styles.sectionText}>
+                    These limits are separate from workspace user/member slots. A generated link code does not count as a connected channel until WhatsApp or Telegram is actually verified.
+                  </div>
                   <div style={styles.statRow}>
                     <span>Total channels</span>
                     <span style={styles.statValue}>{maxTotalChannels}</span>
@@ -1177,7 +1178,7 @@ export default function WorkspacePage() {
                       Current rule
                     </div>
                     Your plan currently allows <strong style={{ color: "#0f172a" }}>{maxWorkspaceUsers}</strong> total
-                    workspace user{maxWorkspaceUsers === 1 ? "" : "s"}, including the owner.
+                    workspace user{maxWorkspaceUsers === 1 ? "" : "s"}, including the owner. WhatsApp and Telegram channel slots are separate and are shown under Channel limits.
                   </div>
                 </div>
 
