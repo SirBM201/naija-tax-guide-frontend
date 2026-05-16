@@ -109,9 +109,10 @@ type ApiErrorShape = {
   fix?: string;
 };
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/+$/, "") ||
-  "https://incredible-nonie-bmsconcept-37359733.koyeb.app";
+// Use the same-origin Next.js /api rewrite instead of calling Koyeb directly.
+// This keeps the web login cookie attached reliably and avoids workspace auth failures
+// caused by cross-site cookie/CORS differences between Vercel and Koyeb.
+const API_BASE = "";
 
 function formatDate(value?: string) {
   if (!value) return "—";
