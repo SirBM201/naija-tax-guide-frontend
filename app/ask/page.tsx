@@ -1,45 +1,54 @@
 "use client";
 
-import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import AppShell from "@/components/app-shell";
-import { apiJson, isApiError } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
+import React, { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import AppShell, {
+  shellButtonPrimary,
+  shellButtonSecondary,
+} from "@/components/app-shell";
+import WorkspaceSectionCard from "@/components/workspace-section-card";
+import { Banner, MetricCard, ShortcutCard } from "@/components/ui";
+import {
+  CardsGrid,
+  SectionStack,
+  TwoColumnSection,
+} from "@/components/page-layout";
 import { useWorkspaceState } from "@/hooks/useWorkspaceState";
-import { type HistoryItem, saveHistoryItem } from "@/lib/history-storage";
+import { buildWorkspaceAlerts } from "@/lib/workspace-alerts";
 
-type AskResp = {
+type AskResult = {
   ok?: boolean;
   answer?: string;
+  message?: string;
   error?: string;
-  fix?: string;
-  root_cause?: string;
-  citations?: string[];
-  clarification_prompt?: string;
-};
-
-type StarterGroup = {
-  title: string;
-  questions: string[];
+  source?: string;
+  mode?: string;
+  meta?: {
+    usage_charged?: boolean;
+    credits_consumed?: number;
+    credit_cost?: number;
+    credits_left?: number;
+    credit_balance?: number;
+    plan_code?: string;
+    source_kind?: string;
+    reference?: string;
+  };
 };
 
 type AnswerSection = {
   title: string;
-  lines: string[];
-  ordered?: boolean;
+  body: string;
+  tone?: "primary" | "default" | "note";
 };
 
-type ParsedAnswer = {
-  lead: string;
-  sections: AnswerSection[];
-  source: string;
+type StarterQuestionGroup = {
+  title: string;
+  questions: string[];
 };
 
-const LANGUAGE_OPTIONS = ["English", "Pidgin", "Yoruba", "Igbo", "Hausa"];
-
-const STARTER_GROUPS: StarterGroup[] = [
+const STARTER_QUESTIONS: StarterQuestionGroup[] = [
   {
-    title: "PERSONAL INCOME TAX",
+    title: "Personal Income Tax",
     questions: [
       "what is personal income tax?",
       "what is the personal income tax rate?",
@@ -48,1141 +57,746 @@ const STARTER_GROUPS: StarterGroup[] = [
   },
   {
     title: "PAYE",
-    questions: ["what is paye?", "who must deduct paye?", "how do i remit paye?"],
+    questions: [
+      "what is paye?",
+      "who must deduct paye?",
+      "when should paye be remitted?",
+    ],
   },
   {
     title: "VAT",
-    questions: ["how do i register for vat?", "how do i file vat?", "how do i pay vat?"],
-  },
-  {
-    title: "WITHHOLDING TAX",
-    questions: ["what is the withholding tax rate?", "how do i remit withholding tax?"],
-  },
-  {
-    title: "COMPANY INCOME TAX",
     questions: [
-      "what is the company income tax rate?",
-      "how do i file company income tax?",
-      "how do i pay company income tax?",
+      "what is vat in nigeria?",
+      "who should register for vat?",
+      "when is vat due?",
+    ],
+  },
+  {
+    title: "Company Tax",
+    questions: [
+      "what is company income tax?",
+      "when should a company file income tax?",
+      "can company salary reduce taxable profit?",
     ],
   },
 ];
 
-function languageToCode(label: string) {
-  const v = String(label || "").trim().toLowerCase();
-  if (v === "english") return "en";
-  if (v === "pidgin") return "pcm";
-  if (v === "yoruba") return "yo";
-  if (v === "igbo") return "ig";
-  if (v === "hausa") return "ha";
-  return "en";
-}
-
-function normalizeLanguageLabel(value: string) {
-  const v = String(value || "").trim().toLowerCase();
-  if (v === "en" || v === "english") return "English";
-  if (v === "pcm" || v === "pidgin") return "Pidgin";
-  if (v === "yo" || v === "yoruba") return "Yoruba";
-  if (v === "ig" || v === "igbo") return "Igbo";
-  if (v === "ha" || v === "hausa") return "Hausa";
-  return "English";
-}
-
-function normalizeText(value: unknown) {
-  return String(value || "")
-    .replace(/\r\n/g, "\n")
-    .replace(/\u00a0/g, " ")
-    .trim();
-}
-
-function sanitizeAnswerForDisplay(value: string) {
-  return normalizeText(value)
-    .replace(/[ \t]+\n/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-}
-
-function safeText(value: unknown, fallback = "—") {
+function safeText(value: unknown, fallback = "—"): string {
   const text =
     typeof value === "string"
       ? value.trim()
       : value == null
-      ? ""
-      : String(value).trim();
-
+        ? ""
+        : String(value).trim();
   return text || fallback;
 }
 
-function truthyValue(value: unknown): boolean {
-  if (typeof value === "boolean") return value;
-  if (typeof value === "number") return value > 0;
-  if (typeof value === "string") {
-    const raw = value.trim().toLowerCase();
-    return ["1", "true", "yes", "linked", "active", "enabled", "paid"].includes(raw);
+function safeNumber(value: unknown): number {
+  const num = Number(value ?? 0);
+  return Number.isFinite(num) ? num : 0;
+}
+
+function normalizeAnswer(text: string): string {
+  return safeText(text, "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\*\*(.*?)\*\*/g, "$1")
+    .replace(/^\s*#{1,6}\s*/gm, "")
+    .replace(/^\s*[-*_]{2,}\s*$/gm, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function splitAnswer(answer: string): AnswerSection[] {
+  const clean = normalizeAnswer(answer);
+  if (!clean) return [];
+
+  const labels = ["Direct answer:", "Key points:", "What to do:", "Note:"];
+  const sections: AnswerSection[] = [];
+
+  const lower = clean.toLowerCase();
+  const found = labels
+    .map((label) => {
+      const index = lower.indexOf(label.toLowerCase());
+      return { label, index };
+    })
+    .filter((item) => item.index >= 0)
+    .sort((a, b) => a.index - b.index);
+
+  if (!found.length) {
+    return [
+      {
+        title: "Answer",
+        body: clean,
+        tone: "primary",
+      },
+    ];
   }
-  return false;
-}
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
-}
+  for (let i = 0; i < found.length; i += 1) {
+    const current = found[i];
+    const next = found[i + 1];
+    const start = current.index + current.label.length;
+    const end = next ? next.index : clean.length;
+    const body = clean.slice(start, end).trim();
 
-function readPath(root: unknown, path: string[]): unknown {
-  let cursor: unknown = root;
-  for (const key of path) {
-    const rec = asRecord(cursor);
-    if (!rec) return undefined;
-    cursor = rec[key];
+    if (!body) continue;
+
+    const lowerLabel = current.label.toLowerCase();
+    sections.push({
+      title: current.label.replace(":", ""),
+      body,
+      tone:
+        lowerLabel.startsWith("direct")
+          ? "primary"
+          : lowerLabel.startsWith("note")
+            ? "note"
+            : "default",
+    });
   }
-  return cursor;
+
+  return sections.length
+    ? sections
+    : [
+        {
+          title: "Answer",
+          body: clean,
+          tone: "primary",
+        },
+      ];
 }
 
-function titleFromCode(value: string, fallback = "Free") {
-  const raw = String(value || "").trim();
-  if (!raw) return fallback;
-  return raw
-    .replace(/[_-]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .replace(/\b\w/g, (m) => m.toUpperCase());
+function formatBody(body: string): React.ReactNode {
+  const lines = body.split("\n").map((line) => line.trim()).filter(Boolean);
+
+  if (!lines.length) return null;
+
+  return (
+    <div style={{ display: "grid", gap: 10 }}>
+      {lines.map((line, index) => {
+        const numbered = line.match(/^(\d+)[.)]\s+(.*)$/);
+        const bullet = line.match(/^[•-]\s+(.*)$/);
+
+        if (numbered) {
+          return (
+            <div
+              key={`${line}-${index}`}
+              style={{
+                display: "grid",
+                gridTemplateColumns: "28px 1fr",
+                gap: 10,
+                alignItems: "start",
+              }}
+            >
+              <span
+                style={{
+                  color: "var(--text-muted)",
+                  fontWeight: 900,
+                  textAlign: "right",
+                }}
+              >
+                {numbered[1]}.
+              </span>
+              <span style={answerTextStyle}>{numbered[2]}</span>
+            </div>
+          );
+        }
+
+        if (bullet) {
+          return (
+            <div
+              key={`${line}-${index}`}
+              style={{
+                display: "grid",
+                gridTemplateColumns: "22px 1fr",
+                gap: 8,
+                alignItems: "start",
+              }}
+            >
+              <span style={{ color: "var(--brand)", fontWeight: 900 }}>•</span>
+              <span style={answerTextStyle}>{bullet[1]}</span>
+            </div>
+          );
+        }
+
+        return (
+          <p key={`${line}-${index}`} style={answerTextStyle}>
+            {line}
+          </p>
+        );
+      })}
+    </div>
+  );
 }
 
-function pageCardStyle(extra?: React.CSSProperties): React.CSSProperties {
+function getPlanCode(subscription: unknown, billing: unknown): string {
+  const s = subscription as Record<string, unknown> | null | undefined;
+  const b = billing as Record<string, unknown> | null | undefined;
+  return safeText(s?.plan_code || b?.plan_code || "free", "free").toLowerCase();
+}
+
+function getPlanName(subscription: unknown, billing: unknown): string {
+  const s = subscription as Record<string, unknown> | null | undefined;
+  const b = billing as Record<string, unknown> | null | undefined;
+  return safeText(
+    s?.plan_name || b?.plan_name || s?.plan_code || b?.plan_code || "Free Forever",
+    "Free Forever"
+  );
+}
+
+function getCreditBalance(credits: unknown, billing: unknown): number {
+  const c = credits as Record<string, unknown> | null | undefined;
+  const b = billing as Record<string, unknown> | null | undefined;
+
+  return safeNumber(
+    c?.balance ??
+      c?.credit_balance ??
+      c?.credits_balance ??
+      b?.credit_balance ??
+      b?.credits_balance ??
+      b?.usage_credits
+  );
+}
+
+function getChannelSummary(channelLinks: unknown): string {
+  const links = channelLinks as Record<string, unknown> | null | undefined;
+  const whatsapp = links?.whatsapp as Record<string, unknown> | null | undefined;
+  const telegram = links?.telegram as Record<string, unknown> | null | undefined;
+
+  const whatsappLinked =
+    whatsapp?.connected === true ||
+    whatsapp?.is_connected === true ||
+    String(whatsapp?.status || "").toLowerCase() === "connected" ||
+    String(whatsapp?.status || "").toLowerCase() === "linked";
+
+  const telegramLinked =
+    telegram?.connected === true ||
+    telegram?.is_connected === true ||
+    String(telegram?.status || "").toLowerCase() === "connected" ||
+    String(telegram?.status || "").toLowerCase() === "linked";
+
+  if (whatsappLinked && telegramLinked) return "WhatsApp + Telegram";
+  if (whatsappLinked) return "WhatsApp linked";
+  if (telegramLinked) return "Telegram linked";
+  return "No channel linked";
+}
+
+function sectionCardStyle(tone: AnswerSection["tone"]): React.CSSProperties {
+  const primary = tone === "primary";
+  const note = tone === "note";
+
   return {
-    borderRadius: 28,
-    border: "1px solid var(--border)",
-    background: "var(--panel-bg)",
-    padding: "clamp(18px, 3vw, 28px)",
-    boxShadow: "0 10px 34px rgba(15, 23, 42, 0.04)",
-    width: "100%",
-    minWidth: 0,
-    ...extra,
-  };
-}
-
-function innerCardStyle(extra?: React.CSSProperties): React.CSSProperties {
-  return {
+    border: primary
+      ? "1px solid rgba(22, 163, 74, 0.2)"
+      : note
+        ? "1px solid rgba(217, 119, 6, 0.22)"
+        : "1px solid var(--border)",
     borderRadius: 22,
-    border: "1px solid var(--border)",
-    background: "var(--surface)",
-    padding: "clamp(16px, 2.5vw, 22px)",
-    width: "100%",
-    minWidth: 0,
-    ...extra,
-  };
-}
-
-function toneStyles(
-  tone: "default" | "good" | "warn" | "danger" = "default"
-): React.CSSProperties {
-  if (tone === "good") {
-    return {
-      border: "1px solid var(--success-border)",
-      background: "var(--success-bg)",
-    };
-  }
-
-  if (tone === "warn") {
-    return {
-      border: "1px solid var(--warn-border)",
-      background: "var(--warn-bg)",
-    };
-  }
-
-  if (tone === "danger") {
-    return {
-      border: "1px solid var(--danger-border)",
-      background: "var(--danger-bg)",
-    };
-  }
-
-  return {
-    border: "1px solid var(--border)",
-    background: "var(--surface)",
-  };
-}
-
-function metricCardStyle(
-  tone: "default" | "good" | "warn" | "danger" = "default"
-): React.CSSProperties {
-  return {
-    borderRadius: 22,
-    padding: 18,
-    minHeight: 108,
+    background: primary
+      ? "rgba(240, 253, 244, 0.72)"
+      : note
+        ? "rgba(255, 251, 235, 0.72)"
+        : "var(--surface)",
+    padding: primary ? "22px" : "20px",
     display: "grid",
-    gap: 8,
-    width: "100%",
-    minWidth: 0,
-    ...toneStyles(tone),
-  };
-}
-
-function secondaryButtonStyle(disabled = false): React.CSSProperties {
-  return {
-    minHeight: 54,
-    width: "100%",
-    padding: "0 22px",
-    borderRadius: 18,
-    border: "1px solid var(--border-strong)",
-    background: disabled ? "var(--surface-soft)" : "var(--button-bg)",
-    color: disabled ? "var(--text-faint)" : "var(--text)",
-    fontWeight: 900,
-    fontSize: 16,
-    cursor: disabled ? "not-allowed" : "pointer",
-    opacity: disabled ? 0.7 : 1,
-  };
-}
-
-function primaryButtonStyle(disabled = false): React.CSSProperties {
-  return {
-    minHeight: 54,
-    width: "100%",
-    padding: "0 22px",
-    borderRadius: 18,
-    border: "1px solid var(--accent-border)",
-    background: disabled ? "var(--surface-soft)" : "var(--button-bg-strong)",
-    color: disabled ? "var(--text-faint)" : "var(--text)",
-    fontWeight: 900,
-    fontSize: 16,
-    cursor: disabled ? "not-allowed" : "pointer",
-    opacity: disabled ? 0.7 : 1,
-  };
-}
-
-function textareaStyle(): React.CSSProperties {
-  return {
-    width: "100%",
-    minHeight: 210,
-    borderRadius: 24,
-    border: "1px solid var(--border-strong)",
-    background: "var(--surface)",
-    color: "var(--text)",
-    padding: "18px 18px",
-    resize: "vertical",
-    fontSize: "max(16px, 1rem)",
-    lineHeight: 1.7,
-    fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-    outline: "none",
-  };
-}
-
-function selectStyle(): React.CSSProperties {
-  return {
-    width: "100%",
-    minHeight: 56,
-    borderRadius: 18,
-    border: "1px solid var(--border-strong)",
-    background: "var(--surface)",
-    color: "var(--text)",
-    padding: "0 16px",
-    fontSize: 16,
-    outline: "none",
-  };
-}
-
-function chipStyle(fullWidth = false): React.CSSProperties {
-  return {
-    display: fullWidth ? "flex" : "inline-flex",
-    alignItems: "center",
-    width: fullWidth ? "100%" : "auto",
-    minHeight: 40,
-    padding: "0 16px",
-    borderRadius: 999,
-    border: "1px solid var(--border)",
-    background: "var(--surface)",
-    color: "var(--text)",
-    fontWeight: 800,
-    fontSize: 14,
+    gap: 14,
     minWidth: 0,
     overflowWrap: "anywhere",
   };
 }
 
-function gridAutoFit(minWidth: number): React.CSSProperties {
-  return {
-    display: "grid",
-    gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, ${minWidth}px), 1fr))`,
-    gap: 16,
-    alignItems: "start",
-  };
-}
+const labelStyle: React.CSSProperties = {
+  color: "var(--text-muted)",
+  fontSize: 13,
+  fontWeight: 900,
+  letterSpacing: "0.05em",
+  textTransform: "uppercase",
+};
 
-function parseAnswer(rawAnswer: string): ParsedAnswer {
-  const raw = sanitizeAnswerForDisplay(rawAnswer);
-  if (!raw) {
-    return { lead: "", sections: [], source: "" };
-  }
+const answerTextStyle: React.CSSProperties = {
+  color: "var(--text)",
+  fontSize: "clamp(16px, 1.65vw, 18px)",
+  lineHeight: 1.75,
+  fontWeight: 500,
+  overflowWrap: "anywhere",
+  wordBreak: "break-word",
+  margin: 0,
+};
 
-  const blocks = raw
-    .split(/\n\s*\n/)
-    .map((block) => block.trim())
-    .filter(Boolean);
+const directTextStyle: React.CSSProperties = {
+  color: "var(--text)",
+  fontSize: "clamp(18px, 2vw, 22px)",
+  lineHeight: 1.55,
+  fontWeight: 800,
+  overflowWrap: "anywhere",
+  wordBreak: "break-word",
+  margin: 0,
+};
 
-  let lead = "";
-  let source = "";
-  const sections: AnswerSection[] = [];
+const formInputStyle: React.CSSProperties = {
+  width: "100%",
+  border: "1px solid var(--border)",
+  borderRadius: 22,
+  background: "var(--surface)",
+  color: "var(--text)",
+  padding: "18px 20px",
+  fontSize: "clamp(16px, 2vw, 18px)",
+  lineHeight: 1.7,
+  outline: "none",
+  resize: "vertical",
+  minHeight: 160,
+  overflowWrap: "anywhere",
+};
 
-  for (const block of blocks) {
-    const rawLines = block
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean);
+const selectStyle: React.CSSProperties = {
+  width: "100%",
+  border: "1px solid var(--border)",
+  borderRadius: 18,
+  background: "var(--surface)",
+  color: "var(--text)",
+  padding: "14px 16px",
+  fontSize: 16,
+  outline: "none",
+};
 
-    if (!rawLines.length) continue;
-
-    if (/^source\s*:/i.test(rawLines[0])) {
-      source = block.replace(/^source\s*:\s*/i, "").trim();
-      continue;
-    }
-
-    if (!lead && !/:$/.test(rawLines[0])) {
-      const hasBullets = rawLines.some((line) => /^[-•]\s+/.test(line));
-      const hasOrdered = rawLines.some((line) => /^\d+\.\s+/.test(line));
-
-      if (!hasBullets && !hasOrdered) {
-        lead = rawLines.join(" ");
-        continue;
-      }
-    }
-
-    let title = "";
-    let bodyLines = rawLines.slice();
-
-    if (/:$/.test(rawLines[0])) {
-      title = rawLines[0].replace(/:$/, "").trim();
-      bodyLines = rawLines.slice(1);
-    }
-
-    const ordered = bodyLines.some((line) => /^\d+\.\s+/.test(line));
-    const cleanedLines = bodyLines
-      .map((line) => line.replace(/^[-•]\s*/, "").replace(/^\d+\.\s*/, "").trim())
-      .filter(Boolean);
-
-    if (!cleanedLines.length) continue;
-
-    sections.push({
-      title: title || "More details",
-      lines: cleanedLines,
-      ordered,
-    });
-  }
-
-  if (!lead) {
-    lead = sections.length ? sections[0].lines[0] : raw.replace(/\n+/g, " ").trim();
-  }
-
-  return { lead, sections, source };
-}
-
-function AskPageFallback() {
-  return (
-    <AppShell
-      title="Ask Naija Tax Guide"
-      subtitle="Ask a practical Nigerian tax question and get a structured response inside your workspace."
-    >
-      <div style={{ display: "grid", gap: 20 }}>
-        <div style={pageCardStyle()}>
-          <div
-            style={{
-              fontSize: 18,
-              fontWeight: 900,
-              color: "var(--text)",
-            }}
-          >
-            Loading ask page...
-          </div>
-        </div>
-      </div>
-    </AppShell>
-  );
-}
-
-function AskPageContent() {
+export default function AskPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const { refreshSession } = useAuth();
-  const answerRef = useRef<HTMLDivElement | null>(null);
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const {
-    busy: workspaceBusy,
-    status,
-    load,
-    activeNow,
-    planCode,
-    creditBalance,
-  } = useWorkspaceState({
-    refreshSession,
-    autoLoad: true,
-    includeAccount: true,
-    includeBilling: true,
-    includeDebug: true,
-    loadingMessage: "Loading your assistant...",
-  });
+    profile,
+    usage,
+    subscription,
+    channelLinks,
+    billing,
+    credits,
+    refreshAll,
+  } = useWorkspaceState();
 
-  const [submitting, setSubmitting] = useState(false);
   const [question, setQuestion] = useState("");
-  const [language, setLanguage] = useState("English");
-  const [answer, setAnswer] = useState("");
-  const [friendlyError, setFriendlyError] = useState("");
-  const [clarificationPrompt, setClarificationPrompt] = useState("");
-  const [citations, setCitations] = useState<string[]>([]);
-  const [resultOk, setResultOk] = useState<boolean | null>(null);
+  const [lang, setLang] = useState("en");
+  const [result, setResult] = useState<AskResult | null>(null);
+  const [lastQuestion, setLastQuestion] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
 
-  const busy = workspaceBusy || submitting;
+  const allAlerts = useMemo(
+    () =>
+      buildWorkspaceAlerts({
+        profile,
+        usage,
+        subscription,
+        channelLinks,
+        billing,
+        credits,
+      }),
+    [profile, usage, subscription, channelLinks, billing, credits]
+  );
 
-  useEffect(() => {
-    const q = (searchParams?.get("q") || searchParams?.get("question") || "").trim();
-    const lang = (searchParams?.get("lang") || "").trim();
+  const planName = getPlanName(subscription, billing);
+  const planCode = getPlanCode(subscription, billing);
+  const balance = getCreditBalance(credits, billing);
+  const channelSummary = getChannelSummary(channelLinks);
+  const answerSections = splitAnswer(result?.answer || "");
 
-    if (q) setQuestion(q);
-    if (lang) setLanguage(normalizeLanguageLabel(lang));
-  }, [searchParams]);
+  async function submitQuestion() {
+    const trimmed = question.trim();
 
-  const parsed = useMemo(() => parseAnswer(answer), [answer]);
-
-  const channelSummary = useMemo(() => {
-    const whatsappLinked = truthyValue(
-      readPath(status, ["channel_links", "whatsapp_linked"]) ??
-        readPath(status, ["channel_links", "whatsapp", "linked"]) ??
-        readPath(status, ["workspace", "channel_links", "whatsapp_linked"]) ??
-        readPath(status, ["workspace", "channel_links", "whatsapp", "linked"]) ??
-        readPath(status, ["account", "channel_links", "whatsapp_linked"]) ??
-        readPath(status, ["account", "channel_links", "whatsapp", "linked"]) ??
-        readPath(status, ["whatsapp_linked"]) ??
-        readPath(status, ["whatsapp", "linked"])
-    );
-
-    const telegramLinked = truthyValue(
-      readPath(status, ["channel_links", "telegram_linked"]) ??
-        readPath(status, ["channel_links", "telegram", "linked"]) ??
-        readPath(status, ["workspace", "channel_links", "telegram_linked"]) ??
-        readPath(status, ["workspace", "channel_links", "telegram", "linked"]) ??
-        readPath(status, ["account", "channel_links", "telegram_linked"]) ??
-        readPath(status, ["account", "channel_links", "telegram", "linked"]) ??
-        readPath(status, ["telegram_linked"]) ??
-        readPath(status, ["telegram", "linked"])
-    );
-
-    if (telegramLinked && whatsappLinked) return "Telegram + WhatsApp linked";
-    if (telegramLinked) return "Telegram linked";
-    if (whatsappLinked) return "WhatsApp linked";
-    return "No channel linked";
-  }, [status]);
-
-  const planLabel = useMemo(() => {
-    if (safeText(planCode, "") === "") return "Free";
-    return titleFromCode(String(planCode || ""), "Free");
-  }, [planCode]);
-
-  const attention = useMemo(() => {
-    if (!activeNow && creditBalance <= 0) {
-      return {
-        title: "Account attention needed",
-        message:
-          "Starter or already-covered questions may still work, but some live asks can be blocked until plan and credits are active.",
-      };
-    }
-
-    if (!activeNow) {
-      return {
-        title: "Subscription attention needed",
-        message:
-          "The page is working, but your billing state may still block some fresh questions until the subscription shows active.",
-      };
-    }
-
-    return null;
-  }, [activeNow, creditBalance]);
-
-  const handleStarterClick = (starterQuestion: string) => {
-    setQuestion(starterQuestion);
-    setFriendlyError("");
-    setClarificationPrompt("");
-
-    requestAnimationFrame(() => {
-      textareaRef.current?.focus();
-      textareaRef.current?.scrollIntoView({
-        behavior: "smooth",
-        block: "center",
-      });
-    });
-  };
-
-  const handleClear = () => {
-    setQuestion("");
-    setAnswer("");
-    setFriendlyError("");
-    setClarificationPrompt("");
-    setCitations([]);
-    setResultOk(null);
-    textareaRef.current?.focus();
-  };
-
-  const handleAsk = async () => {
-    const q = question.trim();
-
-    if (!q) {
-      setResultOk(false);
-      setFriendlyError("Please enter your question before continuing.");
-      setAnswer("");
-      setClarificationPrompt("");
-      setCitations([]);
+    if (!trimmed) {
+      setLocalError("Please enter a tax question first.");
       return;
     }
 
     setSubmitting(true);
-    setResultOk(null);
-    setFriendlyError("");
-    setAnswer("");
-    setClarificationPrompt("");
-    setCitations([]);
+    setLocalError(null);
+    setResult(null);
 
     try {
-      // FIXED: Changed from "/ask" to "/web/ask"
-   const data = await apiJson<AskResp>("/web/ask", {
+      const response = await fetch("/api/ask", {
         method: "POST",
-        timeoutMs: 45000,
-        useAuthToken: false,
-        body: {
-          question: q,
-          lang: languageToCode(language),
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          question: trimmed,
+          lang,
           channel: "web",
-        },
+        }),
       });
 
-      await load("Refreshing assistant state...");
+      const data = (await response.json().catch(() => ({}))) as AskResult;
 
-      if (data?.ok && data?.answer) {
-        const answerText = sanitizeAnswerForDisplay(String(data.answer || ""));
-
-        if (!answerText) {
-          setResultOk(false);
-          setFriendlyError(
-            "We could not prepare a clean final answer for that question yet. Please ask it again in a shorter, more direct way."
-          );
-          return;
-        }
-
-        setResultOk(true);
-        setAnswer(answerText);
-        setClarificationPrompt(normalizeText(data?.clarification_prompt || ""));
-        setCitations(
-          Array.isArray(data?.citations)
-            ? data.citations.map((item) => safeText(item, "")).filter(Boolean)
-            : []
+      if (!response.ok || data?.ok === false) {
+        setResult(data);
+        setLocalError(
+          data?.message ||
+            data?.error ||
+            "We could not complete your question right now."
         );
-
-        const item: HistoryItem = {
-          id: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
-          question: q,
-          answer: answerText,
-          language,
-          created_at: new Date().toISOString(),
-          source: "web",
-        };
-        saveHistoryItem(item);
-
-        requestAnimationFrame(() => {
-          answerRef.current?.scrollIntoView({
-            behavior: "smooth",
-            block: "start",
-          });
-        });
-
         return;
       }
 
-      const code = String(data?.error || "").trim().toLowerCase();
-      const clarification = normalizeText(data?.clarification_prompt || "");
-
-      if (clarification) {
-        setClarificationPrompt(clarification);
-      }
-
-      if (code === "insufficient_credits" || code === "insufficient_credits_uncached") {
-        setResultOk(false);
-        setFriendlyError(
-          "No fresh AI credits are available right now. Cached starter questions may still work, but new uncached questions need available credits."
-        );
-      } else if (code === "subscription_required") {
-        setResultOk(false);
-        setFriendlyError(
-          "Starter or already-covered questions may still work, but this question needs active plan or credits before live AI can continue."
-        );
-      } else if (clarification) {
-        setResultOk(false);
-        setFriendlyError("This question needs a little more detail before the answer can continue.");
-      } else {
-        setResultOk(false);
-        setFriendlyError(
-          safeText(data?.fix, "") ||
-            safeText(data?.root_cause, "") ||
-            "We could not complete this request right now."
-        );
-      }
-    } catch (err: unknown) {
-      await load("Refreshing assistant state...");
-
-      if (isApiError(err)) {
-        const apiErr = err as {
-          data?: {
-            error?: string;
-            fix?: string;
-            root_cause?: string;
-            clarification_prompt?: string;
-          };
-          message?: string;
-        };
-
-        const code = String(apiErr?.data?.error || "").trim().toLowerCase();
-        const clarification = normalizeText(apiErr?.data?.clarification_prompt || "");
-
-        if (clarification) {
-          setClarificationPrompt(clarification);
-        }
-
-        if (code === "insufficient_credits" || code === "insufficient_credits_uncached") {
-          setFriendlyError(
-            "No fresh AI credits are available right now. Cached starter questions may still work, but new uncached questions need available credits."
-          );
-        } else if (code === "subscription_required") {
-          setFriendlyError(
-            "Starter or already-covered questions may still work, but this question needs active plan or credits before live AI can continue."
-          );
-        } else {
-          setFriendlyError(
-            safeText(apiErr?.data?.fix, "") ||
-              safeText(apiErr?.data?.root_cause, "") ||
-              safeText(apiErr?.message, "") ||
-              "We could not complete this request right now."
-          );
-        }
-      } else {
-        setFriendlyError("We could not complete this request right now.");
-      }
-
-      setResultOk(false);
-      setAnswer("");
+      setLastQuestion(trimmed);
+      setResult(data);
+      await refreshAll();
+    } catch (error) {
+      setLocalError(
+        error instanceof Error
+          ? error.message
+          : "Network error. Please try again."
+      );
     } finally {
       setSubmitting(false);
     }
-  };
+  }
 
-  const latestQuestionLabel = question.trim() || "No question selected";
+  function handleKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+      event.preventDefault();
+      submitQuestion();
+    }
+  }
 
   return (
     <AppShell
       title="Ask Naija Tax Guide"
       subtitle="Ask a practical Nigerian tax question and get a structured response inside your workspace."
-    >
-      <div style={{ display: "grid", gap: 20 }}>
-        <div style={gridAutoFit(160)}>
-          <button
-            onClick={() => {
-              void load("Refreshing assistant state...");
-            }}
-            style={secondaryButtonStyle(busy)}
-            disabled={busy}
-          >
+      actions={
+        <>
+          <button type="button" onClick={() => refreshAll()} style={shellButtonSecondary()}>
             Refresh
           </button>
-
-          <button onClick={() => router.push("/plans")} style={secondaryButtonStyle(false)}>
+          <button type="button" onClick={() => router.push("/plans")} style={shellButtonSecondary()}>
             Plans
           </button>
-
-          <button onClick={() => router.push("/credits")} style={secondaryButtonStyle(false)}>
+          <button type="button" onClick={() => router.push("/credits")} style={shellButtonPrimary()}>
             Credits
           </button>
-        </div>
+        </>
+      }
+    >
+      <SectionStack>
+        {allAlerts
+          .filter((alert) => /credit|plan|login|session/i.test(`${alert.title} ${alert.subtitle}`))
+          .slice(0, 1)
+          .map((alert) => (
+            <Banner
+              key={`${alert.title}-${alert.subtitle}`}
+              tone={alert.tone}
+              title={alert.title}
+              subtitle={alert.subtitle}
+            />
+          ))}
 
-        {attention ? (
-          <div
-            style={{
-              ...pageCardStyle(),
-              ...toneStyles("warn"),
-              display: "grid",
-              gap: 10,
-              padding: 24,
-            }}
-          >
-            <div
-              style={{
-                fontSize: 19,
-                fontWeight: 950,
-                color: "var(--text)",
-              }}
-            >
-              {attention.title}
-            </div>
-
-            <div
-              style={{
-                color: "var(--text-muted)",
-                fontSize: 15,
-                lineHeight: 1.8,
-              }}
-            >
-              {attention.message}
-            </div>
-          </div>
+        {localError ? (
+          <Banner
+            tone="danger"
+            title="Ask request issue"
+            subtitle={localError}
+          />
         ) : null}
 
-        <div
-          style={{
-            ...gridAutoFit(320),
-            gap: 22,
-          }}
-        >
-          <div style={{ display: "grid", gap: 20, minWidth: 0 }}>
-            <div style={pageCardStyle()}>
-              <div style={{ display: "grid", gap: 16 }}>
-                <div style={gridAutoFit(180)}>
-                  <div style={metricCardStyle("warn")}>
-                    <div
-                      style={{
-                        fontSize: 13,
-                        fontWeight: 900,
-                        color: "var(--text-faint)",
-                        textTransform: "uppercase",
-                        letterSpacing: 0.5,
-                      }}
-                    >
-                      PLAN
-                    </div>
-                    <div style={{ fontSize: 18, fontWeight: 950, color: "var(--text)" }}>
-                      {planLabel}
-                    </div>
-                  </div>
+        <TwoColumnSection leftRatio={1.15} rightRatio={0.85} gap={18} collapseAt={1020}>
+          <WorkspaceSectionCard
+            title="Ask a tax question"
+            subtitle="Use one clear question at a time. Database/library answers are free; AI fallback uses Usage Credits."
+          >
+            <CardsGrid min={180} gap={14}>
+              <MetricCard
+                label="Plan"
+                value={planName}
+                helper={`Code: ${planCode}`}
+              />
+              <MetricCard
+                label="Credits"
+                value={String(balance)}
+                tone={balance > 10 ? "good" : balance > 0 ? "warn" : "danger"}
+                helper="Available Usage Credits"
+              />
+              <MetricCard
+                label="Channels"
+                value={channelSummary}
+                helper="Linked messaging access"
+              />
+            </CardsGrid>
 
-                  <div style={metricCardStyle(creditBalance > 0 ? "good" : "warn")}>
-                    <div
-                      style={{
-                        fontSize: 13,
-                        fontWeight: 900,
-                        color: "var(--text-faint)",
-                        textTransform: "uppercase",
-                        letterSpacing: 0.5,
-                      }}
-                    >
-                      CREDITS
-                    </div>
-                    <div style={{ fontSize: 18, fontWeight: 950, color: "var(--text)" }}>
-                      {String(creditBalance)}
-                    </div>
-                  </div>
+            <div style={{ display: "grid", gap: 12, marginTop: 18 }}>
+              <label htmlFor="tax-question" style={{ fontWeight: 900, fontSize: 18 }}>
+                Question
+              </label>
 
-                  <div
-                    style={metricCardStyle(
-                      channelSummary === "No channel linked" ? "default" : "good"
-                    )}
+              <textarea
+                id="tax-question"
+                value={question}
+                onChange={(event) => setQuestion(event.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Example: As a company owner, will I still pay personal income tax on salary from my company?"
+                style={formInputStyle}
+              />
+
+              <p style={{ color: "var(--text-muted)", margin: 0, lineHeight: 1.6 }}>
+                Tip: Press Ctrl + Enter to submit quickly.
+              </p>
+
+              <div
+                style={{
+                  display: "grid",
+                  gap: 14,
+                  gridTemplateColumns: "minmax(180px, 0.8fr) minmax(220px, 1.2fr)",
+                }}
+                className="ask-form-actions-grid"
+              >
+                <div style={{ display: "grid", gap: 8 }}>
+                  <label htmlFor="reply-lang" style={{ fontWeight: 900 }}>
+                    Reply language
+                  </label>
+                  <select
+                    id="reply-lang"
+                    value={lang}
+                    onChange={(event) => setLang(event.target.value)}
+                    style={selectStyle}
                   >
-                    <div
-                      style={{
-                        fontSize: 13,
-                        fontWeight: 900,
-                        color: "var(--text-faint)",
-                        textTransform: "uppercase",
-                        letterSpacing: 0.5,
-                      }}
-                    >
-                      CHANNELS
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 18,
-                        fontWeight: 950,
-                        color: "var(--text)",
-                        lineHeight: 1.35,
-                        overflowWrap: "anywhere",
-                      }}
-                    >
-                      {channelSummary}
-                    </div>
-                  </div>
+                    <option value="en">English</option>
+                    <option value="pidgin">Pidgin English</option>
+                    <option value="yo">Yoruba</option>
+                    <option value="ha">Hausa</option>
+                    <option value="ig">Igbo</option>
+                  </select>
                 </div>
 
-                <div style={{ display: "grid", gap: 10, minWidth: 0 }}>
-                  <div
-                    style={{
-                      color: "var(--text)",
-                      fontSize: 16,
-                      fontWeight: 900,
-                    }}
-                  >
-                    Question
-                  </div>
-
-                  <textarea
-                    ref={textareaRef}
-                    value={question}
-                    onChange={(e) => setQuestion(e.target.value)}
-                    onKeyDown={(e) => {
-                      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
-                        e.preventDefault();
-                        void handleAsk();
-                      }
-                    }}
-                    placeholder="Ask one clear tax question at a time."
-                    style={textareaStyle()}
-                  />
-
-                  <div
-                    style={{
-                      color: "var(--text-muted)",
-                      fontSize: 14,
-                      lineHeight: 1.7,
-                    }}
-                  >
-                    Tip: use one clear question at a time. Press Ctrl + Enter to submit quickly.
-                  </div>
-                </div>
-
-                <div
-                  style={{
-                    ...gridAutoFit(220),
-                    gap: 14,
-                  }}
-                >
-                  <div style={{ display: "grid", gap: 8 }}>
-                    <div
-                      style={{
-                        color: "var(--text)",
-                        fontSize: 15,
-                        fontWeight: 900,
-                      }}
-                    >
-                      Reply language
-                    </div>
-
-                    <select
-                      value={language}
-                      onChange={(e) => setLanguage(normalizeLanguageLabel(e.target.value))}
-                      style={selectStyle()}
-                    >
-                      {LANGUAGE_OPTIONS.map((item) => (
-                        <option key={item} value={item}>
-                          {item}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
+                <div style={{ display: "flex", alignItems: "end" }}>
                   <button
-                    onClick={() => {
-                      void handleAsk();
+                    type="button"
+                    onClick={submitQuestion}
+                    disabled={submitting}
+                    style={{
+                      ...shellButtonPrimary(),
+                      width: "100%",
+                      justifyContent: "center",
+                      opacity: submitting ? 0.7 : 1,
                     }}
-                    style={primaryButtonStyle(busy)}
-                    disabled={busy}
                   >
                     {submitting ? "Asking..." : "Ask Question"}
                   </button>
-
-                  <button onClick={handleClear} style={secondaryButtonStyle(busy)} disabled={busy}>
-                    Clear
-                  </button>
                 </div>
               </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setQuestion("");
+                  setResult(null);
+                  setLocalError(null);
+                }}
+                style={{
+                  ...shellButtonSecondary(),
+                  width: "100%",
+                  justifyContent: "center",
+                }}
+              >
+                Clear
+              </button>
             </div>
+          </WorkspaceSectionCard>
 
-            <div ref={answerRef} style={pageCardStyle()}>
-              {resultOk === null && !answer && !friendlyError ? (
-                <div
-                  style={{
-                    ...innerCardStyle(),
-                    display: "grid",
-                    gap: 10,
-                    minHeight: 120,
-                    alignContent: "center",
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: 18,
-                      fontWeight: 950,
-                      color: "var(--text)",
-                    }}
-                  >
-                    No response yet
-                  </div>
-
-                  <div
-                    style={{
-                      color: "var(--text-muted)",
-                      fontSize: 15,
-                      lineHeight: 1.8,
-                    }}
-                  >
-                    Ask a question above or tap any starter question to test this section.
-                  </div>
-                </div>
-              ) : null}
-
-              {(friendlyError || clarificationPrompt) && resultOk === false ? (
-                <div
-                  style={{
-                    ...innerCardStyle(),
-                    ...toneStyles("warn"),
-                    display: "grid",
-                    gap: 12,
-                  }}
-                >
-                  {friendlyError ? (
-                    <div
-                      style={{
-                        color: "var(--text)",
-                        fontSize: 17,
-                        fontWeight: 900,
-                        lineHeight: 1.6,
-                      }}
-                    >
-                      {friendlyError}
-                    </div>
-                  ) : null}
-
-                  {clarificationPrompt ? (
-                    <div
-                      style={{
-                        color: "var(--text-muted)",
-                        fontSize: 15,
-                        lineHeight: 1.8,
-                      }}
-                    >
-                      {clarificationPrompt}
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-
-              {resultOk && answer ? (
-                <div style={{ display: "grid", gap: 18, minWidth: 0 }}>
-                  <div style={{ display: "grid", gap: 10, minWidth: 0 }}>
-                    <div style={chipStyle()}>Latest answer</div>
-                    <div style={chipStyle(true)}>Question: {latestQuestionLabel}</div>
-                  </div>
-
-                  <div
-                    style={{
-                      borderRadius: 28,
-                      border: "1px solid var(--success-border)",
-                      background: "var(--success-bg)",
-                      padding: "clamp(18px, 3vw, 28px)",
-                      display: "grid",
-                      gap: 18,
-                      minWidth: 0,
-                    }}
-                  >
-                    <div
-                      style={{
-                        color: "var(--text)",
-                        fontSize: "clamp(20px, 4vw, 26px)",
-                        fontWeight: 950,
-                        lineHeight: 1.55,
-                        letterSpacing: -0.2,
-                        overflowWrap: "anywhere",
-                      }}
-                    >
-                      {parsed.lead}
-                    </div>
-
-                    {parsed.sections.map((section, index) => (
-                      <div key={`${section.title}-${index}`} style={innerCardStyle()}>
-                        <div
-                          style={{
-                            color: "var(--text)",
-                            fontSize: 18,
-                            fontWeight: 950,
-                            marginBottom: 14,
-                            overflowWrap: "anywhere",
-                          }}
-                        >
-                          {section.title}
-                        </div>
-
-                        {section.ordered ? (
-                          <ol
-                            style={{
-                              margin: 0,
-                              paddingLeft: 24,
-                              display: "grid",
-                              gap: 12,
-                              color: "var(--text)",
-                              fontSize: 16,
-                              lineHeight: 1.8,
-                              overflowWrap: "anywhere",
-                            }}
-                          >
-                            {section.lines.map((line, lineIndex) => (
-                              <li key={`${section.title}-${lineIndex}`}>{line}</li>
-                            ))}
-                          </ol>
-                        ) : (
-                          <div
-                            style={{
-                              display: "grid",
-                              gap: 12,
-                              color: "var(--text)",
-                              fontSize: 16,
-                              lineHeight: 1.8,
-                              overflowWrap: "anywhere",
-                            }}
-                          >
-                            {section.lines.map((line, lineIndex) => (
-                              <div key={`${section.title}-${lineIndex}`}>- {line}</div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-
-                    {parsed.source ? (
-                      <div
-                        style={{
-                          borderTop: "1px solid var(--border)",
-                          paddingTop: 16,
-                          color: "var(--text-muted)",
-                          fontSize: 14,
-                          lineHeight: 1.8,
-                          overflowWrap: "anywhere",
-                        }}
-                      >
-                        <strong style={{ color: "var(--text)" }}>Source:</strong> {parsed.source}
-                      </div>
-                    ) : null}
-
-                    {citations.length ? (
-                      <div
-                        style={{
-                          borderTop: "1px solid var(--border)",
-                          paddingTop: 16,
-                          display: "grid",
-                          gap: 8,
-                          minWidth: 0,
-                        }}
-                      >
-                        <div
-                          style={{
-                            color: "var(--text)",
-                            fontSize: 15,
-                            fontWeight: 900,
-                          }}
-                        >
-                          Visible citations
-                        </div>
-
-                        <div
-                          style={{
-                            display: "grid",
-                            gap: 8,
-                            color: "var(--text-muted)",
-                            fontSize: 14,
-                            lineHeight: 1.7,
-                            overflowWrap: "anywhere",
-                          }}
-                        >
-                          {citations.map((citation, index) => (
-                            <div key={`${citation}-${index}`}>{citation}</div>
-                          ))}
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          </div>
-
-          <div
-            style={{
-              ...pageCardStyle(),
-              position: "relative",
-              minWidth: 0,
-            }}
+          <WorkspaceSectionCard
+            title="Starter questions"
+            subtitle="Tap any question to load it into the ask box."
           >
-            <div style={{ display: "grid", gap: 8, marginBottom: 18 }}>
-              <div
-                style={{
-                  fontSize: 18,
-                  fontWeight: 950,
-                  color: "var(--text)",
-                }}
-              >
-                Starter questions
-              </div>
-
-              <div
-                style={{
-                  color: "var(--text-muted)",
-                  fontSize: 15,
-                  lineHeight: 1.7,
-                }}
-              >
-                Tap any question below to load it into the ask box.
-              </div>
-            </div>
-
             <div style={{ display: "grid", gap: 18 }}>
-              {STARTER_GROUPS.map((group) => (
+              {STARTER_QUESTIONS.map((group) => (
                 <div key={group.title} style={{ display: "grid", gap: 10 }}>
-                  <div
-                    style={{
-                      color: "var(--text-faint)",
-                      fontSize: 13,
-                      fontWeight: 950,
-                      letterSpacing: 0.4,
-                      textTransform: "uppercase",
-                    }}
-                  >
-                    {group.title}
-                  </div>
-
-                  <div style={{ display: "grid", gap: 10 }}>
-                    {group.questions.map((starterQuestion) => {
-                      const active =
-                        question.trim().toLowerCase() === starterQuestion.trim().toLowerCase();
-
-                      return (
-                        <button
-                          key={starterQuestion}
-                          onClick={() => handleStarterClick(starterQuestion)}
-                          style={{
-                            width: "100%",
-                            textAlign: "left",
-                            minHeight: 62,
-                            padding: "14px 16px",
-                            borderRadius: 20,
-                            border: active
-                              ? "1px solid var(--accent-border)"
-                              : "1px solid var(--border)",
-                            background: active ? "var(--accent-soft)" : "var(--surface)",
-                            color: "var(--text)",
-                            fontWeight: 900,
-                            fontSize: 16,
-                            lineHeight: 1.45,
-                            cursor: "pointer",
-                            overflowWrap: "anywhere",
-                          }}
-                        >
-                          {starterQuestion}
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <div style={labelStyle}>{group.title}</div>
+                  {group.questions.map((item) => (
+                    <button
+                      key={item}
+                      type="button"
+                      onClick={() => setQuestion(item)}
+                      style={{
+                        border: "1px solid var(--border)",
+                        borderRadius: 18,
+                        background: "var(--surface)",
+                        padding: "14px 16px",
+                        textAlign: "left",
+                        color: "var(--text)",
+                        fontWeight: 850,
+                        lineHeight: 1.45,
+                        cursor: "pointer",
+                      }}
+                    >
+                      {item}
+                    </button>
+                  ))}
                 </div>
               ))}
             </div>
-          </div>
-        </div>
-      </div>
-    </AppShell>
-  );
-}
+          </WorkspaceSectionCard>
+        </TwoColumnSection>
 
-export default function AskPage() {
-  return (
-    <Suspense fallback={<AskPageFallback />}>
-      <AskPageContent />
-    </Suspense>
+        <WorkspaceSectionCard
+          title="Latest answer"
+          subtitle={
+            result?.meta?.usage_charged
+              ? `AI answer used ${result.meta.credits_consumed || result.meta.credit_cost || 1} Usage Credit.`
+              : result?.answer
+                ? "This answer was served without a new AI credit charge when cache/database was used."
+                : "Your answer will appear here after you submit a question."
+          }
+        >
+          {!result?.answer ? (
+            <div
+              style={{
+                border: "1px dashed var(--border)",
+                borderRadius: 22,
+                padding: 24,
+                color: "var(--text-muted)",
+                lineHeight: 1.7,
+              }}
+            >
+              No answer yet. Ask a tax question above to see the structured response here.
+            </div>
+          ) : (
+            <div style={{ display: "grid", gap: 16 }}>
+              <div
+                style={{
+                  border: "1px solid var(--border)",
+                  borderRadius: 18,
+                  background: "var(--surface-soft)",
+                  padding: "14px 16px",
+                  color: "var(--text)",
+                  fontWeight: 800,
+                  lineHeight: 1.55,
+                  overflowWrap: "anywhere",
+                }}
+              >
+                Question: {lastQuestion || question}
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gap: 14,
+                  maxWidth: 920,
+                  width: "100%",
+                  margin: "0 auto",
+                }}
+              >
+                {answerSections.map((section, index) => (
+                  <section
+                    key={`${section.title}-${index}`}
+                    style={sectionCardStyle(section.tone)}
+                  >
+                    <h3
+                      style={{
+                        color: "var(--text)",
+                        fontSize:
+                          section.tone === "primary"
+                            ? "clamp(20px, 2.3vw, 26px)"
+                            : "clamp(18px, 2vw, 22px)",
+                        lineHeight: 1.25,
+                        fontWeight: 950,
+                        margin: 0,
+                      }}
+                    >
+                      {section.title}
+                    </h3>
+
+                    <div
+                      style={
+                        section.tone === "primary"
+                          ? directTextStyle
+                          : { display: "grid", gap: 10 }
+                      }
+                    >
+                      {section.tone === "primary"
+                        ? section.body
+                        : formatBody(section.body)}
+                    </div>
+                  </section>
+                ))}
+              </div>
+
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                <span
+                  style={{
+                    border: "1px solid var(--border)",
+                    borderRadius: 999,
+                    padding: "8px 12px",
+                    color: "var(--text-muted)",
+                    fontWeight: 800,
+                    fontSize: 13,
+                  }}
+                >
+                  Source: {safeText(result.source || result.mode, "answer")}
+                </span>
+                <span
+                  style={{
+                    border: "1px solid var(--border)",
+                    borderRadius: 999,
+                    padding: "8px 12px",
+                    color: "var(--text-muted)",
+                    fontWeight: 800,
+                    fontSize: 13,
+                  }}
+                >
+                  Credits charged: {result.meta?.usage_charged ? "Yes" : "No"}
+                </span>
+                {typeof result.meta?.credits_left === "number" ? (
+                  <span
+                    style={{
+                      border: "1px solid var(--border)",
+                      borderRadius: 999,
+                      padding: "8px 12px",
+                      color: "var(--text-muted)",
+                      fontWeight: 800,
+                      fontSize: 13,
+                    }}
+                  >
+                    Credits left: {result.meta.credits_left}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+          )}
+        </WorkspaceSectionCard>
+
+        <WorkspaceSectionCard
+          title="Quick actions"
+          subtitle="Move to the next relevant workspace area."
+        >
+          <CardsGrid min={220} gap={14}>
+            <ShortcutCard
+              title="Credits"
+              subtitle="Review balance, top-ups, and usage history."
+              tone="good"
+              onClick={() => router.push("/credits")}
+            />
+            <ShortcutCard
+              title="Plans"
+              subtitle="Upgrade if you need more Usage Credits or channels."
+              tone="default"
+              onClick={() => router.push("/plans")}
+            />
+            <ShortcutCard
+              title="Help"
+              subtitle="Read app guidance and support details."
+              tone="default"
+              onClick={() => router.push("/help")}
+            />
+            <ShortcutCard
+              title="Support"
+              subtitle="Open a support request if something does not match."
+              tone="warn"
+              onClick={() => router.push("/support")}
+            />
+          </CardsGrid>
+        </WorkspaceSectionCard>
+      </SectionStack>
+
+      <style jsx>{`
+        @media (max-width: 720px) {
+          .ask-form-actions-grid {
+            grid-template-columns: 1fr !important;
+          }
+        }
+      `}</style>
+    </AppShell>
   );
 }
