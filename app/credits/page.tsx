@@ -112,12 +112,18 @@ function creditStatus(balance: number): string {
   return "Healthy";
 }
 
-function normalizePlanCode(subscription: any, billing: any): string {
-  return safeText(subscription?.plan_code || billing?.plan_code || "free", "free").toLowerCase();
+function normalizePlanCode(subscription: unknown, billing: unknown): string {
+  const s = subscription as Record<string, unknown> | null | undefined;
+  const b = billing as Record<string, unknown> | null | undefined;
+
+  return safeText(s?.plan_code || b?.plan_code || "free", "free").toLowerCase();
 }
 
-function normalizePlanFamily(subscription: any, billing: any): string {
-  const directFamily = safeText(subscription?.plan_family || billing?.plan_family || "", "");
+function normalizePlanFamily(subscription: unknown, billing: unknown): string {
+  const s = subscription as Record<string, unknown> | null | undefined;
+  const b = billing as Record<string, unknown> | null | undefined;
+
+  const directFamily = safeText(s?.plan_family || b?.plan_family || "", "");
   if (directFamily) return directFamily.toLowerCase();
 
   const code = normalizePlanCode(subscription, billing);
@@ -127,15 +133,18 @@ function normalizePlanFamily(subscription: any, billing: any): string {
   return "free";
 }
 
-function isActivePaidSubscription(subscription: any, billing: any): boolean {
+function isActivePaidSubscription(subscription: unknown, billing: unknown): boolean {
+  const s = subscription as Record<string, unknown> | null | undefined;
+  const b = billing as Record<string, unknown> | null | undefined;
+
   const code = normalizePlanCode(subscription, billing);
   const family = normalizePlanFamily(subscription, billing);
-  const status = safeText(subscription?.status || billing?.status || "", "").toLowerCase();
+  const status = safeText(s?.status || b?.status || "", "").toLowerCase();
 
   const active =
-    subscription?.is_active === true ||
-    billing?.is_active === true ||
-    billing?.active === true ||
+    s?.is_active === true ||
+    b?.is_active === true ||
+    b?.active === true ||
     status === "active";
 
   if (!active) return false;
@@ -218,6 +227,7 @@ function listItemStyle(): React.CSSProperties {
 export default function CreditsPage() {
   const router = useRouter();
 
+  const workspaceState = useWorkspaceState();
   const {
     profile,
     usage,
@@ -226,7 +236,13 @@ export default function CreditsPage() {
     billing,
     credits,
     refreshAll,
-  } = useWorkspaceState();
+  } = workspaceState;
+
+  const profileAny = profile as Record<string, unknown> | null | undefined;
+  const usageAny = usage as Record<string, unknown> | null | undefined;
+  const subscriptionAny = subscription as Record<string, unknown> | null | undefined;
+  const billingAny = billing as Record<string, unknown> | null | undefined;
+  const creditsAny = credits as Record<string, unknown> | null | undefined;
 
   const [topupLoading, setTopupLoading] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
@@ -253,51 +269,67 @@ export default function CreditsPage() {
         /balance/i.test(alert.title)
     ) || null;
 
-  const balance = safeNumber(credits?.balance ?? billing?.credit_balance);
-  const consumed = safeNumber(credits?.used ?? credits?.consumed ?? usage?.credits_used);
-  const includedByPlan = safeNumber(
-    subscription?.included_credits ||
-      subscription?.ai_credits_total ||
-      billing?.included_credits ||
-      billing?.credit_balance
+  const balance = safeNumber(
+    creditsAny?.balance ??
+      creditsAny?.credit_balance ??
+      creditsAny?.credits_balance ??
+      billingAny?.credit_balance ??
+      billingAny?.credits_balance ??
+      billingAny?.usage_credits
   );
+
+  const consumed = safeNumber(
+    creditsAny?.used ??
+      creditsAny?.consumed ??
+      usageAny?.credits_used ??
+      usageAny?.credit_usage_count
+  );
+
+  const includedByPlan = safeNumber(
+    subscriptionAny?.included_credits ||
+      subscriptionAny?.ai_credits_total ||
+      subscriptionAny?.usage_credits ||
+      billingAny?.included_credits ||
+      billingAny?.ai_credits_total ||
+      billingAny?.credit_balance
+  );
+
   const monthlyAiUsed = safeNumber(
-    usage?.used_this_month ||
-      usage?.monthly_used ||
-      usage?.ai_used_month ||
-      billing?.ai_used_month ||
-      credits?.used_this_month
+    usageAny?.used_this_month ||
+      usageAny?.monthly_used ||
+      usageAny?.ai_used_month ||
+      billingAny?.ai_used_month ||
+      creditsAny?.used_this_month
   );
 
   const planName = safeText(
-    subscription?.plan_name ||
-      billing?.plan_name ||
-      subscription?.plan_code ||
-      billing?.plan_code ||
+    subscriptionAny?.plan_name ||
+      billingAny?.plan_name ||
+      subscriptionAny?.plan_code ||
+      billingAny?.plan_code ||
       "Free Forever"
   );
 
-  const planStatus = safeText(subscription?.status || billing?.status || "Unknown");
+  const planStatus = safeText(subscriptionAny?.status || billingAny?.status || "Unknown");
   const planFamily = normalizePlanFamily(subscription, billing);
   const activePaid = isActivePaidSubscription(subscription, billing);
 
-  const updatedAt = safeText(credits?.updated_at || credits?.last_updated_at || "", "");
-  const expiresAt = safeText(subscription?.expires_at || billing?.expires_at || "", "");
-
-  const nextAction =
-    balance <= 0
-      ? "Open Plans"
-      : balance <= 10
-        ? "Use Carefully"
-        : "Ask a Question";
+  const updatedAt = safeText(
+    creditsAny?.updated_at || creditsAny?.last_updated_at || "",
+    ""
+  );
+  const expiresAt = safeText(
+    subscriptionAny?.expires_at || billingAny?.expires_at || "",
+    ""
+  );
 
   const usageHistory: CreditActivity[] =
-    Array.isArray(credits?.history)
-      ? credits.history
-      : Array.isArray(credits?.usage)
-        ? credits.usage
-        : Array.isArray(usage?.credit_logs)
-          ? usage.credit_logs
+    Array.isArray(creditsAny?.history)
+      ? (creditsAny.history as CreditActivity[])
+      : Array.isArray(creditsAny?.usage)
+        ? (creditsAny.usage as CreditActivity[])
+        : Array.isArray(usageAny?.credit_logs)
+          ? (usageAny.credit_logs as CreditActivity[])
           : [];
 
   async function startTopup(pkg: TopupPackage) {
@@ -439,7 +471,11 @@ export default function CreditsPage() {
               label="Top-up Access"
               value={activePaid ? "Enabled" : "Locked"}
               tone={activePaid ? "good" : "warn"}
-              helper={activePaid ? "Available while your subscription is active." : "Requires active paid subscription."}
+              helper={
+                activePaid
+                  ? "Available while your subscription is active."
+                  : "Requires active paid subscription."
+              }
             />
           </CardsGrid>
         </WorkspaceSectionCard>
