@@ -131,13 +131,27 @@ function normalizePlanFamily(subscription: unknown, billing: unknown): string {
   const s = subscription as Record<string, unknown> | null | undefined;
   const b = billing as Record<string, unknown> | null | undefined;
 
-  const directFamily = safeText(s?.plan_family || b?.plan_family || "", "");
-  if (directFamily) return directFamily.toLowerCase();
-
+  /*
+    Important:
+    Some existing subscription records may return plan_code = starter_monthly
+    while plan_family is still stored as free. The plan_code is the stronger
+    signal for top-up eligibility because users should not be blocked from
+    add-ons when the paid plan code is already active.
+  */
   const code = normalizePlanCode(subscription, billing);
+
   if (code.includes("business")) return "business";
   if (code.includes("professional")) return "professional";
   if (code.includes("starter")) return "starter";
+
+  const directFamily = safeText(s?.plan_family || b?.plan_family || "", "");
+  if (directFamily) {
+    const family = directFamily.toLowerCase();
+    if (family.includes("business")) return "business";
+    if (family.includes("professional")) return "professional";
+    if (family.includes("starter")) return "starter";
+  }
+
   return "free";
 }
 
@@ -294,12 +308,13 @@ export default function CreditsPage() {
   );
 
   const includedByPlan = safeNumber(
-    subscriptionAny?.included_credits ||
-      subscriptionAny?.ai_credits_total ||
-      subscriptionAny?.usage_credits ||
-      billingAny?.included_credits ||
-      billingAny?.ai_credits_total ||
-      billingAny?.credit_balance
+    subscriptionAny?.included_credits ??
+      subscriptionAny?.ai_credits_total ??
+      subscriptionAny?.usage_credits ??
+      billingAny?.included_credits ??
+      billingAny?.ai_credits_total ??
+      billingAny?.credit_balance ??
+      creditsAny?.balance
   );
 
   const monthlyAiUsed = safeNumber(
