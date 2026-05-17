@@ -41,26 +41,34 @@ type CreditActivity = {
 
 const TOPUP_PACKAGES: TopupPackage[] = [
   {
-    code: "TOPUP_100",
-    name: "Mini Boost",
-    credits: 100,
-    price: 200,
-    bestFor: "Light AI tax help and a few extra document actions.",
+    code: "T10",
+    name: "Starter Add-on",
+    credits: 10,
+    price: 500,
+    bestFor: "Light AI questions and quick extra help.",
   },
   {
-    code: "TOPUP_300",
-    name: "Growth Pack",
-    credits: 300,
-    price: 500,
-    bestFor: "Regular AI guidance, filing checklists, and reports.",
+    code: "T50",
+    name: "Smart Add-on",
+    credits: 50,
+    price: 2000,
+    bestFor: "Occasional AI guidance and simple document drafts.",
     badge: "Popular",
   },
   {
-    code: "TOPUP_1000",
-    name: "Power Pack",
-    credits: 1000,
-    price: 1500,
-    bestFor: "Heavy usage across web, WhatsApp, Telegram, and documents.",
+    code: "T100",
+    name: "Growth Add-on",
+    credits: 100,
+    price: 3500,
+    bestFor: "Regular AI answers, filing checklists, and summaries.",
+  },
+  {
+    code: "T500",
+    name: "Business Add-on",
+    credits: 500,
+    price: 15000,
+    bestFor: "Best value for heavy document work, team use, and channel usage.",
+    badge: "Best Value",
   },
 ];
 
@@ -355,6 +363,7 @@ export default function CreditsPage() {
           topup_code: pkg.code,
           code: pkg.code,
           purpose: "usage_topup",
+          credits: pkg.credits,
         }),
       });
 
