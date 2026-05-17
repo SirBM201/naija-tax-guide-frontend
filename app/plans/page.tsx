@@ -83,46 +83,35 @@ const CYCLE_HELPER: Record<BillingCycle, string> = {
 
 const PLAN_BENEFITS: Record<Exclude<Tier, "free">, string[]> = {
   starter: [
-    "Everything in Free Forever",
-    "AI-powered tax answers using Usage Credits",
-    "Credit top-up/add-ons enabled while subscription is active",
-    "Unlimited non-AI tax quiz attempts",
-    "Custom tax deadlines and reminders",
-    "Basic filing guidance for PAYE, VAT, CIT, and WHT",
-    "Basic AI-assisted document drafts and tax summaries powered by credits",
-    "Unified credit wallet across Web + one messaging channel",
-    "Maximum 2 channels total: Web + WhatsApp OR Telegram",
+    "AI tax answers using Usage Credits",
+    "Custom deadlines and reminders",
+    "Basic document drafts and summaries",
+    "Credit top-up/add-ons while active",
+    "Unlimited non-AI tax quiz",
+    "Web + WhatsApp OR Telegram",
   ],
   professional: [
     "Everything in Starter",
-    "Higher Usage Credits for regular tax guidance",
-    "Web + WhatsApp + Telegram access",
-    "Advanced AI explanations and filing checklist support",
-    "Document generation for tax letters, filing checklists, summaries, and compliance notes using credits",
-    "Salary comparison and richer tax planning tools",
-    "Credit usage ledger and clearer activity history",
+    "Advanced AI tax explanations",
+    "Document generation using credits",
+    "Filing checklist support",
+    "Web + WhatsApp + Telegram",
     "Priority support",
   ],
   business: [
     "Everything in Professional",
-    "Highest included Usage Credits for business use",
-    "Business tax workflows for PAYE, VAT, CIT, and WHT",
-    "Advanced document generation, document review support, and business compliance reports using credits",
-    "Team/workspace access and higher channel allowance",
-    "Usage reports, audit trail, and account review support",
+    "Advanced business tax workflows",
+    "Document generation and review",
+    "More channel capacity for teams",
+    "Team/workspace access",
+    "Usage reports and audit trail",
     "Priority business support",
   ],
 };
 
 const PLAN_RESTRICTIONS: Record<Tier, string[]> = {
-  free: [
-    "No Usage Credits included",
-    "No credit top-up/add-on access",
-    "No custom deadline creation",
-    "No document generation",
-    "No connected WhatsApp/Telegram channel",
-  ],
-  starter: ["One connected messaging channel only: choose WhatsApp OR Telegram"],
+  free: [],
+  starter: [],
   professional: [],
   business: [],
 };
@@ -136,7 +125,7 @@ const PLANS: DisplayPlan[] = [
     name: "Starter Monthly",
     audience: "Best for individuals, salary earners, and first-time users.",
     description:
-      "The first real working plan for users who need AI tax answers, one connected messaging channel, custom deadlines, and basic document drafts.",
+      "The first paid plan for AI tax answers, custom reminders, basic documents, and one connected messaging channel.",
     price: 5000,
     credits: 100,
     support_level: "Standard support",
@@ -150,7 +139,7 @@ const PLANS: DisplayPlan[] = [
     name: "Starter Quarterly",
     audience: "Best for individuals, salary earners, and first-time users.",
     description:
-      "Three months of Starter access for users who want one connected messaging channel and stable Usage Credits without monthly renewal stress.",
+      "Three months of Starter access with one connected messaging channel and quarterly Usage Credits.",
     price: 14000,
     credits: 300,
     support_level: "Standard support",
@@ -164,7 +153,7 @@ const PLANS: DisplayPlan[] = [
     name: "Starter Yearly",
     audience: "Best for individuals, salary earners, and first-time users.",
     description:
-      "Twelve months of Starter access with yearly Usage Credits for light but consistent tax guidance and document drafting.",
+      "Twelve months of Starter access for light but consistent AI tax guidance and document drafting.",
     price: 51000,
     credits: 1200,
     support_level: "Standard support",
@@ -180,7 +169,7 @@ const PLANS: DisplayPlan[] = [
     name: "Professional Monthly",
     audience: "Best for freelancers, consultants, creators, and SMEs.",
     description:
-      "Stronger monthly usage capacity for users who need regular AI tax guidance, document generation, and multi-channel access.",
+      "For regular AI tax guidance, document generation, filing support, and full messaging access.",
     price: 12000,
     credits: 300,
     support_level: "Priority support",
@@ -195,7 +184,7 @@ const PLANS: DisplayPlan[] = [
     name: "Professional Quarterly",
     audience: "Best for freelancers, consultants, creators, and SMEs.",
     description:
-      "Three months of Professional access for regular users who need better credit capacity, document generation, and priority support.",
+      "Three months of Professional access with stronger credit capacity, documents, and priority support.",
     price: 33600,
     credits: 900,
     support_level: "Priority support",
@@ -210,7 +199,7 @@ const PLANS: DisplayPlan[] = [
     name: "Professional Yearly",
     audience: "Best for freelancers, consultants, creators, and SMEs.",
     description:
-      "Twelve months of Professional access for users who want stable tax support, document generation, and stronger annual credit capacity.",
+      "Twelve months of Professional access for stable AI tax support, documents, and annual credits.",
     price: 122400,
     credits: 3600,
     support_level: "Priority support",
@@ -227,7 +216,7 @@ const PLANS: DisplayPlan[] = [
     name: "Business Monthly",
     audience: "Best for businesses, teams, consultants, and heavier compliance needs.",
     description:
-      "Higher usage capacity for businesses that need ongoing PAYE, VAT, CIT, WHT guidance, document review, and stronger support.",
+      "For teams and businesses needing higher credits, more channels, document review, and compliance support.",
     price: 25000,
     credits: 800,
     support_level: "Priority support + account review",
@@ -241,7 +230,7 @@ const PLANS: DisplayPlan[] = [
     name: "Business Quarterly",
     audience: "Best for businesses, teams, consultants, and heavier compliance needs.",
     description:
-      "Three months of Business access for higher-volume users who need credit capacity, document workflows, and support continuity.",
+      "Three months of Business access with higher credits, more channels, and document workflows.",
     price: 70000,
     credits: 2400,
     support_level: "Priority support + account review",
@@ -255,7 +244,7 @@ const PLANS: DisplayPlan[] = [
     name: "Business Yearly",
     audience: "Best for businesses, teams, consultants, and heavier compliance needs.",
     description:
-      "Twelve months of Business access for organizations that need high credit capacity, document generation, audit trails, and account review.",
+      "Twelve months of Business access for higher-volume compliance, documents, channels, and reporting.",
     price: 255000,
     credits: 9600,
     support_level: "Priority support + account review",
@@ -772,7 +761,7 @@ export default function PlansPage() {
 
         <WorkspaceSectionCard
           title="Available plans"
-          subtitle="Compare Usage Credits, channels, custom deadlines, document generation, top-up access, and support level before checkout."
+          subtitle="A cleaner pricing view with the key differences users need before checkout."
         >
           <CardsGrid min={280}>
             <div key="free_plan" style={planCardStyle(isCurrentFree, false)}>
@@ -812,8 +801,7 @@ export default function PlansPage() {
                 }}
               >
                 Access basic database/library tax answers, use calculators for free, and take
-                12 non-AI quiz attempts daily. No custom deadlines, no document generation,
-                and no top-up access.
+                12 non-AI quiz attempts daily.
               </div>
 
               <div
@@ -856,7 +844,6 @@ export default function PlansPage() {
                 "Nigeria tax calendar view",
               ])}
 
-              {bulletList(PLAN_RESTRICTIONS.free, "×")}
 
               <button
                 disabled={true}
@@ -981,6 +968,36 @@ export default function PlansPage() {
                 </div>
               );
             })}
+          </CardsGrid>
+        </WorkspaceSectionCard>
+
+        <WorkspaceSectionCard
+          title="Quick plan differences"
+          subtitle="The full policy stays simple: calculators are free, credits power premium AI and document tools, and paid tiers unlock stronger access."
+        >
+          <CardsGrid min={220}>
+            <MetricCard
+              label="Free Forever"
+              value="Basic tools"
+              helper="Database/library answers, free calculators, 12 daily non-AI quiz attempts, and calendar view."
+            />
+            <MetricCard
+              label="Starter"
+              value="Web + 1 channel"
+              helper="AI answers, custom deadlines, basic document drafts, top-ups, and WhatsApp OR Telegram."
+            />
+            <MetricCard
+              label="Professional"
+              value="All core channels"
+              helper="Web + WhatsApp + Telegram, advanced explanations, document generation, and priority support."
+              tone="good"
+            />
+            <MetricCard
+              label="Business"
+              value="More channels"
+              helper="Higher-volume credits, extra channel capacity, team access, document review, and audit reports."
+              tone="warn"
+            />
           </CardsGrid>
         </WorkspaceSectionCard>
       </SectionStack>
