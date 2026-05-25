@@ -262,17 +262,33 @@ function getChannelSummary(channelLinks: unknown): string {
   const whatsapp = links?.whatsapp as Record<string, unknown> | null | undefined;
   const telegram = links?.telegram as Record<string, unknown> | null | undefined;
 
-  const whatsappLinked =
-    whatsapp?.connected === true ||
-    whatsapp?.is_connected === true ||
-    String(whatsapp?.status || "").toLowerCase() === "connected" ||
-    String(whatsapp?.status || "").toLowerCase() === "linked";
+  const isLinked = (channel: Record<string, unknown> | null | undefined, rootKeys: string[]) => {
+    const rootLinked = rootKeys.some((key) => {
+      const value = links?.[key];
+      return value === true || value === "true" || value === 1 || value === "1";
+    });
 
-  const telegramLinked =
-    telegram?.connected === true ||
-    telegram?.is_connected === true ||
-    String(telegram?.status || "").toLowerCase() === "connected" ||
-    String(telegram?.status || "").toLowerCase() === "linked";
+    const channelLinked =
+      channel?.linked === true ||
+      channel?.verified === true ||
+      channel?.is_verified === true ||
+      channel?.connected === true ||
+      channel?.is_connected === true ||
+      String(channel?.linked || "").toLowerCase() === "true" ||
+      String(channel?.verified || "").toLowerCase() === "true" ||
+      String(channel?.is_verified || "").toLowerCase() === "true" ||
+      String(channel?.status || "").toLowerCase() === "connected" ||
+      String(channel?.status || "").toLowerCase() === "linked" ||
+      Boolean(safeText(channel?.value)) ||
+      Boolean(safeText(channel?.provider_user_id)) ||
+      Boolean(safeText(channel?.phone)) ||
+      Boolean(safeText(channel?.username));
+
+    return rootLinked || channelLinked;
+  };
+
+  const whatsappLinked = isLinked(whatsapp, ["whatsapp_linked", "whatsapp_verified"]);
+  const telegramLinked = isLinked(telegram, ["telegram_linked", "telegram_verified"]);
 
   if (whatsappLinked && telegramLinked) return "WhatsApp + Telegram";
   if (whatsappLinked) return "WhatsApp linked";
