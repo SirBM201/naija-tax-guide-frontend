@@ -1,1289 +1,2928 @@
-"use client";
+# app/routes/telegram.py
+from __future__ import annotations
 
-import {
-  type CSSProperties,
-  type FormEvent,
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
-import AppShell from "@/components/app-shell";
+import logging
+import os
+import re
+from datetime import datetime, timezone, timedelta
+from typing import Any, Optional
 
-type WorkspacePlan = {
-  active?: boolean;
-  audience?: string;
-  code?: string;
-  credits?: number;
-  currency?: string;
-  cycle?: string;
-  description?: string;
-  duration_days?: number;
-  max_linked_web_accounts?: number;
-  max_telegram_channels?: number;
-  max_total_channels?: number;
-  max_whatsapp_channels?: number;
-  max_workspace_users?: number;
-  name?: string;
-  plan_family?: string;
-  price?: number;
-  recommended?: boolean;
-  sort_order?: number;
-  support_level?: string;
-  tier?: string;
-};
+from flask import Blueprint, jsonify, request
 
-type WorkspaceLimits = {
-  max_linked_web_accounts?: number;
-  max_workspace_users?: number;
-};
+from app.core.supabase_client import supabase
+from app.services.accounts_service import lookup_account, upsert_account
+from app.services.ask_service import ask_guarded
+from app.services.channel_credit_service import (
+    create_credit_payment,
+    format_balance_message,
+    get_credit_balance,
+    get_credit_packages_menu,
+    validate_package_number,
+)
+from app.services.channel_subscription_service import (
+    create_subscription_payment,
+    format_subscription_message,
+    get_plans_list_menu,
+    get_user_email,
+    has_active_subscription,
+    request_email_message,
+    validate_plan_number,
+)
+from app.services.outbound_service import send_telegram_text
+from app.services.tax_calculator import calculate_tax
+from app.services.tax_filing_service import (
+    delete_filing_draft,
+    get_user_filings,
+    save_filing_draft,
+    submit_tax_filing,
+)
 
-type ChannelLimits = {
-  max_telegram_channels?: number;
-  max_total_channels?: number;
-  max_whatsapp_channels?: number;
-};
+# Batch 27B1 fix: use the imported Supabase client object directly; do not call supabase().
 
-type Entitlements = {
-  account_id?: string;
-  channel_limits?: ChannelLimits;
-  ok?: boolean;
-  plan?: WorkspacePlan;
-  plan_code?: string;
-  plan_family?: string;
-  subscription?: Record<string, unknown>;
-  workspace_limits?: WorkspaceLimits;
-};
+bp = Blueprint("telegram", __name__)
 
-type Counts = {
-  active_members_only?: number;
-  owner_included_total?: number;
-};
+TELEGRAM_ROUTE_VERSION = "2026-05-27-v35a-telegram-ai-ask-history-credit-parity"
 
-type OwnerRecord = {
-  account_id?: string;
-  created_at?: string;
-  display_name?: string | null;
-  email?: string | null;
-  id?: string;
-  provider?: string;
-  provider_user_id?: string;
-  updated_at?: string;
-};
+LINK_CODE_RE = re.compile(r"^[A-Z0-9]{8}$")
+MENU_NUMBER_RE = re.compile(r"^[1-8]$")
 
-type MemberRecord = {
-  id?: string;
-  owner_account_id?: string;
-  member_account_id?: string;
-  role?: string;
-  status?: string;
-  created_at?: string;
-  updated_at?: string;
-  member_email?: string | null;
-  member_display_name?: string | null;
-  member_provider?: string | null;
-  member_provider_user_id?: string | null;
-};
+# Temporary legacy state store retained from the existing Telegram route.
+# A later Telegram batch should move this into a database-backed session table.
+user_states: dict[str, dict[str, Any]] = {}
 
-type LimitsResponse = {
-  account_id?: string;
-  counts?: Counts;
-  entitlements?: Entitlements;
-  ok?: boolean;
-};
+# Batch 27D1: lightweight per-worker throttle to avoid PATCHing channel_identities
+# on every Telegram message. Database last_seen_at is still respected below.
+TELEGRAM_IDENTITY_TOUCH_THROTTLE_SECONDS = int(os.getenv("TELEGRAM_IDENTITY_TOUCH_THROTTLE_SECONDS", "600"))
+telegram_identity_touch_cache: dict[str, datetime] = {}
 
-type MembersResponse = {
-  account_id?: string;
-  count?: number;
-  counts?: Counts;
-  entitlements?: Entitlements;
-  members?: MemberRecord[] | Record<string, never>;
-  ok?: boolean;
-  owner?: OwnerRecord;
-};
 
-type ApiErrorShape = {
-  error?: string;
-  message?: string;
-  reason?: string;
-  fix?: string;
-};
+# ---------------------------------------------------------------------------
+# Batch 27D: WhatsApp master command registry for Telegram
+# ---------------------------------------------------------------------------
+# WhatsApp is the source of truth:
+# S1-S3 = Starter plans, P1-P3 = Professional plans, B1-B3 = Business plans.
+# T10/T50/T100/T500 = Usage Credit add-ons.
+# PAY1-PAY6 = billing/payment history, not subscription plan selection.
+# Plain numbers 1-8 are reserved for the main menu only.
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/+$/, "") ||
-  "https://incredible-nonie-bmsconcept-37359733.koyeb.app";
-
-function formatDate(value?: string) {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString();
+MASTER_PLAN_CODE_TO_NUMBER: dict[str, int] = {
+    "S1": 1,
+    "S2": 2,
+    "S3": 3,
+    "P1": 4,
+    "P2": 5,
+    "P3": 6,
+    "B1": 7,
+    "B2": 8,
+    "B3": 9,
 }
 
-function normalizeMembers(input: MembersResponse["members"]): MemberRecord[] {
-  return Array.isArray(input) ? input : [];
+MASTER_TOPUP_CODE_TO_NUMBER: dict[str, int] = {
+    "T10": 1,
+    "T50": 2,
+    "T100": 3,
+    "T500": 4,
 }
 
-function extractErrorMessage(payload: ApiErrorShape | null, fallback: string) {
-  if (!payload) return fallback;
-  return payload.fix || payload.message || payload.error || payload.reason || fallback;
-}
+MASTER_COMMAND_RE = re.compile(
+    r"^(ALL|ACC[1-3]|SET[1-3]|SUP[1-6]|CR[1-4]|PAY[1-6]|FT[1-8]|R[1-6]|"
+    r"S[1-3]|P[1-3]|B[1-3]|T(?:10|50|100|500)|F[1-8]|C[1-8]|Q[1-5]|D[1-4]|H[1-2])\b",
+    re.I,
+)
 
-function normalizeThrownError(error: unknown, fallback: string) {
-  if (error instanceof Error) {
-    if (error.message === "Failed to fetch") {
-      return "Unable to reach the workspace service right now. Confirm the backend is running, the workspace routes exist, and CORS/cookie settings still allow this page to call the API.";
-    }
-    return error.message || fallback;
-  }
-  return fallback;
-}
+INVALID_COMMAND_LIKE_RE = re.compile(
+    r"^(?:ACC|SET|SUP|CR|PAY|FT|R|S|P|B|T|F|C|Q|D|H)\d+\b",
+    re.I,
+)
 
-function buildPlanName(
-  plan: WorkspacePlan | undefined,
-  planFamily?: string,
-  planCode?: string,
-  maxWorkspaceUsers?: number,
-  maxTotalChannels?: number
-) {
-  if (plan?.name?.trim()) return plan.name.trim();
-  if (plan?.code?.trim()) return plan.code.trim();
-  if (planCode?.trim()) return planCode.trim();
-  if (planFamily?.trim()) {
-    return planFamily
-      .trim()
-      .replace(/[_-]+/g, " ")
-      .replace(/\b\w/g, (char) => char.toUpperCase());
-  }
-  if ((maxWorkspaceUsers ?? 0) > 0 || (maxTotalChannels ?? 0) > 0) {
-    return "Workspace-enabled plan";
-  }
-  return "No active plan";
-}
 
-function safeCount(value?: number) {
-  return typeof value === "number" && Number.isFinite(value) ? value : 0;
-}
 
-async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
-  let response: Response;
+# ---------------------------------------------------------------------------
+# Generic helpers
+# ---------------------------------------------------------------------------
 
-  try {
-    response = await fetch(`${API_BASE}${path}`, {
-      ...init,
-      credentials: "include",
-      headers: {
-        "Content-Type": "application/json",
-        ...(init?.headers || {}),
-      },
-      cache: "no-store",
-    });
-  } catch (error) {
-    throw new Error(normalizeThrownError(error, "Unable to reach workspace service."));
-  }
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
-  const text = await response.text();
-  let data: unknown = null;
 
-  try {
-    data = text ? JSON.parse(text) : null;
-  } catch {
-    data = null;
-  }
+def _rows(resp: Any) -> list[dict[str, Any]]:
+    data = getattr(resp, "data", None)
+    if data is None:
+        return []
+    if isinstance(data, list):
+        return [x for x in data if isinstance(x, dict)]
+    if isinstance(data, dict):
+        return [data]
+    return []
 
-  if (!response.ok) {
-    const message = extractErrorMessage(
-      (data as ApiErrorShape | null) ?? null,
-      `Request failed with status ${response.status}`
-    );
-    throw new Error(message);
-  }
 
-  return data as T;
-}
+def _first(resp: Any) -> Optional[dict[str, Any]]:
+    rows = _rows(resp)
+    return rows[0] if rows else None
 
-const styles: Record<string, CSSProperties> = {
-  page: {
-    minHeight: "100%",
-    background: "transparent",
-    color: "#0f172a",
-    fontFamily:
-      'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-  },
-  container: {
-    maxWidth: "1180px",
-    margin: "0 auto",
-    width: "100%",
-  },
-  topSummary: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 180px), 1fr))",
-    gap: 12,
-    marginBottom: 18,
-  },
-  summaryCard: {
-    background: "linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)",
-    border: "1px solid #e2e8f0",
-    borderRadius: 20,
-    padding: 16,
-    boxShadow: "0 8px 20px rgba(15, 23, 42, 0.05)",
-    minWidth: 0,
-  },
-  summaryLabel: {
-    fontSize: 11,
-    fontWeight: 800,
-    textTransform: "uppercase",
-    letterSpacing: "0.08em",
-    color: "#64748b",
-    marginBottom: 8,
-  },
-  summaryValue: {
-    fontSize: "clamp(18px, 3vw, 20px)",
-    fontWeight: 800,
-    color: "#0f172a",
-    lineHeight: 1.3,
-    overflowWrap: "anywhere",
-  },
-  summarySub: {
-    fontSize: 13,
-    color: "#64748b",
-    marginTop: 6,
-    lineHeight: 1.5,
-    overflowWrap: "anywhere",
-  },
-  heroAlert: {
-    background: "linear-gradient(180deg, #fff7ed 0%, #fffbeb 100%)",
-    border: "1px solid #fed7aa",
-    color: "#9a3412",
-    borderRadius: 22,
-    padding: 18,
-    marginBottom: 18,
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 16,
-    flexWrap: "wrap",
-  },
-  heroInfo: {
-    background: "linear-gradient(180deg, #eff6ff 0%, #f8fafc 100%)",
-    border: "1px solid #bfdbfe",
-    color: "#1d4ed8",
-    borderRadius: 22,
-    padding: 18,
-    marginBottom: 18,
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 16,
-    flexWrap: "wrap",
-  },
-  heroTitle: {
-    margin: 0,
-    fontSize: 18,
-    fontWeight: 800,
-  },
-  heroText: {
-    marginTop: 6,
-    fontSize: 14,
-    lineHeight: 1.6,
-    maxWidth: 760,
-    overflowWrap: "anywhere",
-  },
-  button: {
-    border: "none",
-    borderRadius: 16,
-    padding: "14px 18px",
-    background: "#4f46e5",
-    color: "#ffffff",
-    fontSize: 15,
-    fontWeight: 700,
-    cursor: "pointer",
-    boxShadow: "0 6px 18px rgba(79, 70, 229, 0.25)",
-    textDecoration: "none",
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    textAlign: "center",
-    width: "100%",
-    maxWidth: 240,
-  },
-  buttonDisabled: {
-    background: "#94a3b8",
-    cursor: "not-allowed",
-    boxShadow: "none",
-  },
-  buttonSecondary: {
-    border: "1px solid #c7d2fe",
-    borderRadius: 16,
-    padding: "14px 18px",
-    background: "#eef2ff",
-    color: "#3730a3",
-    fontSize: 15,
-    fontWeight: 700,
-    cursor: "pointer",
-    textDecoration: "none",
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    textAlign: "center",
-    width: "100%",
-    maxWidth: 240,
-  },
-  buttonWarning: {
-    border: "1px solid #fdba74",
-    borderRadius: 16,
-    padding: "12px 18px",
-    background: "#ea580c",
-    color: "#ffffff",
-    fontSize: 14,
-    fontWeight: 800,
-    cursor: "pointer",
-    textDecoration: "none",
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    textAlign: "center",
-    boxShadow: "0 10px 22px rgba(234, 88, 12, 0.20)",
-    width: "100%",
-    maxWidth: 280,
-  },
-  bannerError: {
-    border: "1px solid #fecaca",
-    background: "#fef2f2",
-    color: "#b91c1c",
-    borderRadius: 18,
-    padding: 14,
-    marginBottom: 18,
-    fontSize: 14,
-    lineHeight: 1.6,
-    overflowWrap: "anywhere",
-  },
-  grid4: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 210px), 1fr))",
-    gap: 14,
-    marginBottom: 18,
-  },
-  grid3: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 240px), 1fr))",
-    gap: 14,
-    marginBottom: 18,
-  },
-  grid2: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 300px), 1fr))",
-    gap: 18,
-    alignItems: "start",
-    marginBottom: 18,
-  },
-  card: {
-    background: "#ffffff",
-    borderRadius: 24,
-    padding: 18,
-    boxShadow: "0 8px 24px rgba(15, 23, 42, 0.06)",
-    minWidth: 0,
-  },
-  label: {
-    fontSize: 12,
-    fontWeight: 800,
-    textTransform: "uppercase",
-    letterSpacing: "0.08em",
-    color: "#64748b",
-    marginBottom: 8,
-  },
-  bigTitle: {
-    margin: 0,
-    fontSize: "clamp(20px, 4vw, 24px)",
-    fontWeight: 800,
-    color: "#0f172a",
-    lineHeight: 1.25,
-    overflowWrap: "anywhere",
-  },
-  hugeValue: {
-    margin: "8px 0 0",
-    fontSize: "clamp(30px, 7vw, 42px)",
-    fontWeight: 800,
-    color: "#0f172a",
-    lineHeight: 1.15,
-    overflowWrap: "anywhere",
-  },
-  hugeValueSub: {
-    fontSize: "clamp(18px, 4vw, 22px)",
-    color: "#64748b",
-    fontWeight: 600,
-  },
-  subText: {
-    marginTop: 8,
-    fontSize: 14,
-    color: "#64748b",
-    lineHeight: 1.5,
-    overflowWrap: "anywhere",
-  },
-  statRow: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 12,
-    flexWrap: "wrap",
-    borderRadius: 16,
-    background: "#f8fafc",
-    padding: "14px 16px",
-    marginTop: 10,
-    fontSize: 15,
-  },
-  statValue: {
-    fontWeight: 700,
-    color: "#0f172a",
-    overflowWrap: "anywhere",
-  },
-  ownerBox: {
-    border: "1px solid #e2e8f0",
-    borderRadius: 18,
-    padding: 16,
-    marginTop: 14,
-    background: "#ffffff",
-    minWidth: 0,
-  },
-  ownerName: {
-    margin: 0,
-    fontSize: 18,
-    fontWeight: 700,
-    color: "#0f172a",
-    overflowWrap: "anywhere",
-  },
-  ownerMeta: {
-    marginTop: 6,
-    fontSize: 14,
-    color: "#475569",
-    overflowWrap: "anywhere",
-  },
-  miniLabel: {
-    marginTop: 14,
-    fontSize: 11,
-    fontWeight: 800,
-    textTransform: "uppercase",
-    letterSpacing: "0.08em",
-    color: "#94a3b8",
-  },
-  sectionTitle: {
-    margin: 0,
-    fontSize: 18,
-    fontWeight: 800,
-    color: "#0f172a",
-  },
-  sectionText: {
-    marginTop: 8,
-    fontSize: 14,
-    color: "#64748b",
-    lineHeight: 1.6,
-    overflowWrap: "anywhere",
-  },
-  formGroup: {
-    marginTop: 16,
-  },
-  formLabel: {
-    display: "block",
-    marginBottom: 8,
-    fontSize: 14,
-    fontWeight: 600,
-    color: "#334155",
-  },
-  input: {
-    width: "100%",
-    borderRadius: 16,
-    border: "1px solid #cbd5e1",
-    padding: "13px 14px",
-    fontSize: 16,
-    outline: "none",
-    background: "#ffffff",
-    color: "#0f172a",
-    boxSizing: "border-box",
-    minWidth: 0,
-  },
-  inputDisabled: {
-    background: "#f1f5f9",
-    color: "#94a3b8",
-    cursor: "not-allowed",
-  },
-  select: {
-    width: "100%",
-    borderRadius: 16,
-    border: "1px solid #cbd5e1",
-    padding: "13px 14px",
-    fontSize: 16,
-    outline: "none",
-    background: "#ffffff",
-    color: "#0f172a",
-    boxSizing: "border-box",
-    minWidth: 0,
-  },
-  selectDisabled: {
-    background: "#f1f5f9",
-    color: "#94a3b8",
-    cursor: "not-allowed",
-  },
-  successBox: {
-    border: "1px solid #bbf7d0",
-    background: "#f0fdf4",
-    color: "#166534",
-    borderRadius: 16,
-    padding: "12px 14px",
-    marginTop: 14,
-    fontSize: 14,
-    lineHeight: 1.6,
-    overflowWrap: "anywhere",
-  },
-  errorBox: {
-    border: "1px solid #fecaca",
-    background: "#fef2f2",
-    color: "#b91c1c",
-    borderRadius: 16,
-    padding: "12px 14px",
-    marginTop: 14,
-    fontSize: 14,
-    lineHeight: 1.6,
-    overflowWrap: "anywhere",
-  },
-  warningBox: {
-    border: "1px solid #fcd34d",
-    background: "#fffbeb",
-    color: "#92400e",
-    borderRadius: 16,
-    padding: "14px 16px",
-    marginTop: 16,
-    fontSize: 14,
-    lineHeight: 1.6,
-    overflowWrap: "anywhere",
-  },
-  noteBox: {
-    marginTop: 16,
-    borderRadius: 18,
-    background: "#f8fafc",
-    padding: 16,
-    fontSize: 14,
-    lineHeight: 1.6,
-    color: "#475569",
-    overflowWrap: "anywhere",
-  },
-  actionRow: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 160px), 1fr))",
-    gap: 12,
-    marginTop: 14,
-    width: "100%",
-  },
-  membersHeader: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 12,
-    flexWrap: "wrap",
-  },
-  badge: {
-    borderRadius: 999,
-    background: "#e2e8f0",
-    padding: "6px 12px",
-    fontSize: 12,
-    fontWeight: 700,
-    color: "#334155",
-    maxWidth: "100%",
-    overflowWrap: "anywhere",
-  },
-  emptyBox: {
-    marginTop: 18,
-    border: "1px dashed #cbd5e1",
-    background: "#f8fafc",
-    borderRadius: 18,
-    padding: 24,
-    textAlign: "center",
-    color: "#64748b",
-    fontSize: 15,
-    lineHeight: 1.6,
-  },
-  memberCard: {
-    border: "1px solid #e2e8f0",
-    borderRadius: 18,
-    padding: 16,
-    marginTop: 16,
-    background: "#ffffff",
-    minWidth: 0,
-  },
-  memberHead: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: 16,
-    flexWrap: "wrap",
-  },
-  memberName: {
-    margin: 0,
-    fontSize: 16,
-    fontWeight: 700,
-    color: "#0f172a",
-    overflowWrap: "anywhere",
-  },
-  memberEmail: {
-    marginTop: 6,
-    fontSize: 14,
-    color: "#475569",
-    overflowWrap: "anywhere",
-  },
-  memberGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 160px), 1fr))",
-    gap: 14,
-    marginTop: 14,
-  },
-  removeButton: {
-    border: "none",
-    borderRadius: 14,
-    padding: "12px 16px",
-    background: "#fef2f2",
-    color: "#b91c1c",
-    fontSize: 14,
-    fontWeight: 700,
-    cursor: "pointer",
-    width: "100%",
-    maxWidth: 160,
-  },
-  removeButtonDisabled: {
-    background: "#e2e8f0",
-    color: "#64748b",
-    cursor: "not-allowed",
-  },
-  loadingCard: {
-    background: "#ffffff",
-    borderRadius: 24,
-    padding: 20,
-    boxShadow: "0 8px 24px rgba(15, 23, 42, 0.06)",
-    fontSize: 16,
-    color: "#475569",
-  },
-};
 
-export default function WorkspacePage() {
-  const [limits, setLimits] = useState<LimitsResponse | null>(null);
-  const [membersData, setMembersData] = useState<MembersResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [pageError, setPageError] = useState("");
-  const [refreshing, setRefreshing] = useState(false);
+def _safe_exec(builder: Any) -> tuple[bool, Any, Optional[str]]:
+    try:
+        resp = builder.execute()
+        return True, resp, None
+    except Exception as exc:
+        return False, None, str(exc)
 
-  const [memberEmail, setMemberEmail] = useState("");
-  const [role, setRole] = useState("member");
-  const [submittingAdd, setSubmittingAdd] = useState(false);
-  const [addMessage, setAddMessage] = useState("");
-  const [addError, setAddError] = useState("");
 
-  const [removingId, setRemovingId] = useState("");
-  const [removeMessage, setRemoveMessage] = useState("");
-  const [removeError, setRemoveError] = useState("");
+def _env_present(*names: str) -> bool:
+    return any(bool(os.getenv(name)) for name in names)
 
-  const loadWorkspace = useCallback(async (isRefresh = false) => {
-    try {
-      setPageError("");
-      if (isRefresh) {
-        setRefreshing(true);
-      } else {
-        setLoading(true);
-      }
 
-      const [limitsResult, membersResult] = await Promise.allSettled([
-        apiRequest<LimitsResponse>("/api/workspace/limits"),
-        apiRequest<MembersResponse>("/api/workspace/members"),
-      ]);
+def _clean_text(value: Any) -> str:
+    return str(value or "").strip()
 
-      const nextErrors: string[] = [];
 
-      if (limitsResult.status === "fulfilled") {
-        setLimits(limitsResult.value);
-      } else {
-        nextErrors.push(
-          `Workspace limits could not be loaded. ${normalizeThrownError(
-            limitsResult.reason,
-            "Unable to load workspace limits."
-          )}`
-        );
-      }
+def _parse_amount(text: str) -> float:
+    return float(text.replace(",", "").replace("₦", "").strip())
 
-      if (membersResult.status === "fulfilled") {
-        setMembersData(membersResult.value);
-      } else {
-        nextErrors.push(
-          `Workspace members could not be loaded. ${normalizeThrownError(
-            membersResult.reason,
-            "Unable to load workspace members."
-          )}`
-        );
-      }
 
-      setPageError(nextErrors.join(" "));
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
 
-  useEffect(() => {
-    void loadWorkspace();
-  }, [loadWorkspace]);
+def _parse_dt(value: Any) -> Optional[datetime]:
+    raw = _clean_text(value)
+    if not raw:
+        return None
 
-  const plan = limits?.entitlements?.plan || membersData?.entitlements?.plan;
-  const workspaceLimits =
-    limits?.entitlements?.workspace_limits ||
-    membersData?.entitlements?.workspace_limits ||
-    {};
-  const channelLimits =
-    limits?.entitlements?.channel_limits ||
-    membersData?.entitlements?.channel_limits ||
-    {};
-  const counts = membersData?.counts || limits?.counts || {};
-  const owner = membersData?.owner;
-  const members = useMemo(
-    () => normalizeMembers(membersData?.members),
-    [membersData?.members]
-  );
+    try:
+        dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    except Exception:
+        return None
 
-  const usedSlots = safeCount(counts.owner_included_total);
-  const memberOnlyCount = safeCount(counts.active_members_only) || members.length;
-  const maxWorkspaceUsers = safeCount(workspaceLimits.max_workspace_users);
-  const maxLinkedWebAccounts = safeCount(workspaceLimits.max_linked_web_accounts);
-  const maxTotalChannels = safeCount(channelLimits.max_total_channels);
-  const maxWhatsappChannels = safeCount(channelLimits.max_whatsapp_channels);
-  const maxTelegramChannels = safeCount(channelLimits.max_telegram_channels);
 
-  const availableSlots =
-    maxWorkspaceUsers > 0 ? Math.max(maxWorkspaceUsers - usedSlots, 0) : 0;
+def _looks_like_bad_command(text: str) -> bool:
+    """
+    Stop obvious command typos from hitting the AI engine.
+    This is intentionally conservative so normal questions like "what is PAYE?"
+    or "cit filing deadline" are not blocked.
+    """
+    value = _clean_text(text).upper()
+    if not value:
+        return False
 
-  const planName = buildPlanName(
-    plan,
-    limits?.entitlements?.plan_family || membersData?.entitlements?.plan_family,
-    limits?.entitlements?.plan_code || plan?.code,
-    maxWorkspaceUsers,
-    maxTotalChannels
-  );
+    first = value.split()[0]
 
-  const hasWorkspacePlan =
-    planName !== "No active plan" ||
-    maxWorkspaceUsers > 0 ||
-    maxTotalChannels > 0 ||
-    Boolean(limits?.entitlements?.plan_code);
+    if first in {"ALL", "MENU", "START", "HELP", "BACK", "CANCEL", "UNLINK"}:
+        return False
 
-  const workspacePlanFull = hasWorkspacePlan && maxWorkspaceUsers > 0 && availableSlots <= 0;
-  const addBlockedBecauseNoPlan = !hasWorkspacePlan || maxWorkspaceUsers <= 0;
-  const addBlocked = addBlockedBecauseNoPlan || workspacePlanFull;
+    if MASTER_COMMAND_RE.match(value):
+        return False
 
-  const ownerAccountId =
-    owner?.account_id ||
-    membersData?.account_id ||
-    limits?.account_id ||
-    limits?.entitlements?.account_id ||
-    "—";
+    if INVALID_COMMAND_LIKE_RE.match(value):
+        return True
 
-  async function handleAddMember(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setAddMessage("");
-    setAddError("");
-    setRemoveMessage("");
-    setRemoveError("");
+    for prefix in ("ACC", "SET", "SUP", "PAY", "CR", "FT"):
+        if first.startswith(prefix) and len(first) > len(prefix):
+            return True
 
-    if (addBlockedBecauseNoPlan) {
-      setAddError(
-        "Workspace member access is not enabled on the current plan. Activate or upgrade to a plan that includes workspace slots first."
-      );
-      return;
+    if re.match(r"^T\d+\b", first):
+        return True
+
+    return False
+
+
+# ---------------------------------------------------------------------------
+# Health
+# ---------------------------------------------------------------------------
+
+@bp.route("/telegram/health", methods=["GET", "POST", "HEAD", "OPTIONS"])
+def telegram_health():
+    return jsonify(
+        {
+            "ok": True,
+            "service": "telegram",
+            "version": TELEGRAM_ROUTE_VERSION,
+            "route_mount": "/api/telegram/*",
+            "account_resolution": "channel_identities_first_accounts_auth_fallback",
+            "command_namespace": "whatsapp_master_registry_ai_ask_history_credit_parity",
+            "configured": {
+                "bot_token": _env_present("TELEGRAM_BOT_TOKEN", "TG_BOT_TOKEN", "TELEGRAM_TOKEN"),
+                "webhook_secret": _env_present("TELEGRAM_WEBHOOK_SECRET", "TG_WEBHOOK_SECRET"),
+            },
+        }
+    )
+
+
+# ---------------------------------------------------------------------------
+# Account / channel identity resolution
+# ---------------------------------------------------------------------------
+
+def _get_telegram_identity(provider_user_id: str) -> Optional[dict[str, Any]]:
+    db = supabase
+    ok, resp, _ = _safe_exec(
+        db.table("channel_identities")
+        .select("*")
+        .eq("channel_type", "telegram")
+        .eq("provider_user_id", provider_user_id)
+        .limit(1)
+    )
+    if not ok:
+        return None
+    row = _first(resp)
+    if row and row.get("account_id"):
+        return row
+    return None
+
+
+def _get_telegram_account_row(provider_user_id: str) -> Optional[dict[str, Any]]:
+    provider_user_id = _clean_text(provider_user_id)
+    if not provider_user_id:
+        return None
+
+    try:
+        resp = (
+            supabase.table("accounts")
+            .select("*")
+            .eq("provider", "tg")
+            .eq("provider_user_id", provider_user_id)
+            .limit(1)
+            .execute()
+        )
+        return _first(resp)
+    except Exception:
+        logging.exception("Telegram account row lookup failed")
+        return None
+
+
+def _effective_account_id_from_tg_account(row: Optional[dict[str, Any]]) -> Optional[str]:
+    """
+    For provider=tg rows:
+      - auth_user_id is the linked website owner account.
+      - account_id/id can be only the standalone Telegram shell account.
+
+    Therefore auth_user_id must be preferred whenever it exists.
+    """
+    if not isinstance(row, dict):
+        return None
+
+    for key in ("auth_user_id", "account_id", "id"):
+        value = _clean_text(row.get(key))
+        if value:
+            return value
+
+    return None
+
+
+def _clear_telegram_account_auth(provider_user_id: str) -> None:
+    provider_user_id = _clean_text(provider_user_id)
+    if not provider_user_id:
+        return
+
+    try:
+        supabase.table("accounts").update(
+            {
+                "auth_user_id": None,
+                "updated_at": _utc_now_iso(),
+            }
+        ).eq("provider", "tg").eq("provider_user_id", provider_user_id).execute()
+    except Exception:
+        logging.exception("Telegram accounts.auth_user_id clear failed")
+
+
+def _set_telegram_account_auth(provider_user_id: str, account_id: str, display_name: Optional[str] = None) -> None:
+    provider_user_id = _clean_text(provider_user_id)
+    account_id = _clean_text(account_id)
+    if not provider_user_id or not account_id:
+        return
+
+    try:
+        # Ensure the provider=tg row exists first.
+        try:
+            upsert_account(provider="tg", provider_user_id=provider_user_id, display_name=display_name, phone=None)
+        except Exception:
+            logging.exception("Telegram account upsert before auth link failed")
+
+        patch: dict[str, Any] = {
+            "auth_user_id": account_id,
+            "updated_at": _utc_now_iso(),
+        }
+        if display_name:
+            patch["display_name"] = display_name
+
+        supabase.table("accounts").update(patch).eq("provider", "tg").eq("provider_user_id", provider_user_id).execute()
+    except Exception:
+        logging.exception("Telegram accounts.auth_user_id set failed")
+
+
+def _ensure_telegram_channel_identity(
+    *,
+    account_id: str,
+    provider_user_id: str,
+    display_name: Optional[str] = None,
+    source: str = "telegram_link_persistence",
+) -> dict[str, Any]:
+    """
+    Persist the durable link in channel_identities.
+
+    The old RPC/account fallback can report "linked successfully" without a
+    channel_identities row. The web Channels page and the Telegram resolver
+    both need channel_identities, so we create it here after successful code
+    consumption.
+    """
+    account_id = _clean_text(account_id)
+    provider_user_id = _clean_text(provider_user_id)
+
+    if not account_id or not provider_user_id:
+        return {"ok": False, "reason": "missing_account_or_provider_user_id"}
+
+    now = _utc_now_iso()
+
+    # Enforce one Telegram identity per Telegram user and one Telegram identity per account.
+    for field, value in (("provider_user_id", provider_user_id), ("account_id", account_id)):
+        try:
+            supabase.table("channel_identities").delete().eq("channel_type", "telegram").eq(field, value).execute()
+        except Exception:
+            logging.exception("Telegram channel identity cleanup failed for %s=%s", field, value)
+
+    base_payload: dict[str, Any] = {
+        "account_id": account_id,
+        "channel_type": "telegram",
+        "provider_user_id": provider_user_id,
     }
 
-    if (workspacePlanFull) {
-      setAddError(
-        "Your current team-member slots are full. This only affects adding extra workspace members; it does not mean your WhatsApp or Telegram channel slots are full. Upgrade your plan or remove an existing member first."
-      );
-      return;
+    metadata = {
+        "source": source,
+        "display_name": display_name,
+        "linked_at": now,
     }
 
-    const cleanEmail = memberEmail.trim().toLowerCase();
-    if (!cleanEmail) {
-      setAddError("Enter the email address of an existing web account.");
-      return;
+    # Column-safe attempts. Different table revisions may not have every column.
+    payload_attempts: list[dict[str, Any]] = [
+        {
+            **base_payload,
+            "is_verified": True,
+            "verified": True,
+            "value": provider_user_id,
+            "metadata": metadata,
+            "created_at": now,
+            "updated_at": now,
+            "last_seen_at": now,
+        },
+        {
+            **base_payload,
+            "is_verified": True,
+            "metadata": metadata,
+            "updated_at": now,
+            "last_seen_at": now,
+        },
+        {
+            **base_payload,
+            "metadata": metadata,
+            "updated_at": now,
+            "last_seen_at": now,
+        },
+        base_payload,
+    ]
+
+    last_error = None
+    for payload in payload_attempts:
+        ok, resp, err = _safe_exec(supabase.table("channel_identities").insert(payload))
+        if ok:
+            row = _first(resp)
+            return {"ok": True, "row": row, "payload_keys": sorted(payload.keys())}
+        last_error = err
+
+    return {"ok": False, "reason": "insert_failed", "error": last_error}
+
+
+def _persist_successful_telegram_link(
+    *,
+    account_id: str,
+    provider_user_id: str,
+    display_name: Optional[str] = None,
+) -> dict[str, Any]:
+    account_id = _clean_text(account_id)
+    provider_user_id = _clean_text(provider_user_id)
+
+    if not account_id or not provider_user_id:
+        return {"ok": False, "reason": "missing_account_or_provider_user_id"}
+
+    _set_telegram_account_auth(provider_user_id, account_id, display_name=display_name)
+    identity_result = _ensure_telegram_channel_identity(
+        account_id=account_id,
+        provider_user_id=provider_user_id,
+        display_name=display_name,
+        source="consume_link_token_success",
+    )
+
+    return {
+        "ok": bool(identity_result.get("ok")),
+        "account_id": account_id,
+        "provider_user_id": provider_user_id,
+        "identity_result": identity_result,
     }
 
-    try {
-      setSubmittingAdd(true);
 
-      const result = await apiRequest<{
-        ok?: boolean;
-        message?: string;
-        fix?: string;
-      }>("/api/workspace/members/add", {
-        method: "POST",
-        body: JSON.stringify({
-          member_email: cleanEmail,
-          role,
-        }),
-      });
+def _touch_telegram_identity(identity: dict[str, Any], display_name: Optional[str] = None) -> None:
+    identity_id = _clean_text(identity.get("id"))
+    if not identity_id:
+        return
 
-      setAddMessage(result.message || "Member added successfully.");
-      setMemberEmail("");
-      setRole("member");
-      await loadWorkspace(true);
-    } catch (error) {
-      setAddError(
-        normalizeThrownError(error, "Unable to add workspace member right now.")
-      );
-    } finally {
-      setSubmittingAdd(false);
+    now = datetime.now(timezone.utc)
+    cache_key = identity_id
+
+    last_local = telegram_identity_touch_cache.get(cache_key)
+    if last_local and (now - last_local).total_seconds() < TELEGRAM_IDENTITY_TOUCH_THROTTLE_SECONDS:
+        return
+
+    last_seen = _parse_dt(identity.get("last_seen_at") or identity.get("updated_at"))
+    metadata = identity.get("metadata") or {}
+    if not isinstance(metadata, dict):
+        metadata = {}
+
+    needs_metadata_update = bool(display_name and not metadata.get("display_name"))
+
+    if (
+        last_seen
+        and (now - last_seen).total_seconds() < TELEGRAM_IDENTITY_TOUCH_THROTTLE_SECONDS
+        and not needs_metadata_update
+    ):
+        telegram_identity_touch_cache[cache_key] = now
+        return
+
+    payload: dict[str, Any] = {"last_seen_at": _utc_now_iso()}
+
+    if needs_metadata_update:
+        metadata["display_name"] = display_name
+        payload["metadata"] = metadata
+
+    try:
+        supabase.table("channel_identities").update(payload).eq("id", identity_id).execute()
+        telegram_identity_touch_cache[cache_key] = now
+    except Exception:
+        logging.exception("Telegram identity touch failed")
+
+
+def _resolve_telegram_account(*, tg_user_id: str, display_name: Optional[str] = None) -> dict[str, Any]:
+    """
+    Correct account resolution order:
+      1. channel_identities first: linked website workspace account.
+      2. accounts.provider=tg fallback only when no linked channel exists.
+    """
+    tg_user_id = _clean_text(tg_user_id)
+    if not tg_user_id:
+        return {"ok": False, "reason": "missing_tg_user_id"}
+
+    identity = _get_telegram_identity(tg_user_id)
+    if identity and identity.get("account_id"):
+        _touch_telegram_identity(identity, display_name=display_name)
+        return {
+            "ok": True,
+            "account_id": str(identity.get("account_id")),
+            "linked": True,
+            "identity": identity,
+            "source": "channel_identities",
+        }
+
+    try:
+        upsert_account(provider="tg", provider_user_id=tg_user_id, display_name=display_name, phone=None)
+    except Exception:
+        logging.exception("Telegram fallback upsert_account failed")
+
+    try:
+        lk = lookup_account(provider="tg", provider_user_id=tg_user_id)
+    except Exception as exc:
+        logging.exception("Telegram fallback lookup_account failed")
+        return {"ok": False, "reason": "lookup_account_failed", "error": str(exc)}
+
+    if not lk.get("ok"):
+        return {"ok": False, "reason": "lookup_account_not_ok", "lookup": lk}
+
+    row = lk.get("row") if isinstance(lk.get("row"), dict) else _get_telegram_account_row(tg_user_id)
+    auth_user_id = _clean_text((row or {}).get("auth_user_id") or lk.get("auth_user_id"))
+
+    # If auth_user_id exists, this Telegram row is already linked to a website account.
+    # Prefer it over the Telegram shell account_id/id.
+    if auth_user_id:
+        identity_result = _ensure_telegram_channel_identity(
+            account_id=auth_user_id,
+            provider_user_id=tg_user_id,
+            display_name=display_name,
+            source="accounts_auth_user_id_fallback",
+        )
+        return {
+            "ok": True,
+            "account_id": auth_user_id,
+            "linked": True,
+            "identity": identity_result.get("row"),
+            "source": "accounts_auth_user_id_fallback",
+        }
+
+    account_id = _effective_account_id_from_tg_account(row) or lk.get("account_id") or lk.get("id") or tg_user_id
+
+    return {
+        "ok": True,
+        "account_id": str(account_id),
+        "linked": False,
+        "identity": None,
+        "source": "accounts_fallback",
     }
-  }
 
-  async function handleRemoveMember(memberAccountId?: string) {
-    if (!memberAccountId) return;
 
-    setAddMessage("");
-    setAddError("");
-    setRemoveMessage("");
-    setRemoveError("");
+def _unlink_telegram_identity(tg_user_id: str) -> dict[str, Any]:
+    identity = _get_telegram_identity(tg_user_id)
+    unlinked = False
+    account_id = None
 
-    try {
-      setRemovingId(memberAccountId);
+    if identity:
+        identity_id = identity.get("id")
+        account_id = identity.get("account_id")
+        if identity_id:
+            ok, _, err = _safe_exec(supabase.table("channel_identities").delete().eq("id", identity_id))
+            if not ok:
+                return {"ok": False, "reason": "delete_failed", "error": err}
+            unlinked = True
 
-      const result = await apiRequest<{
-        ok?: boolean;
-        message?: string;
-        fix?: string;
-      }>("/api/workspace/members/remove", {
-        method: "POST",
-        body: JSON.stringify({
-          member_account_id: memberAccountId,
-        }),
-      });
+    # Also clear the legacy accounts.auth_user_id fallback so a Telegram account
+    # cannot remain silently linked after channel_identities is removed.
+    tg_row = _get_telegram_account_row(tg_user_id)
+    if tg_row and _clean_text(tg_row.get("auth_user_id")):
+        account_id = account_id or tg_row.get("auth_user_id")
+        _clear_telegram_account_auth(tg_user_id)
+        unlinked = True
 
-      setRemoveMessage(result.message || "Member removed successfully.");
-      await loadWorkspace(true);
-    } catch (error) {
-      setRemoveError(
-        normalizeThrownError(error, "Unable to remove workspace member right now.")
-      );
-    } finally {
-      setRemovingId("");
+    if not unlinked:
+        return {"ok": True, "unlinked": False, "reason": "not_linked"}
+
+    return {"ok": True, "unlinked": True, "account_id": account_id}
+
+
+def _try_consume_link_code(provider_user_id: str, raw_text: str, display_name: Optional[str] = None) -> dict[str, Any]:
+    code = (raw_text or "").strip().upper()
+    if not LINK_CODE_RE.match(code):
+        return {"ok": False, "reason": "not_a_code"}
+
+    try:
+        res = (
+            supabase
+            .rpc(
+                "consume_link_token",
+                {
+                    "p_provider": "tg",
+                    "p_code": code,
+                    "p_provider_user_id": provider_user_id,
+                },
+            )
+            .execute()
+        )
+    except Exception as exc:
+        return {"ok": False, "reason": "rpc_error", "error": str(exc)}
+
+    row = (res.data or [None])[0]
+    if not row:
+        return {"ok": False, "reason": "no_rpc_row"}
+
+    linked_account_id = row.get("account_id") or row.get("auth_user_id") or row.get("user_id")
+    if row.get("ok") is True and linked_account_id:
+        persist_result = _persist_successful_telegram_link(
+            account_id=str(linked_account_id),
+            provider_user_id=provider_user_id,
+            display_name=display_name,
+        )
+        if not persist_result.get("ok"):
+            return {
+                "ok": False,
+                "reason": "link_persistence_failed",
+                "account_id": linked_account_id,
+                "rpc": row,
+                "persist_result": persist_result,
+            }
+        return {"ok": True, "account_id": linked_account_id, "rpc": row, "persist_result": persist_result}
+
+    return {"ok": False, "reason": row.get("reason") or "consume_failed", "rpc": row}
+
+
+# ---------------------------------------------------------------------------
+# Menus
+# ---------------------------------------------------------------------------
+
+def _send_main_menu(chat_id: str, *, linked: bool = False) -> None:
+    option_5 = "5️⃣ Unlink website account 🔓" if linked else "5️⃣ Link website account 🔗"
+    menu = (
+        "🇳🇬 *Naija Tax Guide*\n\n"
+        "Reply with:\n"
+        "1️⃣ Ask a tax question\n"
+        "2️⃣ Check Usage Credits 💎\n"
+        "3️⃣ Check current plan 📌\n"
+        "4️⃣ View subscription plans 🛒\n"
+        f"{option_5}\n"
+        "6️⃣ Buy Usage Credit add-ons 💳\n"
+        "7️⃣ Tax tools, filing & quiz 🧰\n"
+        "8️⃣ Help / Menu ℹ️\n\n"
+        "Quick commands:\n"
+        "H1 - Recent tax history 🕘\n"
+        "H2 - Last tax answer 📌\n"
+        "SUP1 - Create support ticket 🛟\n"
+        "SUP2 - View support tickets 🎫\n"
+        "PAY1 - Billing summary 💳\n"
+        "PAY2 - Payment history 🧾\n"
+        "FT1 - Filing assistance 🗂️\n"
+        "FT7 - Request human filing help 🧑‍💼\n"
+        "R1 - My referral code/link 🤝\n"
+        "R4 - Referral statistics 📊\n"
+        "ACC1 - My account profile 👤\n"
+        "SET1 - Notification settings ⚙️\n"
+        "ALL - Full command list 📋\n"
+        "0 or MENU - Main menu 🏠\n"
+        "* or BACK - Go back ↩️\n"
+        "CANCEL - Cancel current flow ❌\n\n"
+        "You can also type your Nigerian tax question directly."
+    )
+    send_telegram_text(chat_id, menu)
+
+
+def _send_tax_menu(chat_id: str) -> None:
+    menu = (
+        "*📋 TAX FILING & MANAGEMENT*\n\n"
+        "Reply with:\n"
+        "P - File PAYE Tax\n"
+        "V - File VAT\n"
+        "C - File CIT (Company Tax)\n"
+        "HISTORY - View my filing history\n"
+        "DEADLINES - View tax deadlines\n"
+        "BACK - Back to main menu\n\n"
+        "Type /paye, /vat, or /cit to start filing."
+    )
+    send_telegram_text(chat_id, menu)
+
+
+def _send_help(chat_id: str, *, linked: bool = False) -> None:
+    option_5 = "Unlink website account" if linked else "Link website account"
+    help_msg = (
+        "*📖 Help Guide*\n\n"
+        "• Ask tax questions: type your question naturally.\n"
+        "  Example: What is PAYE tax?\n\n"
+        "• Check Usage Credits: reply 2 or CR1\n"
+        "• View current plan: reply 3 or PAY1\n"
+        "• View/upgrade plans: reply 4 then choose S1, P1, or B1\n"
+        f"• {option_5}: reply 5 or ACC2\n"
+        "• Buy Usage Credit add-ons: reply 6 then choose T10, T50, T100, or T500\n"
+        "• Recent history: H1 / H2\n"
+        "• Support: SUP1-SUP6\n"
+        "• Referrals: R1-R6\n"
+        "• Show all commands: ALL\n"
+        "• Show menu: 0 or MENU\n\n"
+        "Need help? Email support@naijataxguides.com"
+    )
+    send_telegram_text(chat_id, help_msg)
+
+
+def _send_welcome(chat_id: str, *, linked: bool = False) -> None:
+    send_telegram_text(chat_id, "*Welcome to Naija Tax Guide!* ✅\n\nI'm your AI tax assistant for Nigerian taxes.")
+    _send_main_menu(chat_id, linked=linked)
+
+
+
+
+# ---------------------------------------------------------------------------
+# Batch 27D WhatsApp master registry helpers
+# ---------------------------------------------------------------------------
+
+def _clip_text(value: Any, limit: int = 3900) -> str:
+    text = str(value or "").strip()
+    return text if len(text) <= limit else text[: max(0, limit - 3)].rstrip() + "..."
+
+
+def _master_plans_menu() -> str:
+    return (
+        "📌 *Subscription Plans*\n\n"
+        "S1 - Starter Monthly - ₦5,000 - 100 credits\n"
+        "S2 - Starter Quarterly - ₦14,000 - 300 credits\n"
+        "S3 - Starter Yearly - ₦51,000 - 1,200 credits\n\n"
+        "P1 - Professional Monthly - ₦12,000 - 300 credits\n"
+        "P2 - Professional Quarterly - ₦33,600 - 900 credits\n"
+        "P3 - Professional Yearly - ₦122,400 - 3,600 credits\n\n"
+        "B1 - Business Monthly - ₦25,000 - 800 credits\n"
+        "B2 - Business Quarterly - ₦70,000 - 2,400 credits\n"
+        "B3 - Business Yearly - ₦255,000 - 9,600 credits\n\n"
+        "Reply with a code like S1, P1, or B1.\n"
+        "Do not use plain numbers here. Plain numbers are for the main menu only."
+    )
+
+
+def _topup_menu_text() -> str:
+    return (
+        "💎 *Usage Credit Add-ons*\n\n"
+        "T10 - 10 credits - ₦500\n"
+        "T50 - 50 credits - ₦2,000\n"
+        "T100 - 100 credits - ₦3,500\n"
+        "T500 - 500 credits - ₦15,000\n\n"
+        "Reply with T10, T50, T100, or T500.\n"
+        "Add-ons are available only to active paid subscribers."
+    )
+
+
+def _invalid_command_text(value: str = "") -> str:
+    shown = f"\n\nReceived: {value}" if value else ""
+    return (
+        "⚠️ That menu code is not available, so no AI credit was used."
+        f"{shown}\n\n"
+        "Useful commands:\n"
+        "0 - Main menu\n"
+        "ALL - Full command list\n"
+        "S1/P1/B1 - Subscription plans\n"
+        "T10/T50/T100/T500 - Credit add-ons\n"
+        "PAY1 - Billing summary\n"
+        "CR1 - Credit balance\n"
+        "H1 - Recent tax history"
+    )
+
+
+def _plan_number_from_master_code(text_lower: str) -> Optional[int]:
+    return MASTER_PLAN_CODE_TO_NUMBER.get(text_lower.upper())
+
+
+def _topup_number_from_master_code(text_lower: str) -> Optional[int]:
+    return MASTER_TOPUP_CODE_TO_NUMBER.get(text_lower.upper())
+
+
+def _row_recent_enough(row: dict[str, Any], seconds: int = 900) -> bool:
+    dt = _parse_dt(row.get("created_at") or row.get("updated_at"))
+    if not dt:
+        return False
+    return (datetime.now(timezone.utc) - dt).total_seconds() <= seconds
+
+
+def _checkout_url_from_row(row: dict[str, Any]) -> str:
+    for key in ("authorization_url", "checkout_url", "payment_url", "url", "provider_url", "payment_link"):
+        value = _clean_text(row.get(key))
+        if value.startswith("http"):
+            return value
+    return ""
+
+
+def _row_is_open_checkout(row: dict[str, Any]) -> bool:
+    status = _clean_text(row.get("status") or row.get("payment_status") or row.get("transaction_status")).lower()
+    if status in {"success", "successful", "paid", "completed", "verified"}:
+        return False
+    return True
+
+
+def _checkout_row_text(row: dict[str, Any]) -> str:
+    parts: list[str] = []
+    for key in (
+        "plan_code", "package_code", "product_code", "purpose", "type",
+        "metadata", "description", "reference", "payment_reference",
+        "provider_reference", "gateway_reference", "plan", "package",
+        "channel_type", "source", "status", "payment_status",
+        "transaction_status"
+    ):
+        value = row.get(key)
+        if value is None:
+            continue
+        parts.append(_clean_text(value).lower())
+
+    return " ".join(parts)
+
+
+def _checkout_row_kind(row_text: str) -> str:
+    """
+    Batch 27D3:
+    Detect whether an existing pending checkout row is most likely a
+    subscription checkout or a usage-credit top-up checkout.
+
+    This prevents a recent S1 subscription checkout from blocking T10 top-up,
+    and prevents a recent top-up checkout from blocking a plan checkout.
+    """
+    text = (row_text or "").lower().replace("-", "_")
+
+    topup_markers = (
+        "topup",
+        "top_up",
+        "ai_topup",
+        "credit_topup",
+        "usage_credit",
+        "usage credit",
+        "credit add",
+        "credit_add",
+        "add_on",
+        "addon",
+        "add on",
+        "t10",
+        "t50",
+        "t100",
+        "t500",
+    )
+
+    subscription_markers = (
+        "sub_",
+        "subscription",
+        "plan",
+        "starter_monthly",
+        "starter_quarterly",
+        "starter_yearly",
+        "professional_monthly",
+        "professional_quarterly",
+        "professional_yearly",
+        "business_monthly",
+        "business_quarterly",
+        "business_yearly",
+    )
+
+    if any(marker in text for marker in topup_markers):
+        return "topup"
+
+    if any(marker in text for marker in subscription_markers):
+        return "subscription"
+
+    return "unknown"
+
+
+def _topup_search_terms(package_code: str) -> list[str]:
+    code = _clean_text(package_code).upper()
+    credits = code.replace("T", "", 1) if code.startswith("T") else ""
+
+    terms = [code.lower()]
+    if credits:
+        terms.extend(
+            [
+                f"topup_{credits}",
+                f"top_up_{credits}",
+                f"topup-{credits}",
+                f"top-up-{credits}",
+                f"{credits} credits",
+                f"{credits}_credits",
+                f"credit_{credits}",
+            ]
+        )
+
+    return [t for t in terms if t]
+
+
+def _checkout_fingerprint(account_id: str, *, kind: str, code: str) -> str:
+    safe_kind = re.sub(r"[^a-z0-9_]+", "_", _clean_text(kind).lower()).strip("_")
+    safe_code = re.sub(r"[^a-z0-9_]+", "_", _clean_text(code).lower()).strip("_")
+    safe_account = re.sub(r"[^a-z0-9_-]+", "_", _clean_text(account_id).lower()).strip("_")
+    return f"telegram:{safe_kind}:{safe_account}:{safe_code}"
+
+
+def _checkout_lock_code_from_fingerprint(fingerprint: str) -> str:
+    parts = _clean_text(fingerprint).split(":")
+    return parts[-1].upper() if parts else "CHECKOUT"
+
+
+def _checkout_lock_message(lock: dict[str, Any], *, kind: str, code: str) -> str:
+    ref = _clean_text(
+        lock.get("reference")
+        or lock.get("payment_reference")
+        or lock.get("provider_reference")
+        or lock.get("gateway_reference")
+        or "not shown"
+    )
+    url = _clean_text(lock.get("url") or lock.get("checkout_url") or lock.get("authorization_url"))
+    label = _clean_text(code).upper() or _checkout_lock_code_from_fingerprint(_clean_text(lock.get("fingerprint")))
+    kind_label = "top-up" if kind == "topup" else "subscription" if kind == "subscription" else "payment"
+
+    if url.startswith("http"):
+        return (
+            "🧾 *Recent Checkout Found*\n\n"
+            f"I found a recent pending {kind_label} checkout for {label}. "
+            "To avoid duplicate payment records, use this existing checkout link:\n\n"
+            f"{url}\n\n"
+            f"Reference: {ref}\n\n"
+            "If the link has expired, wait about 15 minutes and try again."
+        )
+
+    return (
+        "🧾 *Recent Pending Checkout Found*\n\n"
+        f"You already have a recent pending {kind_label} checkout for {label}.\n\n"
+        "Please use the last payment link already shown above in this chat. "
+        "To avoid duplicate payment records, I will not create another checkout immediately.\n\n"
+        f"Reference: {ref}\n\n"
+        "If you cannot find the link, wait about 15 minutes and try again, or contact support with SUP6."
+    )
+
+
+def _get_telegram_checkout_locks(tg_user_id: str) -> tuple[Optional[dict[str, Any]], dict[str, Any]]:
+    identity = _get_telegram_identity(tg_user_id)
+    if not identity:
+        return None, {}
+
+    metadata = identity.get("metadata") or {}
+    if not isinstance(metadata, dict):
+        metadata = {}
+
+    locks = metadata.get("telegram_checkout_locks") or {}
+    if not isinstance(locks, dict):
+        locks = {}
+
+    return identity, locks
+
+
+def _telegram_checkout_lock_message(
+    *,
+    tg_user_id: str,
+    account_id: str,
+    kind: str,
+    code: str,
+) -> Optional[str]:
+    fingerprint = _checkout_fingerprint(account_id, kind=kind, code=code)
+    _identity, locks = _get_telegram_checkout_locks(tg_user_id)
+    lock = locks.get(fingerprint)
+
+    if not isinstance(lock, dict):
+        return None
+
+    expires_at = _parse_dt(lock.get("expires_at"))
+    if not expires_at or expires_at <= datetime.now(timezone.utc):
+        return None
+
+    return _checkout_lock_message(lock, kind=kind, code=code)
+
+
+def _extract_checkout_info_from_result(result: dict[str, Any]) -> dict[str, str]:
+    raw_parts: list[str] = []
+
+    if isinstance(result, dict):
+        for key in (
+            "message",
+            "authorization_url",
+            "checkout_url",
+            "payment_url",
+            "url",
+            "reference",
+            "payment_reference",
+            "provider_reference",
+        ):
+            value = result.get(key)
+            if value:
+                raw_parts.append(_clean_text(value))
+
+    raw = "\n".join(raw_parts)
+
+    url = ""
+    match_url = re.search(r"https?://[^\s<>()]+", raw)
+    if match_url:
+        url = match_url.group(0).rstrip(".,)")
+
+    reference = ""
+    for pattern in (
+        r"(?:Reference|Ref|reference|ref)\s*[:#-]\s*([A-Za-z0-9_.:-]+)",
+        r"\b((?:SUB|TOP|TOPUP|NTG|TRX|PAY)[A-Za-z0-9_.:-]{6,})\b",
+    ):
+        match_ref = re.search(pattern, raw)
+        if match_ref:
+            reference = match_ref.group(1)
+            break
+
+    return {"url": url, "reference": reference}
+
+
+def _record_telegram_checkout_lock(
+    *,
+    tg_user_id: str,
+    account_id: str,
+    kind: str,
+    code: str,
+    result: Optional[dict[str, Any]] = None,
+) -> None:
+    identity, locks = _get_telegram_checkout_locks(tg_user_id)
+    if not identity:
+        return
+
+    identity_id = _clean_text(identity.get("id"))
+    if not identity_id:
+        return
+
+    metadata = identity.get("metadata") or {}
+    if not isinstance(metadata, dict):
+        metadata = {}
+
+    if not isinstance(locks, dict):
+        locks = {}
+
+    now = datetime.now(timezone.utc)
+    expires_at = now + timedelta(minutes=15)
+    fingerprint = _checkout_fingerprint(account_id, kind=kind, code=code)
+    info = _extract_checkout_info_from_result(result or {})
+
+    # Keep the lock list small and remove expired locks.
+    cleaned_locks: dict[str, Any] = {}
+    for key, value in locks.items():
+        if not isinstance(value, dict):
+            continue
+        expiry = _parse_dt(value.get("expires_at"))
+        if expiry and expiry > now:
+            cleaned_locks[key] = value
+
+    cleaned_locks[fingerprint] = {
+        "fingerprint": fingerprint,
+        "kind": kind,
+        "code": _clean_text(code).upper(),
+        "reference": info.get("reference") or "",
+        "url": info.get("url") or "",
+        "created_at": now.isoformat(),
+        "expires_at": expires_at.isoformat(),
+        "source": "telegram_batch_27d4",
     }
-  }
 
-  return (
-    <AppShell
-      title="Workspace"
-      subtitle="Manage your owner account, workspace member slots, and current plan limits from one place."
-      actions={
-        <button
-          type="button"
-          onClick={() => void loadWorkspace(true)}
-          disabled={loading || refreshing}
-          style={{
-            ...styles.button,
-            ...(loading || refreshing ? styles.buttonDisabled : {}),
-          }}
-        >
-          {refreshing ? "Refreshing..." : "Refresh Status"}
-        </button>
-      }
-    >
-      <main style={styles.page}>
-        <div style={styles.container}>
-          {pageError ? <div style={styles.bannerError}>{pageError}</div> : null}
+    metadata["telegram_checkout_locks"] = cleaned_locks
+    metadata["last_checkout_fingerprint"] = fingerprint
 
-          {!loading && addBlockedBecauseNoPlan ? (
-            <div style={styles.heroInfo}>
-              <div>
-                <h2 style={{ ...styles.heroTitle, color: "#1d4ed8" }}>
-                  Workspace member access is not enabled yet
-                </h2>
-                <div style={{ ...styles.heroText, color: "#1e3a8a" }}>
-                  This account does not currently show an active plan with workspace
-                  member slots. You can still review limits and owner details below,
-                  but adding members will remain disabled until a workspace-enabled plan
-                  becomes active.
-                </div>
-              </div>
+    try:
+        # Batch 27D6:
+        # The current channel_identities table does not expose updated_at.
+        # Updating metadata + updated_at caused PGRST204 and prevented the
+        # checkout fingerprint lock from being saved. Save metadata only.
+        supabase.table("channel_identities").update(
+            {
+                "metadata": metadata,
+            }
+        ).eq("id", identity_id).execute()
+    except Exception:
+        logging.exception("Telegram checkout fingerprint metadata update failed")
 
-              <div style={styles.actionRow}>
-                <a href="/plans" style={styles.buttonSecondary}>
-                  View Plans
-                </a>
-                <a href="/billing" style={styles.buttonSecondary}>
-                  Go to Billing
-                </a>
-              </div>
-            </div>
-          ) : null}
 
-          {!loading && !addBlockedBecauseNoPlan && workspacePlanFull ? (
-            <div style={styles.heroAlert}>
-              <div>
-                <h2 style={{ ...styles.heroTitle, color: "#9a3412" }}>
-                  Team member slots are full
-                </h2>
-                <div style={{ ...styles.heroText, color: "#9a3412" }}>
-                  You are using {usedSlots} of {maxWorkspaceUsers} allowed workspace user slot
-                  {maxWorkspaceUsers === 1 ? "" : "s"} on the <strong>{planName}</strong>. This means you cannot add another team member on this plan. It does <strong>not</strong> mean your WhatsApp or Telegram channel slots are full.
-                </div>
-              </div>
 
-              <div style={styles.actionRow}>
-                <a href="/plans" style={styles.buttonWarning}>
-                  Upgrade team slots
-                </a>
-                <a href="/billing" style={styles.buttonSecondary}>
-                  Go to Billing
-                </a>
-              </div>
-            </div>
-          ) : null}
+def _plan_search_terms(plan_code: str) -> list[str]:
+    code = _clean_text(plan_code).lower()
+    terms = [code]
 
-          {loading ? (
-            <div style={styles.loadingCard}>Loading workspace data...</div>
-          ) : (
-            <>
-              <section style={styles.topSummary}>
-                <div style={styles.summaryCard}>
-                  <div style={styles.summaryLabel}>Plan</div>
-                  <div style={styles.summaryValue}>{planName}</div>
-                  <div style={styles.summarySub}>
-                    Family:{" "}
-                    {plan?.plan_family ||
-                      limits?.entitlements?.plan_family ||
-                      membersData?.entitlements?.plan_family ||
-                      "—"}
-                  </div>
-                </div>
+    if code:
+        terms.append(f"sub_{code}")
+        terms.append(f"subscription_{code}")
 
-                <div style={styles.summaryCard}>
-                  <div style={styles.summaryLabel}>Workspace usage</div>
-                  <div style={styles.summaryValue}>
-                    {usedSlots} / {maxWorkspaceUsers}
-                  </div>
-                  <div style={styles.summarySub}>Owner included total usage</div>
-                </div>
+    return [t for t in terms if t]
 
-                <div style={styles.summaryCard}>
-                  <div style={styles.summaryLabel}>Total channels allowed</div>
-                  <div style={styles.summaryValue}>{maxTotalChannels}</div>
-                  <div style={styles.summarySub}>Across all supported channels</div>
-                </div>
 
-                <div style={styles.summaryCard}>
-                  <div style={styles.summaryLabel}>WhatsApp / Telegram</div>
-                  <div style={styles.summaryValue}>
-                    {maxWhatsappChannels} / {maxTelegramChannels}
-                  </div>
-                  <div style={styles.summarySub}>Per-channel entitlement split</div>
-                </div>
-              </section>
+def _checkout_has_exact_term(row_text: str, term: str) -> bool:
+    """
+    Batch 27D5:
+    Exact checkout matching.
 
-              <section style={styles.grid4}>
-                <div style={styles.card}>
-                  <div style={styles.label}>Current plan</div>
-                  <h2 style={styles.bigTitle}>{planName}</h2>
-                  <div style={styles.subText}>
-                    Family:{" "}
-                    <strong style={{ color: "#0f172a", textTransform: "capitalize" }}>
-                      {limits?.entitlements?.plan_family ||
-                        plan?.plan_family ||
-                        membersData?.entitlements?.plan_family ||
-                        "—"}
-                    </strong>
-                  </div>
-                  <div style={styles.subText}>
-                    Code: <strong style={{ color: "#0f172a" }}>{limits?.entitlements?.plan_code || plan?.code || "—"}</strong>
-                  </div>
-                </div>
+    Avoid substring mistakes such as:
+      - T50 matching T500
+      - credit_50 matching credit_500
+      - S1-style plan checks accidentally matching unrelated text.
+    """
+    text = _clean_text(row_text).lower()
+    value = _clean_text(term).lower()
 
-                <div style={styles.card}>
-                  <div style={styles.label}>Workspace slots used</div>
-                  <div style={styles.hugeValue}>
-                    {usedSlots}
-                    <span style={styles.hugeValueSub}> / {maxWorkspaceUsers}</span>
-                  </div>
-                  <div style={styles.subText}>Owner included total</div>
-                </div>
+    if not text or not value:
+        return False
 
-                <div style={styles.card}>
-                  <div style={styles.label}>Additional members</div>
-                  <div style={styles.hugeValue}>{memberOnlyCount}</div>
-                  <div style={styles.subText}>Active members only</div>
-                </div>
+    # For phrases, normalize whitespace and use boundary-safe regex.
+    if " " in value:
+        escaped = r"\s+".join(re.escape(part) for part in value.split())
+        return re.search(rf"(?<![a-z0-9]){escaped}(?![a-z0-9])", text, flags=re.I) is not None
 
-                <div style={styles.card}>
-                  <div style={styles.label}>Available slots</div>
-                  <div style={styles.hugeValue}>{availableSlots}</div>
-                  <div style={styles.subText}>Remaining under this plan</div>
-                </div>
-              </section>
+    return re.search(rf"(?<![a-z0-9]){re.escape(value)}(?![a-z0-9])", text, flags=re.I) is not None
 
-              <section style={styles.grid3}>
-                <div style={styles.card}>
-                  <h3 style={styles.sectionTitle}>Workspace limits</h3>
-                  <div style={styles.statRow}>
-                    <span>Max workspace users</span>
-                    <span style={styles.statValue}>{maxWorkspaceUsers}</span>
-                  </div>
-                  <div style={styles.statRow}>
-                    <span>Max linked web accounts</span>
-                    <span style={styles.statValue}>{maxLinkedWebAccounts}</span>
-                  </div>
-                </div>
 
-                <div style={styles.card}>
-                  <h3 style={styles.sectionTitle}>Channel limits</h3>
-                  <div style={styles.sectionText}>
-                    These limits are separate from workspace user/member slots. A generated link code does not count as a connected channel until WhatsApp or Telegram is actually verified.
-                  </div>
-                  <div style={styles.statRow}>
-                    <span>Total channels</span>
-                    <span style={styles.statValue}>{maxTotalChannels}</span>
-                  </div>
-                  <div style={styles.statRow}>
-                    <span>WhatsApp channels</span>
-                    <span style={styles.statValue}>{maxWhatsappChannels}</span>
-                  </div>
-                  <div style={styles.statRow}>
-                    <span>Telegram channels</span>
-                    <span style={styles.statValue}>{maxTelegramChannels}</span>
-                  </div>
-                </div>
+def _checkout_has_any_exact_term(row_text: str, terms: list[str]) -> bool:
+    return any(_checkout_has_exact_term(row_text, term) for term in terms)
 
-                <div style={styles.card}>
-                  <h3 style={styles.sectionTitle}>Workspace owner</h3>
-                  <div style={styles.ownerBox}>
-                    <p style={styles.ownerName}>
-                      {owner?.display_name || owner?.email || "Owner account"}
-                    </p>
-                    <div style={styles.ownerMeta}>{owner?.email || "—"}</div>
 
-                    <div style={styles.miniLabel}>Role</div>
-                    <div style={styles.ownerMeta}>
-                      <strong style={{ color: "#0f172a" }}>Owner</strong>
-                    </div>
+def _recent_checkout_reuse_message(
+    account_id: str,
+    *,
+    tg_user_id: str = "",
+    plan_code: str = "",
+    package_code: str = "",
+) -> Optional[str]:
+    """
+    Batch 27D5:
+    Exact checkout fingerprint guard.
 
-                    <div style={styles.miniLabel}>Created</div>
-                    <div style={styles.ownerMeta}>{formatDate(owner?.created_at)}</div>
+    Blocking is now allowed only when:
+      1. an exact short-lived fingerprint lock exists; or
+      2. the legacy paystack_transactions row contains an exact matching
+         plan/top-up term.
 
-                    <div style={styles.miniLabel}>Owner account ID</div>
-                    <div style={{ ...styles.ownerMeta, wordBreak: "break-all" }}>
-                      {ownerAccountId}
-                    </div>
-                  </div>
-                </div>
-              </section>
+    Removed broad same-kind fallback because it caused:
+      - T50 to block T500;
+      - T500 to block T50;
+      - possible S1/P1/B1 cross-blocking.
+    """
+    requested_kind = "subscription" if plan_code else "topup" if package_code else ""
+    requested_code = plan_code or package_code
+    requested_label = (requested_code or "checkout").upper()
 
-              <section style={styles.grid2}>
-                <div style={styles.card}>
-                  <h3 style={styles.sectionTitle}>Add member</h3>
-                  <div style={styles.sectionText}>
-                    Enter the email address of an existing web account you want to add
-                    into this workspace.
-                  </div>
+    # 1. Exact fingerprint lock check. This is the reliable guard for new
+    # checkout records created by Batch 27D4+.
+    if tg_user_id and requested_kind and requested_code:
+        lock_message = _telegram_checkout_lock_message(
+            tg_user_id=tg_user_id,
+            account_id=account_id,
+            kind=requested_kind,
+            code=requested_code,
+        )
+        if lock_message:
+            return lock_message
 
-                  <form onSubmit={handleAddMember}>
-                    <div style={styles.formGroup}>
-                      <label htmlFor="member_email" style={styles.formLabel}>
-                        Member email
-                      </label>
-                      <input
-                        id="member_email"
-                        type="email"
-                        value={memberEmail}
-                        onChange={(e) => setMemberEmail(e.target.value)}
-                        placeholder="user@example.com"
-                        disabled={addBlocked || submittingAdd}
-                        style={{
-                          ...styles.input,
-                          ...(addBlocked || submittingAdd ? styles.inputDisabled : {}),
-                        }}
-                      />
-                    </div>
+    # 2. Legacy paystack_transactions scan. Exact-code only.
+    # No same-kind fallback is allowed here.
+    if requested_kind == "subscription":
+        requested_terms = _plan_search_terms(plan_code)
+    elif requested_kind == "topup":
+        requested_terms = _topup_search_terms(package_code)
+    else:
+        requested_terms = []
 
-                    <div style={styles.formGroup}>
-                      <label htmlFor="member_role" style={styles.formLabel}>
-                        Role
-                      </label>
-                      <select
-                        id="member_role"
-                        value={role}
-                        onChange={(e) => setRole(e.target.value)}
-                        disabled={addBlocked || submittingAdd}
-                        style={{
-                          ...styles.select,
-                          ...(addBlocked || submittingAdd ? styles.selectDisabled : {}),
-                        }}
-                      >
-                        <option value="member">member</option>
-                      </select>
-                    </div>
+    rows = _rows_for_account("paystack_transactions", account_id, limit=20)
 
-                    {addBlockedBecauseNoPlan ? (
-                      <div style={styles.warningBox}>
-                        <strong>Workspace member access is not enabled.</strong> Activate
-                        a plan with workspace slots before adding members.
-                        <div style={styles.actionRow}>
-                          <a href="/billing" style={styles.buttonSecondary}>
-                            Go to Billing
-                          </a>
-                          <a href="/plans" style={styles.buttonSecondary}>
-                            View Plans
-                          </a>
-                        </div>
-                      </div>
-                    ) : null}
+    for row in rows:
+        if not _row_is_open_checkout(row) or not _row_recent_enough(row, seconds=900):
+            continue
 
-                    {!addBlockedBecauseNoPlan && workspacePlanFull ? (
-                      <div style={styles.warningBox}>
-                        <strong>Your current plan is full.</strong> Upgrade your plan or
-                        remove an existing member before adding another workspace user.
-                        <div style={styles.actionRow}>
-                          <a href="/billing" style={styles.buttonSecondary}>
-                            Go to Billing
-                          </a>
-                          <a href="/plans" style={styles.buttonSecondary}>
-                            View Plans
-                          </a>
-                        </div>
-                      </div>
-                    ) : null}
+        row_text = _checkout_row_text(row)
+        row_kind = _checkout_row_kind(row_text)
 
-                    {addMessage ? <div style={styles.successBox}>{addMessage}</div> : null}
-                    {addError ? <div style={styles.errorBox}>{addError}</div> : null}
+        # Hard separation:
+        # known subscription rows cannot block top-up rows;
+        # known top-up rows cannot block subscription rows.
+        if requested_kind and row_kind not in {requested_kind, "unknown"}:
+            continue
 
-                    <button
-                      type="submit"
-                      disabled={submittingAdd || addBlocked}
-                      style={{
-                        ...styles.button,
-                        width: "100%",
-                        maxWidth: "100%",
-                        marginTop: 16,
-                        ...(submittingAdd || addBlocked ? styles.buttonDisabled : {}),
-                      }}
-                    >
-                      {submittingAdd
-                        ? "Adding member..."
-                        : addBlockedBecauseNoPlan
-                          ? "Workspace plan required"
-                          : workspacePlanFull
-                            ? "No slots available"
-                            : "Add member"}
-                    </button>
-                  </form>
+        # Exact match only. This prevents T50 from matching T500 and prevents
+        # a generic recent top-up from blocking another top-up package.
+        if not _checkout_has_any_exact_term(row_text, requested_terms):
+            continue
 
-                  <div style={styles.noteBox}>
-                    <div style={{ fontWeight: 700, color: "#0f172a", marginBottom: 6 }}>
-                      Current rule
-                    </div>
-                    Your plan currently allows <strong style={{ color: "#0f172a" }}>{maxWorkspaceUsers}</strong> total
-                    workspace user{maxWorkspaceUsers === 1 ? "" : "s"}, including the owner. WhatsApp and Telegram channel slots are separate and are shown under Channel limits.
-                  </div>
-                </div>
+        url = _checkout_url_from_row(row)
+        ref = (
+            row.get("reference")
+            or row.get("payment_reference")
+            or row.get("provider_reference")
+            or row.get("gateway_reference")
+            or "not shown"
+        )
 
-                <div style={styles.card}>
-                  <div style={styles.membersHeader}>
-                    <div>
-                      <h3 style={styles.sectionTitle}>Workspace members</h3>
-                      <div style={styles.sectionText}>
-                        Member accounts linked under this workspace owner.
-                      </div>
-                    </div>
-                    <span style={styles.badge}>
-                      {memberOnlyCount} member{memberOnlyCount === 1 ? "" : "s"}
-                    </span>
-                  </div>
+        if url:
+            return (
+                "🧾 *Recent Checkout Found*\n\n"
+                f"I found a recent pending {requested_kind or 'payment'} checkout for {requested_label}. "
+                "To avoid duplicate payment records, use this existing checkout link:\n\n"
+                f"{url}\n\n"
+                f"Reference: {ref}\n\n"
+                "If the link has expired, wait a few minutes or contact support."
+            )
 
-                  {removeMessage ? <div style={styles.successBox}>{removeMessage}</div> : null}
-                  {removeError ? <div style={styles.errorBox}>{removeError}</div> : null}
+        return (
+            "🧾 *Recent Pending Checkout Found*\n\n"
+            f"You already have a recent pending {requested_kind or 'payment'} checkout for {requested_label}.\n\n"
+            "Please use the last payment link already shown above in this chat. "
+            "To avoid duplicate payment records, I will not create another checkout immediately.\n\n"
+            f"Reference: {ref}\n\n"
+            "If you cannot find the link, wait about 15 minutes and try again, or contact support with SUP6."
+        )
 
-                  {members.length === 0 ? (
-                    <div style={styles.emptyBox}>
-                      No extra workspace members have been added yet.
-                    </div>
-                  ) : (
-                    members.map((member) => {
-                      const display =
-                        member.member_display_name ||
-                        member.member_email ||
-                        member.member_provider_user_id ||
-                        member.member_account_id ||
-                        "Workspace member";
+    return None
 
-                      return (
-                        <div
-                          key={member.member_account_id || member.id}
-                          style={styles.memberCard}
-                        >
-                          <div style={styles.memberHead}>
-                            <div style={{ minWidth: 0, flex: "1 1 280px" }}>
-                              <p style={styles.memberName}>{display}</p>
-                              <div style={styles.memberEmail}>
-                                {member.member_email || "No email available"}
-                              </div>
 
-                              <div style={styles.memberGrid}>
-                                <div>
-                                  <div style={styles.miniLabel}>Role</div>
-                                  <div style={styles.ownerMeta}>{member.role || "member"}</div>
-                                </div>
-                                <div>
-                                  <div style={styles.miniLabel}>Status</div>
-                                  <div style={styles.ownerMeta}>{member.status || "active"}</div>
-                                </div>
-                                <div>
-                                  <div style={styles.miniLabel}>Added</div>
-                                  <div style={styles.ownerMeta}>
-                                    {formatDate(member.created_at)}
-                                  </div>
-                                </div>
-                                <div>
-                                  <div style={styles.miniLabel}>Member account ID</div>
-                                  <div
-                                    style={{
-                                      ...styles.ownerMeta,
-                                      wordBreak: "break-all",
-                                    }}
-                                  >
-                                    {member.member_account_id || "—"}
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
+def _handle_plan_code_selection(
+    *,
+    chat_id: str,
+    account_id: str,
+    tg_user_id: str,
+    text_lower: str,
+) -> bool:
+    plan_num = _plan_number_from_master_code(text_lower)
+    if plan_num is None:
+        return False
 
-                            <button
-                              type="button"
-                              disabled={
-                                removingId === member.member_account_id ||
-                                !member.member_account_id
-                              }
-                              onClick={() =>
-                                void handleRemoveMember(member.member_account_id)
-                              }
-                              style={{
-                                ...styles.removeButton,
-                                ...(removingId === member.member_account_id ||
-                                !member.member_account_id
-                                  ? styles.removeButtonDisabled
-                                  : {}),
-                              }}
-                            >
-                              {removingId === member.member_account_id
-                                ? "Removing..."
-                                : "Remove"}
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              </section>
-            </>
-          )}
-        </div>
-      </main>
-    </AppShell>
-  );
-}
+    plan = validate_plan_number(plan_num)
+    if not plan:
+        send_telegram_text(chat_id, "❌ Invalid plan code. Reply 4 to view plans again.")
+        return True
+
+    plan_code = _clean_text(plan.get("plan_code") or plan.get("code") or plan.get("slug") or "")
+    reuse_msg = (
+        _recent_checkout_reuse_message(account_id, tg_user_id=tg_user_id, plan_code=plan_code)
+        if plan_code
+        else None
+    )
+    if reuse_msg:
+        send_telegram_text(chat_id, reuse_msg)
+        return True
+
+    user_email = get_user_email(account_id)
+    if user_email:
+        result = create_subscription_payment(
+            account_id=account_id,
+            plan=plan,
+            channel_type="telegram",
+            provider_user_id=tg_user_id,
+            email=user_email,
+        )
+        if result.get("ok") and plan_code:
+            _record_telegram_checkout_lock(
+                tg_user_id=tg_user_id,
+                account_id=account_id,
+                kind="subscription",
+                code=plan_code,
+                result=result,
+            )
+        send_telegram_text(
+            chat_id,
+            result.get("message") if result.get("ok") else f"❌ {result.get('message', 'Please try again.')}",
+        )
+    else:
+        user_states[chat_id] = {"awaiting_email": True, "pending_plan": plan}
+        send_telegram_text(chat_id, request_email_message())
+
+    return True
+
+
+def _rows_for_account(table_name: str, account_id: str, limit: int = 5, select_cols: str = "*") -> list[dict[str, Any]]:
+    try:
+        resp = (
+            supabase.table(table_name)
+            .select(select_cols)
+            .eq("account_id", account_id)
+            .order("created_at", desc=True)
+            .limit(max(1, min(limit, 20)))
+            .execute()
+        )
+        return _rows(resp)
+    except Exception:
+        return []
+
+
+def _history_date_label(value: Any) -> str:
+    raw = _clean_text(value)
+    if not raw:
+        return "date not shown"
+    try:
+        dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    except Exception:
+        return raw[:19]
+
+
+def _history_excerpt(value: Any, limit: int = 220) -> str:
+    text = re.sub(r"\s+", " ", _clean_text(value))
+    if not text:
+        return "Not shown"
+    return text if len(text) <= limit else text[: max(0, limit - 3)].rstrip() + "..."
+
+
+def _history_rows(account_id: str, limit: int = 5) -> list[dict[str, Any]]:
+    return _rows_for_account(
+        "qa_history",
+        account_id,
+        limit=limit,
+        select_cols="id,question,answer,source,provider,channel,created_at,credits_consumed,usage_charged",
+    )
+
+
+def _send_recent_history(chat_id: str, account_id: str) -> None:
+    rows = _history_rows(account_id, limit=5)
+
+    if not rows:
+        send_telegram_text(
+            chat_id,
+            "🕘 *Recent Tax History*\n\n"
+            "No tax history found yet.\n\n"
+            "Ask a tax question here or on the website, then reply H1 again.",
+        )
+        return
+
+    lines = ["🕘 *Recent Tax History*", ""]
+    for index, row in enumerate(rows, start=1):
+        question = _history_excerpt(row.get("question"), 110)
+        source = _clean_text(row.get("channel") or row.get("provider") or row.get("source") or "app")
+        created = _history_date_label(row.get("created_at"))
+        try:
+            credits = int(row.get("credits_consumed") or 0)
+        except Exception:
+            credits = 0
+        credit_text = f" | credits: {credits}" if credits else ""
+        lines.append(f"{index}. {question}")
+        lines.append(f"   {created} | {source}{credit_text}")
+
+    lines.extend(["", "Reply H2 to view your last tax answer, or 0 for main menu."])
+    send_telegram_text(chat_id, _clip_text("\n".join(lines)))
+
+
+def _send_last_answer(chat_id: str, account_id: str) -> None:
+    rows = _history_rows(account_id, limit=1)
+
+    if not rows:
+        send_telegram_text(
+            chat_id,
+            "📌 *Last Tax Answer*\n\n"
+            "No saved tax answer found yet.\n\n"
+            "Ask a tax question first, then reply H2 again.",
+        )
+        return
+
+    row = rows[0]
+    question = _history_excerpt(row.get("question"), 500)
+    answer = _history_excerpt(row.get("answer"), 2500)
+    created = _history_date_label(row.get("created_at"))
+    source = _clean_text(row.get("channel") or row.get("provider") or row.get("source") or "app")
+    try:
+        credits = int(row.get("credits_consumed") or 0)
+    except Exception:
+        credits = 0
+
+    credit_line = f"Credits used: {credits}" if credits else "Credits used: 0 or not charged"
+    body = (
+        "📌 *Last Tax Answer*\n\n"
+        f"Date: {created}\n"
+        f"Source: {source}\n"
+        f"{credit_line}\n\n"
+        f"Question:\n{question}\n\n"
+        f"Answer:\n{answer}\n\n"
+        "Reply H1 for recent history or 0 for main menu."
+    )
+    send_telegram_text(chat_id, _clip_text(body))
+
+
+def _history_key(value: Any) -> str:
+    text = re.sub(r"\s+", " ", _clean_text(value).lower()).strip()
+    text = re.sub(r"[^a-z0-9]+", "_", text)
+    return text[:180]
+
+
+def _safe_insert_row(table: str, payload: dict[str, Any]) -> dict[str, Any]:
+    ok, resp, err = _safe_exec(supabase.table(table).insert(payload))
+    return {"ok": ok, "resp": resp, "error": err}
+
+
+def _log_telegram_history(*, account_id: str, question: str, answer: str, result: dict[str, Any]) -> dict[str, Any]:
+    """
+    Batch 28A:
+    Robust Telegram qa_history logging.
+
+    The earlier Telegram history insert had one payload only and failed silently
+    when optional columns did not exist. This version follows the safer WhatsApp
+    pattern: try richer payload first, then simpler fallbacks.
+    """
+    meta = result.get("meta") if isinstance(result, dict) and isinstance(result.get("meta"), dict) else {}
+
+    try:
+        credits_consumed = int(meta.get("credits_consumed") or meta.get("credit_cost") or 0)
+    except Exception:
+        credits_consumed = 0
+
+    source = _clean_text(result.get("source") if isinstance(result, dict) else "")
+    mode = _clean_text(result.get("mode") if isinstance(result, dict) else "")
+    from_cache = bool(source == "database" or mode == "direct_cache" or source == "cache" or mode == "cache")
+    usage_charged = bool(meta.get("usage_charged") is True or credits_consumed > 0)
+    now_iso = _utc_now_iso()
+    normalized_question = re.sub(r"\s+", " ", _clean_text(question)).strip()
+
+    payloads = [
+        {
+            "account_id": account_id or None,
+            "question": _clip_text(question, 5000),
+            "answer": _clip_text(answer, 20000),
+            "lang": "en",
+            "source": "telegram",
+            "provider": "telegram",
+            "from_cache": from_cache,
+            "canonical_key": _history_key(question),
+            "normalized_question": normalized_question,
+            "plan_code": _clean_text(meta.get("plan_code")) or None,
+            "credits_consumed": credits_consumed,
+            "usage_charged": usage_charged,
+            "channel": "telegram",
+            "created_at": now_iso,
+            "updated_at": now_iso,
+        },
+        {
+            "account_id": account_id or None,
+            "question": _clip_text(question, 5000),
+            "answer": _clip_text(answer, 20000),
+            "lang": "en",
+            "source": "telegram",
+            "provider": "telegram",
+            "from_cache": from_cache,
+            "credits_consumed": credits_consumed,
+            "usage_charged": usage_charged,
+            "channel": "telegram",
+            "created_at": now_iso,
+        },
+        {
+            "account_id": account_id or None,
+            "question": _clip_text(question, 5000),
+            "answer": _clip_text(answer, 20000),
+            "source": "telegram",
+            "channel": "telegram",
+            "created_at": now_iso,
+        },
+        {
+            "account_id": account_id or None,
+            "question": _clip_text(question, 5000),
+            "answer": _clip_text(answer, 20000),
+            "created_at": now_iso,
+        },
+        {
+            "question": _clip_text(question, 5000),
+            "answer": _clip_text(answer, 20000),
+            "created_at": now_iso,
+        },
+    ]
+
+    errors: list[str] = []
+    for idx, payload in enumerate(payloads):
+        inserted = _safe_insert_row("qa_history", payload)
+        if inserted.get("ok"):
+            return {"ok": True, "mode": f"telegram_history_payload_{idx}"}
+        errors.append(str(inserted.get("error")))
+
+    logging.warning("Telegram qa_history insert failed: %s", errors[:3])
+    return {"ok": False, "error": "telegram_history_insert_failed", "errors": errors[:3]}
+
+
+def _telegram_answer_credit_note(result: dict[str, Any]) -> str:
+    if not isinstance(result, dict):
+        return ""
+
+    meta = result.get("meta") if isinstance(result.get("meta"), dict) else {}
+    result_ok = bool(result.get("ok") is True)
+
+    if result_ok and meta.get("usage_charged") is True:
+        used = meta.get("credits_consumed") or meta.get("credit_cost") or 1
+        balance = meta.get("credits_left")
+        if balance is None:
+            balance = meta.get("balance")
+        balance_text = f" Balance: {balance}." if balance is not None else ""
+        return f"\n\n💎 Credit used: {used}.{balance_text}"
+
+    source = _clean_text(result.get("source"))
+    mode = _clean_text(result.get("mode"))
+    if result_ok and (source in {"database", "cache"} or mode in {"direct_cache", "cache"}):
+        return "\n\n✅ Served from saved database/cache. No new credit charged."
+
+    error_code = _clean_text(result.get("error"))
+    if not result_ok and error_code in {"paid_plan_required", "insufficient_credits", "no_credits", "credit_balance_empty"}:
+        return "\n\nNo credit was charged for this blocked request. Reply CR1 to check credits or 6 to buy Usage Credits."
+
+    return ""
+
+
+def _telegram_answer_text(result: dict[str, Any]) -> str:
+    if not isinstance(result, dict):
+        return "I could not generate an answer right now. Please try again shortly."
+
+    answer = _clean_text(result.get("answer") or result.get("message"))
+    if not answer:
+        if result.get("ok") is True:
+            answer = "I couldn't find a clear answer. Please try rephrasing your question."
+        else:
+            answer = "I could not generate an answer right now. Please try again shortly."
+
+    return _clip_text(answer + _telegram_answer_credit_note(result) + "\n\nReply H1 for history or 0 for main menu.", 3900)
+
+
+def _handle_telegram_tax_question(
+    *,
+    chat_id: str,
+    account_id: str,
+    tg_user_id: str,
+    question: str,
+    account_source: str = "",
+) -> dict[str, Any]:
+    """
+    Batch 28A:
+    Central Telegram AI ask handler.
+
+    Guarantees:
+      - Uses resolved channel_identity/account_id.
+      - Sends provider/provider_user_id to ask_guarded.
+      - Lets ask_guarded decide cache/library/AI and credit charging.
+      - Logs successful answers to qa_history.
+      - Adds clear credit/cache note to the Telegram response.
+      - Failed answers are not logged as successful history.
+    """
+    before_balance = None
+    try:
+        before_balance = get_credit_balance(account_id)
+    except Exception:
+        before_balance = None
+
+    result = ask_guarded(
+        {
+            "account_id": account_id,
+            "question": question,
+            "lang": "en",
+            "channel": "telegram",
+            "provider": "telegram",
+            "provider_user_id": tg_user_id,
+            "action_code": "ai_tax_answer",
+            "before_balance": before_balance,
+        }
+    )
+
+    if not isinstance(result, dict):
+        result = {"ok": False, "message": "I could not generate an answer right now. Please try again shortly."}
+
+    answer = _clean_text(result.get("answer") or result.get("message"))
+    if result.get("ok") is True and answer:
+        _log_telegram_history(account_id=account_id, question=question, answer=answer, result=result)
+
+    send_telegram_text(chat_id, _telegram_answer_text(result))
+
+    meta = result.get("meta") if isinstance(result.get("meta"), dict) else {}
+    return {
+        "ok": True,
+        "answered": True,
+        "result_ok": bool(result.get("ok") is True),
+        "account_source": account_source,
+        "usage_charged": meta.get("usage_charged"),
+        "credits_consumed": meta.get("credits_consumed"),
+        "source": result.get("source"),
+        "mode": result.get("mode"),
+    }
+
+
+def _subscription_row(account_id: str) -> Optional[dict[str, Any]]:
+    try:
+        resp = supabase.table("user_subscriptions").select("*").eq("account_id", account_id).order("created_at", desc=True).limit(1).execute()
+        return _first(resp)
+    except Exception:
+        return None
+
+
+def _billing_summary_text(account_id: str) -> str:
+    sub = _subscription_row(account_id)
+    balance = get_credit_balance(account_id)
+    bal_value = balance.get("balance", 0) if isinstance(balance, dict) else 0
+
+    if not sub:
+        return (
+            "💳 *Billing Summary*\n\n"
+            "Current plan: Free Forever\n"
+            f"Usage Credits: {bal_value}\n"
+            "Status: Free access\n\n"
+            "Reply 4 to view subscription plans, PAY2 for payment history, or 0 for main menu."
+        )
+
+    plan_name = _clean_text(sub.get("plan_name") or sub.get("plan_code") or "Current plan")
+    status = _clean_text(sub.get("status") or "active")
+    expiry = _clean_text(sub.get("expires_at") or sub.get("current_period_end") or sub.get("valid_until") or "")
+    ref = _clean_text(sub.get("provider_ref") or sub.get("paystack_ref") or sub.get("payment_reference") or sub.get("reference") or "")
+
+    body = (
+        "💳 *Billing Summary*\n\n"
+        f"Plan: {plan_name}\n"
+        f"Status: {status}\n"
+        f"Usage Credits: {bal_value}\n"
+    )
+    if expiry:
+        body += f"Renewal/expiry: {expiry[:10]}\n"
+    if ref:
+        body += f"Reference: {ref}\n"
+    body += "\nReply PAY2 for payment history, PAY6 for renewal/expiry, or 0 for main menu."
+    return body
+
+
+def _payment_rows(account_id: str, limit: int = 5) -> list[dict[str, Any]]:
+    for table_name in ("paystack_transactions", "payment_transactions", "billing_transactions"):
+        rows = _rows_for_account(table_name, account_id, limit=limit)
+        if rows:
+            return rows
+    return []
+
+
+def _payment_row_line(row: dict[str, Any], index: int) -> str:
+    plan = row.get("plan_code") or row.get("plan") or row.get("product_code") or row.get("purpose") or "Payment"
+    status = row.get("status") or row.get("payment_status") or row.get("event") or "status not shown"
+    amount = row.get("amount") or row.get("amount_naira") or row.get("price") or row.get("paid_amount") or row.get("amount_kobo")
+    reference = row.get("reference") or row.get("payment_reference") or row.get("provider_reference") or ""
+    created_at = row.get("created_at") or row.get("paid_at") or row.get("updated_at")
+
+    line = f"{index}. {plan}\n"
+    if amount is not None:
+        line += f"   Amount: {_money(amount)}\n"
+    line += f"   Status: {status}\n"
+    if reference:
+        line += f"   Ref: {reference}\n"
+    line += f"   Date: {_date_short(created_at)}"
+    return line
+
+
+def _send_payment_history_master(chat_id: str, account_id: str) -> None:
+    rows = _payment_rows(account_id, limit=5)
+
+    if not rows:
+        send_telegram_text(
+            chat_id,
+            "🧾 *Payment History*\n\n"
+            "No payment history found for this account yet.\n\n"
+            "Reply 4 to view plans or PAY1 for billing summary.",
+        )
+        return
+
+    lines = ["🧾 *Recent Payment History*", ""]
+    for idx, row in enumerate(rows, 1):
+        lines.append(_payment_row_line(row, idx))
+        lines.append("")
+
+    lines.append("Reply PAY1 for billing summary, PAY3 for latest payment, or 0 for main menu.")
+    send_telegram_text(chat_id, _clip_text("\n".join(lines)))
+
+
+def _send_latest_payment(chat_id: str, account_id: str) -> None:
+    rows = _payment_rows(account_id, limit=1)
+    if not rows:
+        send_telegram_text(chat_id, "🧾 *Latest Payment Status*\n\nNo payment record found yet.\n\nReply PAY2 for payment history or 4 to view plans.")
+        return
+
+    send_telegram_text(chat_id, "🧾 *Latest Payment Status*\n\n" + _payment_row_line(rows[0], 1) + "\n\nReply PAY2 for payment history or 0 for main menu.")
+
+
+def _send_verify_payment(chat_id: str, account_id: str, text_raw: str) -> None:
+    parts = _clean_text(text_raw).split(maxsplit=1)
+    reference = parts[1].strip() if len(parts) > 1 else ""
+
+    if not reference:
+        send_telegram_text(
+            chat_id,
+            "🔎 *Verify Payment Reference*\n\n"
+            "Send PAY4 followed by your payment reference.\n\n"
+            "Example:\n"
+            "PAY4 NTG-WA-ABC123",
+        )
+        return
+
+    # Batch 27D2:
+    # Logs confirmed paystack_transactions.reference exists, while
+    # payment_reference/provider_reference cause 400 on the current schema.
+    # Keep PAY4 stable by querying only the confirmed reference column.
+    try:
+        resp = (
+            supabase.table("paystack_transactions")
+            .select("*")
+            .eq("account_id", account_id)
+            .eq("reference", reference)
+            .limit(1)
+            .execute()
+        )
+        row = _first(resp)
+    except Exception:
+        logging.exception("Telegram PAY4 reference lookup failed")
+        row = None
+
+    if not row:
+        send_telegram_text(
+            chat_id,
+            f"🔎 *Payment Reference Check*\n\nNo payment record found for:\n{reference}\n\nIf payment was recent, wait a few minutes or contact support with SUP6.",
+        )
+        return
+
+    send_telegram_text(chat_id, "🔎 *Payment Reference Check*\n\n" + _payment_row_line(row, 1))
+
+
+def _send_pending_change(chat_id: str, account_id: str) -> None:
+    sub = _subscription_row(account_id)
+    if not sub:
+        send_telegram_text(chat_id, "📌 *Pending Plan Change*\n\nNo active subscription found.\n\nReply 4 to view subscription plans.")
+        return
+
+    pending = (
+        sub.get("pending_plan_code")
+        or sub.get("pending_change")
+        or sub.get("scheduled_plan_code")
+        or sub.get("next_plan_code")
+    )
+    if pending:
+        send_telegram_text(chat_id, f"📌 *Pending Plan Change*\n\nPending change: {pending}\n\nReply PAY1 for billing summary or PAY6 for renewal/expiry.")
+    else:
+        send_telegram_text(chat_id, "📌 *Pending Plan Change*\n\nNo pending plan change found.\n\nReply PAY1 for billing summary or 0 for main menu.")
+
+
+def _send_renewal_expiry(chat_id: str, account_id: str) -> None:
+    sub = _subscription_row(account_id)
+    if not sub:
+        send_telegram_text(chat_id, "📅 *Renewal / Expiry Date*\n\nNo active paid subscription found.\n\nReply 4 to view subscription plans.")
+        return
+
+    expiry = _clean_text(sub.get("expires_at") or sub.get("current_period_end") or sub.get("valid_until") or "")
+    plan_name = _clean_text(sub.get("plan_name") or sub.get("plan_code") or "Current plan")
+    send_telegram_text(
+        chat_id,
+        "📅 *Renewal / Expiry Date*\n\n"
+        f"Plan: {plan_name}\n"
+        f"Renewal/expiry: {expiry[:10] if expiry else 'Not shown'}\n\n"
+        "Reply PAY1 for billing summary or PAY2 for payment history.",
+    )
+
+
+def _send_credit_rows(chat_id: str, account_id: str, *, mode: str) -> None:
+    rows = _rows_for_account("credit_usage_logs", account_id, limit=8)
+
+    if mode == "ai":
+        rows = [r for r in rows if "ai" in _clean_text(r.get("action_code") or r.get("description")).lower() or int(r.get("credits_delta") or 0) < 0]
+        title = "📉 *AI Credit Deductions*"
+    elif mode == "additions":
+        rows = [r for r in rows if int(r.get("credits_delta") or 0) > 0 or "top" in _clean_text(r.get("action_code") or r.get("description")).lower()]
+        title = "➕ *Credit Additions / Top-ups*"
+    else:
+        title = "💎 *Recent Credit Activity*"
+
+    if not rows:
+        balance = get_credit_balance(account_id)
+        bal_value = balance.get("balance", 0) if isinstance(balance, dict) else 0
+        send_telegram_text(chat_id, f"{title}\n\nNo matching credit activity found yet.\n\nCurrent balance: {bal_value}\n\nReply CR1 for balance or 0 for main menu.")
+        return
+
+    lines = [title, ""]
+    for idx, row in enumerate(rows[:5], 1):
+        desc = row.get("description") or row.get("action_code") or "Credit activity"
+        delta = row.get("credits_delta") or row.get("amount") or row.get("credits") or ""
+        created = row.get("created_at") or row.get("updated_at")
+        lines.append(f"{idx}. {desc}")
+        if delta != "":
+            lines.append(f"   Credits: {delta}")
+        lines.append(f"   Date: {_date_short(created)}")
+        lines.append("")
+
+    lines.append("Reply CR1 for balance, T10/T50/T100/T500 for top-up, or 0 for menu.")
+    send_telegram_text(chat_id, _clip_text("\n".join(lines)))
+
+
+def _send_support_menu(chat_id: str) -> None:
+    send_telegram_text(
+        chat_id,
+        "🛟 *Support Centre*\n\n"
+        "SUP1 - Create support ticket\n"
+        "SUP2 - View my support tickets\n"
+        "SUP3 - View latest ticket\n"
+        "SUP4 - Reply to latest/open ticket\n"
+        "SUP5 - Close latest/open ticket\n"
+        "SUP6 - Contact support email\n\n"
+        "Quick examples:\n"
+        "SUP1 I paid but my plan has not updated. Reference NTG-...\n"
+        "SUP4 Please note that my Paystack reference is NTG-...\n"
+        "SUP5\n\n"
+        "Reply 0 for main menu.",
+    )
+
+
+def _send_support_email(chat_id: str) -> None:
+    send_telegram_text(
+        chat_id,
+        "📧 *Contact Support*\n\n"
+        "Email: support@naijataxguides.com\n\n"
+        "For faster help, include your Telegram ID, registered email/phone, payment reference if any, and a short description of the issue.\n\n"
+        "You can also reply SUP1 followed by your issue to create a support ticket.",
+    )
+
+
+def _create_support_ticket_from_text(chat_id: str, account_id: str, text_raw: str) -> None:
+    details = _clean_text(text_raw)
+    details = re.sub(r"^SUP1\b", "", details, flags=re.I).strip()
+
+    if not details:
+        send_telegram_text(
+            chat_id,
+            "🛟 *Create Support Ticket*\n\n"
+            "Send SUP1 followed by your issue.\n\n"
+            "Example:\n"
+            "SUP1 I paid but my plan has not updated. Reference NTG-...",
+        )
+        return
+
+    ticket_id = f"NTG-TG-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
+    now = _utc_now_iso()
+
+    # Batch 27D2:
+    # Live DB error confirmed support_tickets.ticket_id is NOT NULL.
+    # Use ticket_id in every payload attempt and keep the first payload close
+    # to the actual row shape shown by Supabase error details.
+    payload_attempts = [
+        {
+            "ticket_id": ticket_id,
+            "account_id": account_id,
+            "category": "general",
+            "priority": "normal",
+            "subject": details[:120],
+            "message": details,
+            "status": "open",
+            "channel": "telegram",
+            "source": "telegram",
+            "metadata": {"created_from": "telegram", "command": "SUP1"},
+            "created_at": now,
+            "updated_at": now,
+        },
+        {
+            "ticket_id": ticket_id,
+            "account_id": account_id,
+            "subject": details[:120],
+            "message": details,
+            "status": "open",
+            "channel": "telegram",
+            "source": "telegram",
+            "created_at": now,
+            "updated_at": now,
+        },
+        {
+            "ticket_id": ticket_id,
+            "account_id": account_id,
+            "subject": details[:120],
+            "message": details,
+            "status": "open",
+            "created_at": now,
+            "updated_at": now,
+        },
+        {
+            "ticket_id": ticket_id,
+            "account_id": account_id,
+            "message": details,
+            "status": "open",
+            "created_at": now,
+            "updated_at": now,
+        },
+        {
+            "ticket_id": ticket_id,
+            "account_id": account_id,
+            "message": details,
+            "status": "open",
+            "created_at": now,
+        },
+    ]
+
+    saved_row = None
+    last_error = None
+
+    for payload in payload_attempts:
+        ok, resp, err = _safe_exec(supabase.table("support_tickets").insert(payload))
+        if ok:
+            saved_row = _first(resp) or payload
+            break
+        last_error = err
+
+    if saved_row:
+        ref = saved_row.get("ticket_id") or saved_row.get("id") or ticket_id
+        send_telegram_text(
+            chat_id,
+            f"✅ *Support Ticket Created*\n\nTicket: {ref}\n\nOur support team will review it.\n\nReply SUP2 to view tickets or 0 for main menu.",
+        )
+    else:
+        logging.warning("Telegram support ticket insert failed: %s", last_error)
+        send_telegram_text(
+            chat_id,
+            "⚠️ I could not save the support ticket automatically.\n\n"
+            "Please email support@naijataxguides.com and include this reference:\n"
+            f"{ticket_id}\n\n"
+            "Your message:\n"
+            f"{_clip_text(details, 600)}",
+        )
+
+
+def _send_support_tickets(chat_id: str, account_id: str, latest_only: bool = False) -> None:
+    rows = _rows_for_account("support_tickets", account_id, limit=1 if latest_only else 5)
+
+    if not rows:
+        send_telegram_text(chat_id, "🎫 *Support Tickets*\n\nNo support ticket found yet.\n\nReply SUP1 followed by your issue to create one.")
+        return
+
+    title = "🎫 *Latest Support Ticket*" if latest_only else "🎫 *My Support Tickets*"
+    lines = [title, ""]
+    for idx, row in enumerate(rows, 1):
+        ref = row.get("ticket_id") or row.get("id") or "No reference"
+        status = row.get("status") or "open"
+        subject = row.get("subject") or row.get("title") or row.get("message") or row.get("description") or "Support ticket"
+        created = row.get("created_at")
+        lines.append(f"{idx}. {ref}")
+        lines.append(f"   Status: {status}")
+        lines.append(f"   Subject: {_history_excerpt(subject, 120)}")
+        lines.append(f"   Date: {_date_short(created)}")
+        lines.append("")
+
+    lines.append("Reply SUP4 with your message to add a note, SUP5 to close latest/open ticket, or 0 for menu.")
+    send_telegram_text(chat_id, _clip_text("\n".join(lines)))
+
+
+def _send_referral_menu(chat_id: str, account_id: str, action: str) -> None:
+    fallback_code = f"NTG-{account_id.replace('-', '')[:8].upper()}" if account_id else "NTG-USER"
+    base = os.getenv("FRONTEND_BASE_URL") or os.getenv("APP_BASE_URL") or "https://www.naijataxguides.com"
+    link = f"{base.rstrip()}/?ref={fallback_code}"
+
+    if action == "r1":
+        send_telegram_text(chat_id, f"🤝 *My Referral Code*\n\nCode: {fallback_code}\n\nReply R2 for your referral link or R3 for a share message.")
+    elif action == "r2":
+        send_telegram_text(chat_id, f"🔗 *My Referral Link*\n\n{link}\n\nReply R3 for a ready-to-share invitation.")
+    elif action == "r3":
+        send_telegram_text(chat_id, f"📣 *Referral Invitation*\n\nUse Naija Tax Guide for Nigerian tax answers, calculators, reminders, and filing support.\n\nJoin here:\n{link}")
+    elif action == "r4":
+        send_telegram_text(chat_id, "📊 *Referral Statistics*\n\nReferral statistics are available on the website dashboard.\n\nReply R1 for your code or R2 for your link.")
+    elif action == "r5":
+        send_telegram_text(chat_id, "💰 *Referral Rewards*\n\nReferral rewards are tracked on your web dashboard.\n\nReply R6 for payout status.")
+    elif action == "r6":
+        send_telegram_text(chat_id, "🏦 *Payout Status*\n\nReferral payout status is available on your web dashboard.\n\nContact support if a payout is delayed.")
+    else:
+        send_telegram_text(
+            chat_id,
+            "🤝 *Referral Centre*\n\n"
+            "R1 - My referral code\n"
+            "R2 - My referral link\n"
+            "R3 - Share referral invitation\n"
+            "R4 - Referral statistics\n"
+            "R5 - Referral rewards\n"
+            "R6 - Payout status",
+        )
+
+
+def _send_filing_assistance(chat_id: str, action: str) -> None:
+    if action == "ft1":
+        _send_tax_menu(chat_id)
+        return
+
+    messages = {
+        "ft2": "👥 *PAYE Filing Help*\n\nUse this for employee salary tax guidance, PAYE calculations, and payroll filing preparation.\n\nYou can also use C1 for PAYE calculator.",
+        "ft3": "🧾 *VAT Filing Help*\n\nUse this for VAT registration, output VAT/input VAT guidance, and VAT filing preparation.\n\nYou can also use C3 for VAT calculator.",
+        "ft4": "🏢 *CIT Filing Help*\n\nUse this for Company Income Tax filing preparation, records, and tax computation guidance.\n\nYou can also use C2 for CIT calculator.",
+        "ft5": "💼 *WHT Filing Help*\n\nUse this for withholding tax deduction/remittance guidance.\n\nYou can also use C4 for WHT calculator.",
+        "ft6": "✅ *Document Checklist*\n\nCommon tax filing documents include financial statements, invoices, receipts, bank statements, payroll records, WHT credit notes, VAT records, and prior filings.",
+        "ft7": "🧑‍💼 *Human-Assisted Filing Request*\n\nSend SUP1 followed by your filing request and contact details.\n\nExample:\nSUP1 I need help filing VAT for April 2026.",
+        "ft8": "📌 *Latest Filing Request*\n\nUse the website filing page for detailed request tracking. Reply 7 for the Telegram filing menu.",
+    }
+    send_telegram_text(chat_id, messages.get(action, "🗂️ *Filing Assistance*\n\nReply FT1 to open the filing assistance menu."))
+
+
+def _send_account_profile(chat_id: str, account_id: str, tg_user_id: str, linked: bool, action: str) -> None:
+    if action == "acc1":
+        _send_account_status(chat_id, account_id, tg_user_id, linked)
+    elif action == "acc2":
+        _send_link_help(chat_id, linked=linked)
+    else:
+        _send_account_support(chat_id)
+
+
+def _send_settings_master(chat_id: str, action: str) -> None:
+    if action == "set1":
+        send_telegram_text(
+            chat_id,
+            "⚙️ *Notification Settings*\n\n"
+            "Telegram notifications are active when your Telegram channel is linked.\n\n"
+            "For sensitive notification changes, use the website dashboard.",
+        )
+    elif action == "set2":
+        send_telegram_text(
+            chat_id,
+            "🕘 *Reminder Timezone / Defaults*\n\n"
+            "Default reminder timezone is managed from the website dashboard.\n\n"
+            "Use D1-D4 for deadline/reminder commands where available.",
+        )
+    else:
+        send_telegram_text(
+            chat_id,
+            "🔐 *Privacy / Data Options*\n\n"
+            "Keep your Telegram and website accounts secure. Do not share OTPs, payment links, or link codes with strangers.\n\n"
+            "Use UNLINK if this Telegram account should no longer access your web workspace.",
+        )
+
+
+def _handle_master_command(
+    *,
+    chat_id: str,
+    account_id: str,
+    tg_user_id: str,
+    text_raw: str,
+    linked: bool,
+    has_subscription: bool,
+) -> bool:
+    text_clean = _clean_text(text_raw)
+    text_lower = text_clean.lower()
+    match = MASTER_COMMAND_RE.match(text_clean)
+    if not match:
+        return False
+
+    cmd = match.group(1).upper()
+
+    if cmd == "ALL":
+        _send_all_commands(chat_id, linked=linked)
+        return True
+
+    if cmd in MASTER_PLAN_CODE_TO_NUMBER:
+        return _handle_plan_code_selection(
+            chat_id=chat_id,
+            account_id=account_id,
+            tg_user_id=tg_user_id,
+            text_lower=cmd.lower(),
+        )
+
+    if cmd in MASTER_TOPUP_CODE_TO_NUMBER:
+        return _handle_credit_package_selection(
+            chat_id=chat_id,
+            account_id=account_id,
+            tg_user_id=tg_user_id,
+            text_lower=cmd.lower(),
+            has_subscription=has_subscription,
+        )
+
+    if cmd in {"H1", "H2"}:
+        if cmd == "H1":
+            _send_recent_history(chat_id, account_id)
+        else:
+            _send_last_answer(chat_id, account_id)
+        return True
+
+    if cmd.startswith("SUP"):
+        if cmd == "SUP1":
+            _create_support_ticket_from_text(chat_id, account_id, text_raw)
+        elif cmd == "SUP2":
+            _send_support_tickets(chat_id, account_id, latest_only=False)
+        elif cmd == "SUP3":
+            _send_support_tickets(chat_id, account_id, latest_only=True)
+        elif cmd == "SUP4":
+            send_telegram_text(chat_id, "📝 *Reply to Ticket*\n\nSend SUP4 followed by your reply. Ticket reply threading will be fully expanded in a later support-specific batch.")
+        elif cmd == "SUP5":
+            send_telegram_text(chat_id, "✅ *Close Ticket*\n\nTicket closing from Telegram will be fully expanded in a later support-specific batch. For now, email support@naijataxguides.com if urgent.")
+        elif cmd == "SUP6":
+            _send_support_email(chat_id)
+        return True
+
+    if cmd.startswith("R"):
+        _send_referral_menu(chat_id, account_id, cmd.lower())
+        return True
+
+    if cmd.startswith("FT"):
+        _send_filing_assistance(chat_id, cmd.lower())
+        return True
+
+    if cmd.startswith("ACC"):
+        _send_account_profile(chat_id, account_id, tg_user_id, linked, cmd.lower())
+        return True
+
+    if cmd.startswith("SET"):
+        _send_settings_master(chat_id, cmd.lower())
+        return True
+
+    if cmd == "CR1":
+        send_telegram_text(chat_id, format_balance_message(get_credit_balance(account_id)))
+        return True
+    if cmd == "CR2":
+        _send_credit_rows(chat_id, account_id, mode="recent")
+        return True
+    if cmd == "CR3":
+        _send_credit_rows(chat_id, account_id, mode="ai")
+        return True
+    if cmd == "CR4":
+        _send_credit_rows(chat_id, account_id, mode="additions")
+        return True
+
+    if cmd == "PAY1":
+        send_telegram_text(chat_id, _billing_summary_text(account_id))
+        return True
+    if cmd == "PAY2":
+        _send_payment_history_master(chat_id, account_id)
+        return True
+    if cmd == "PAY3":
+        _send_latest_payment(chat_id, account_id)
+        return True
+    if cmd == "PAY4":
+        _send_verify_payment(chat_id, account_id, text_raw)
+        return True
+    if cmd == "PAY5":
+        _send_pending_change(chat_id, account_id)
+        return True
+    if cmd == "PAY6":
+        _send_renewal_expiry(chat_id, account_id)
+        return True
+
+    # These modules will be expanded in later platform-parity batches.
+    if cmd.startswith("F"):
+        if cmd == "F1":
+            send_telegram_text(chat_id, "🧮 Calculator menu is available on WhatsApp and web. Telegram calculator parity will be handled in a later batch.\n\nUse C1-C5 if enabled, or use the website Calculator page.")
+        else:
+            _send_filing_assistance(chat_id, "ft1")
+        return True
+
+    if cmd.startswith("C"):
+        send_telegram_text(chat_id, "🧮 Calculator command received. Full Telegram calculator parity will be handled in a later batch. Use the website Calculator page for now.")
+        return True
+
+    if cmd.startswith("Q"):
+        send_telegram_text(chat_id, "🧠 Quiz command received. Full Telegram quiz parity will be handled in a later batch. WhatsApp quiz remains the current live quiz channel.")
+        return True
+
+    if cmd.startswith("D"):
+        send_telegram_text(chat_id, "📅 Deadline command received. Full Telegram deadline/reminder parity will be handled in a later batch. Use the website Deadlines page for now.")
+        return True
+
+    return False
+
+
+# ---------------------------------------------------------------------------
+# Batch 27C command namespace helpers
+# ---------------------------------------------------------------------------
+
+def _money(value: Any) -> str:
+    try:
+        amount = float(value or 0)
+        return f"₦{amount:,.0f}"
+    except Exception:
+        return str(value or "₦0")
+
+
+def _date_short(value: Any) -> str:
+    text = _clean_text(value)
+    if not text:
+        return "Not shown"
+
+    try:
+        cleaned = text.replace("Z", "+00:00")
+        dt = datetime.fromisoformat(cleaned)
+        return dt.strftime("%d %b %Y")
+    except Exception:
+        return text[:10]
+
+
+def _send_all_commands(chat_id: str, *, linked: bool = False) -> None:
+    msg = (
+        "📋 *Naija Tax Guide Command List*\n\n"
+        "Main menu:\n"
+        "1 - Ask a tax question\n"
+        "2 - Check Usage Credits\n"
+        "3 - Check current plan\n"
+        "4 - View subscription plans\n"
+        "5 - Link/unlink website account\n"
+        "6 - Buy Usage Credit add-ons\n"
+        "7 - Tax tools, filing & quiz\n"
+        "8 - Help\n\n"
+        "Plans:\n"
+        "S1/S2/S3 - Starter monthly/quarterly/yearly\n"
+        "P1/P2/P3 - Professional monthly/quarterly/yearly\n"
+        "B1/B2/B3 - Business monthly/quarterly/yearly\n\n"
+        "Credits and billing:\n"
+        "T10/T50/T100/T500 - Buy credit add-ons\n"
+        "CR1 - Credit balance\n"
+        "CR2 - Recent credit activity\n"
+        "CR3 - AI credit deductions\n"
+        "CR4 - Credit additions/top-ups\n"
+        "PAY1 - Billing summary\n"
+        "PAY2 - Payment history\n"
+        "PAY3 - Latest payment status\n"
+        "PAY4 <reference> - Verify payment reference\n"
+        "PAY5 - Pending plan change\n"
+        "PAY6 - Renewal/expiry date\n\n"
+        "Tax tools and quiz:\n"
+        "F1 - Calculator menu\n"
+        "C1 - PAYE calculator\n"
+        "C2 - Company Income Tax calculator\n"
+        "C3 - VAT calculator\n"
+        "C4 - Withholding Tax calculator\n"
+        "C5 - Salary/net pay comparison\n"
+        "C6 or Q1 - Tax quiz\n"
+        "Q2 - Quiz categories\n"
+        "Q3 - Quiz score\n"
+        "Q4 - Last quiz review\n"
+        "Q5 - Detailed saved quiz explanation\n\n"
+        "Deadlines and history:\n"
+        "D1 - Create reminder\n"
+        "D2 - List reminders\n"
+        "D3 - Delete reminder\n"
+        "D4 - Update reminder\n"
+        "H1 - Recent tax history\n"
+        "H2 - Last tax answer\n\n"
+        "Support, referral, filing, account:\n"
+        "SUP1-SUP6 - Support tickets and support email\n"
+        "R1-R6 - Referral code, link, stats, rewards, payout\n"
+        "FT1-FT8 - Filing assistance and filing requests\n"
+        "ACC1-ACC3 - Account/profile and linked channels\n"
+        "SET1-SET3 - Settings guidance\n\n"
+        "Navigation:\n"
+        "0 or MENU - Main menu\n"
+        "* or BACK - Go back\n"
+        "CANCEL - Cancel current flow"
+    )
+    send_telegram_text(chat_id, msg)
+
+
+def _send_credit_package_menu(chat_id: str, account_id: str, *, has_subscription: bool) -> None:
+    if not has_subscription:
+        send_telegram_text(
+            chat_id,
+            "💎 Usage Credit add-ons are available only to active paid subscribers.\n\n"
+            "Reply 4 to view subscription plans or PAY1 to check billing summary.",
+        )
+        return
+
+    send_telegram_text(chat_id, _topup_menu_text())
+
+
+def _select_credit_package_number(text_lower: str) -> Optional[int]:
+    return _topup_number_from_master_code(text_lower)
+
+
+def _handle_credit_package_selection(
+    *,
+    chat_id: str,
+    account_id: str,
+    tg_user_id: str,
+    text_lower: str,
+    has_subscription: bool,
+) -> bool:
+    package_num = _select_credit_package_number(text_lower)
+
+    if package_num is None:
+        return False
+
+    if not has_subscription:
+        user_states.pop(chat_id, None)
+        send_telegram_text(
+            chat_id,
+            "💎 Usage Credit add-ons are available only to active paid subscribers.\n\n"
+            "Reply 4 to view subscription plans.",
+        )
+        return True
+
+    package = validate_package_number(package_num)
+    if not package:
+        send_telegram_text(chat_id, "❌ Invalid add-on package. Reply 6 to see packages again, then choose T10, T50, T100, or T500.")
+        return True
+
+    package_code = next((code for code, num in MASTER_TOPUP_CODE_TO_NUMBER.items() if num == package_num), "")
+    reuse_msg = (
+        _recent_checkout_reuse_message(account_id, tg_user_id=tg_user_id, package_code=package_code)
+        if package_code
+        else None
+    )
+    if reuse_msg:
+        send_telegram_text(chat_id, reuse_msg)
+        return True
+
+    result = create_credit_payment(account_id, package_num, "telegram", tg_user_id)
+    if result.get("ok") and package_code:
+        _record_telegram_checkout_lock(
+            tg_user_id=tg_user_id,
+            account_id=account_id,
+            kind="topup",
+            code=package_code,
+            result=result,
+        )
+    user_states.pop(chat_id, None)
+    send_telegram_text(
+        chat_id,
+        result.get("message") if result.get("ok") else f"❌ {result.get('message', 'Please try again.')}",
+    )
+    return True
+
+
+def _safe_table_rows(table_name: str, account_id: str, limit: int = 5) -> list[dict[str, Any]]:
+    try:
+        resp = (
+            supabase.table(table_name)
+            .select("*")
+            .eq("account_id", account_id)
+            .order("created_at", desc=True)
+            .limit(limit)
+            .execute()
+        )
+        return _rows(resp)
+    except Exception:
+        return []
+
+
+def _send_credit_activity(chat_id: str, account_id: str) -> None:
+    rows: list[dict[str, Any]] = []
+
+    for table_name in ("ai_credit_transactions", "credit_transactions", "ai_credit_deductions"):
+        rows = _safe_table_rows(table_name, account_id, limit=5)
+        if rows:
+            break
+
+    balance = get_credit_balance(account_id)
+
+    if not rows:
+        bal = balance.get("balance", 0) if isinstance(balance, dict) else "Not shown"
+        send_telegram_text(
+            chat_id,
+            "*📉 Usage Credit Activity*\n\n"
+            "No recent credit deduction log found yet.\n\n"
+            f"Current balance: {bal}\n\n"
+            "Reply CR1 for balance, CR2 to buy add-ons, or 0 for main menu.",
+        )
+        return
+
+    msg = "*📉 Recent Usage Credit Activity*\n\n"
+    for idx, row in enumerate(rows, 1):
+        amount = row.get("amount") or row.get("credits") or row.get("credit_delta") or row.get("delta") or row.get("used") or ""
+        reason = row.get("reason") or row.get("description") or row.get("event_type") or row.get("type") or "Credit activity"
+        created_at = row.get("created_at") or row.get("updated_at")
+        msg += f"{idx}. {reason}\n"
+        if amount != "":
+            msg += f"   Credits: {amount}\n"
+        msg += f"   Date: {_date_short(created_at)}\n\n"
+
+    msg += "Reply CR1 for balance, CR2 to buy add-ons, or 0 for main menu."
+    send_telegram_text(chat_id, msg)
+
+
+def _send_credit_rules(chat_id: str) -> None:
+    send_telegram_text(
+        chat_id,
+        "*💎 Usage Credit Rules*\n\n"
+        "• Credits are shared across web, WhatsApp, and Telegram when your channels are linked.\n"
+        "• AI tax answers and premium quiz explanations may deduct credits.\n"
+        "• Basic calculators and free tools should remain available according to your plan rules.\n"
+        "• Add-ons are available only to active paid subscribers.\n\n"
+        "Reply CR1 for balance, CR2 for add-ons, or 0 for main menu.",
+    )
+
+
+def _send_payment_history(chat_id: str, account_id: str) -> None:
+    rows: list[dict[str, Any]] = []
+
+    for table_name in ("paystack_transactions", "payment_transactions", "billing_transactions"):
+        rows = _safe_table_rows(table_name, account_id, limit=5)
+        if rows:
+            break
+
+    if not rows:
+        send_telegram_text(
+            chat_id,
+            "*🧾 Payment History*\n\n"
+            "No payment history found for this account yet.\n\n"
+            "Reply PAY2 to view plans or PAY6 for billing support.",
+        )
+        return
+
+    msg = "*🧾 Recent Payment History*\n\n"
+    for idx, row in enumerate(rows, 1):
+        plan = row.get("plan_code") or row.get("plan") or row.get("product_code") or "Payment"
+        status = row.get("status") or row.get("payment_status") or row.get("event") or "status not shown"
+        amount = row.get("amount") or row.get("amount_naira") or row.get("price") or row.get("paid_amount")
+        reference = row.get("reference") or row.get("payment_reference") or row.get("provider_reference") or ""
+        created_at = row.get("created_at") or row.get("paid_at") or row.get("updated_at")
+
+        msg += f"{idx}. {plan}\n"
+        if amount is not None:
+            msg += f"   Amount: {_money(amount)}\n"
+        msg += f"   Status: {status}\n"
+        if reference:
+            msg += f"   Ref: {reference}\n"
+        msg += f"   Date: {_date_short(created_at)}\n\n"
+
+    msg += "Reply PAY1 for current plan, PAY2 for plans, or 0 for main menu."
+    send_telegram_text(chat_id, msg)
+
+
+def _send_upgrade_help(chat_id: str) -> None:
+    send_telegram_text(
+        chat_id,
+        "*🛒 Upgrade / Renew Help*\n\n"
+        "1. Reply PAY2 to view available plans.\n"
+        "2. Choose a plan using S1, S2, S3, etc.\n"
+        "3. Complete payment through the secure checkout link.\n"
+        "4. Your web, WhatsApp, and Telegram access should update automatically after payment.\n\n"
+        "Reply PAY1 to check your current plan or PAY6 for billing support.",
+    )
+
+
+def _send_renewal_help(chat_id: str) -> None:
+    send_telegram_text(
+        chat_id,
+        "*🔁 Renewal / Cancel Information*\n\n"
+        "Your current plan details are shown with PAY1.\n\n"
+        "To upgrade or renew, reply PAY2 and select a plan.\n"
+        "To cancel or resolve billing issues, contact support.\n\n"
+        "Support: support@naijataxguides.com",
+    )
+
+
+def _send_billing_support(chat_id: str) -> None:
+    send_telegram_text(
+        chat_id,
+        "*🧾 Billing Support*\n\n"
+        "For failed payment, wrong plan, missing credits, or subscription issues, contact:\n"
+        "support@naijataxguides.com\n\n"
+        "Include your registered email/phone and payment reference if available.\n\n"
+        "Reply PAY4 for payment history or 0 for main menu.",
+    )
+
+
+def _send_account_status(chat_id: str, account_id: str, tg_user_id: str, linked: bool) -> None:
+    identity = _get_telegram_identity(tg_user_id)
+    balance = get_credit_balance(account_id)
+
+    msg = (
+        "*👤 Account / Channel Status*\n\n"
+        f"Telegram linked: {'Yes ✅' if linked else 'No ❌'}\n"
+        f"Telegram ID: {tg_user_id}\n"
+        f"Workspace account: {account_id}\n"
+    )
+
+    if identity:
+        msg += f"Linked account: {identity.get('account_id') or account_id}\n"
+        msg += f"Last seen: {_date_short(identity.get('last_seen_at') or identity.get('updated_at'))}\n"
+
+    if isinstance(balance, dict):
+        msg += f"Usage Credits: {balance.get('balance', 0)}\n"
+
+    msg += "\nReply ACC2 for link/unlink help or 0 for main menu."
+    send_telegram_text(chat_id, msg)
+
+
+def _send_link_help(chat_id: str, *, linked: bool) -> None:
+    if linked:
+        send_telegram_text(
+            chat_id,
+            "*🔗 Telegram is linked*\n\n"
+            "This Telegram account is connected to your website workspace.\n\n"
+            "Reply UNLINK to disconnect Telegram, or reply 0 for main menu.",
+        )
+    else:
+        send_telegram_text(
+            chat_id,
+            "*🔗 Link Telegram to Website*\n\n"
+            "1. Login on the website.\n"
+            "2. Open Channels.\n"
+            "3. Generate a Telegram link code.\n"
+            "4. Send the 8-character code here.\n\n"
+            "After linking, Telegram will use the same website plan and Usage Credits.",
+        )
+
+
+def _send_account_support(chat_id: str) -> None:
+    send_telegram_text(
+        chat_id,
+        "*🛟 Account Support*\n\n"
+        "For login, channel linking, wrong balance, or account access issues, contact:\n"
+        "support@naijataxguides.com\n\n"
+        "Useful commands:\n"
+        "ACC1 - Account/channel status\n"
+        "ACC2 - Link/unlink help\n"
+        "CR1 - Credit balance\n"
+        "PAY1 - Current plan",
+    )
+
+
+def _send_language_settings(chat_id: str) -> None:
+    send_telegram_text(
+        chat_id,
+        "*🌐 Language Settings*\n\n"
+        "Current default language: English.\n\n"
+        "You can ask tax questions in simple English. Multi-language preferences can be managed from the web dashboard when available.\n\n"
+        "Reply SET2 for notification settings or 0 for main menu.",
+    )
+
+
+def _send_notification_settings(chat_id: str) -> None:
+    send_telegram_text(
+        chat_id,
+        "*🔔 Notification Settings*\n\n"
+        "Telegram notifications are active when this channel is linked.\n\n"
+        "Use ACC2 if you want to unlink Telegram from your website account.\n"
+        "More notification controls can be managed from the web dashboard when available.",
+    )
+
+
+def _send_privacy_settings(chat_id: str) -> None:
+    send_telegram_text(
+        chat_id,
+        "*🔐 Privacy & Account Safety*\n\n"
+        "• Keep your Telegram and website accounts secure.\n"
+        "• Do not share payment links or OTP codes with strangers.\n"
+        "• Use UNLINK if this Telegram account should no longer access your web workspace.\n\n"
+        "Support: support@naijataxguides.com",
+    )
+
+
+def _handle_namespace_command(
+    *,
+    chat_id: str,
+    account_id: str,
+    tg_user_id: str,
+    text_lower: str,
+    linked: bool,
+    has_subscription: bool,
+) -> bool:
+    # Retained for backward internal calls. Batch 27D uses _handle_master_command
+    # so that Telegram follows the WhatsApp master command registry.
+    return _handle_master_command(
+        chat_id=chat_id,
+        account_id=account_id,
+        tg_user_id=tg_user_id,
+        text_raw=text_lower,
+        linked=linked,
+        has_subscription=has_subscription,
+    )
+
+
+
+# ---------------------------------------------------------------------------
+# Filing flows retained from existing Telegram behavior
+# ---------------------------------------------------------------------------
+
+def _handle_paye_filing_step(chat_id: str, account_id: str, user_state: dict[str, Any], text: str) -> bool:
+    step = int(user_state.get("step", 1))
+    draft = user_state.get("draft", {})
+    inputs = draft.get("inputs", {})
+
+    if step == 1:
+        try:
+            amount = _parse_amount(text)
+            inputs["monthly_gross_income"] = amount
+            save_filing_draft(account_id, "paye", inputs, [], step + 1)
+            user_states[chat_id] = {"filing_type": "paye", "step": 2, "draft": {"inputs": inputs}}
+            send_telegram_text(chat_id, f"✅ Received: ₦{amount:,.2f}\n\n📋 Step 2 of 4: Pension Contribution\nEnter your monthly pension contribution, or 0 if none:")
+        except ValueError:
+            send_telegram_text(chat_id, "❌ Please enter a valid amount. Example: 750000")
+
+    elif step == 2:
+        try:
+            amount = _parse_amount(text)
+            inputs["pension_contribution"] = amount
+            save_filing_draft(account_id, "paye", inputs, [], step + 1)
+            user_states[chat_id] = {"filing_type": "paye", "step": 3, "draft": {"inputs": inputs}}
+            send_telegram_text(chat_id, f"✅ Received: ₦{amount:,.2f}\n\n📋 Step 3 of 4: NHF Contribution\nEnter your NHF contribution, or 0 if none:")
+        except ValueError:
+            send_telegram_text(chat_id, "❌ Please enter a valid amount.")
+
+    elif step == 3:
+        try:
+            amount = _parse_amount(text)
+            inputs["nhf"] = amount
+            save_filing_draft(account_id, "paye", inputs, [], step + 1)
+            calc = calculate_tax("paye", inputs)
+            monthly_tax = calc.get("monthly_tax_payable", 0)
+            annual_tax = calc.get("annual_tax_payable", 0)
+            preview = (
+                "📋 *PAYE Filing Summary*\n\n"
+                f"• Monthly Gross Income: ₦{inputs.get('monthly_gross_income', 0):,.2f}\n"
+                f"• Pension Contribution: ₦{inputs.get('pension_contribution', 0):,.2f}\n"
+                f"• NHF Contribution: ₦{inputs.get('nhf', 0):,.2f}\n"
+                f"• Annual Taxable Income: ₦{calc.get('chargeable_income', 0):,.2f}\n"
+                f"• *Annual Tax Payable: ₦{annual_tax:,.2f}*\n"
+                f"• *Monthly Tax Deduction: ₦{monthly_tax:,.2f}*\n\n"
+                "Reply CONFIRM to submit, or CANCEL to abort."
+            )
+            user_states[chat_id] = {"filing_type": "paye", "step": 4, "draft": {"inputs": inputs}, "calculation": calc}
+            send_telegram_text(chat_id, preview)
+        except ValueError:
+            send_telegram_text(chat_id, "❌ Please enter a valid amount.")
+
+    elif step == 4:
+        if text.lower() == "confirm":
+            result = submit_tax_filing(account_id, "paye", inputs, [])
+            if result.get("ok"):
+                calc = result.get("calculation", {})
+                monthly_tax = calc.get("monthly_tax_payable", 0)
+                reference = result.get("reference", "N/A")
+                submitted_at = result.get("submitted_at", datetime.now().isoformat())
+                send_telegram_text(chat_id, f"✅ *PAYE Filing Submitted!*\n\n📋 Reference: {reference}\n📅 Date: {datetime.fromisoformat(submitted_at).strftime('%d %B %Y, %H:%M')}\n💰 Monthly Tax: ₦{monthly_tax:,.2f}\n\nReply HISTORY to see all filings.")
+                user_states.pop(chat_id, None)
+                delete_filing_draft(account_id, "paye")
+            else:
+                send_telegram_text(chat_id, f"❌ Filing failed: {result.get('error', 'Unknown error')}")
+        elif text.lower() == "cancel":
+            delete_filing_draft(account_id, "paye")
+            user_states.pop(chat_id, None)
+            send_telegram_text(chat_id, "❌ Filing cancelled. Reply MENU to see options.")
+        else:
+            send_telegram_text(chat_id, "Reply CONFIRM to submit or CANCEL to abort.")
+
+    return True
+
+
+def _handle_vat_filing_step(chat_id: str, account_id: str, user_state: dict[str, Any], text: str) -> bool:
+    step = int(user_state.get("step", 1))
+    draft = user_state.get("draft", {})
+    inputs = draft.get("inputs", {})
+
+    if step == 1:
+        try:
+            amount = _parse_amount(text)
+            inputs["taxable_supplies"] = amount
+            save_filing_draft(account_id, "vat", inputs, [], step + 1)
+            user_states[chat_id] = {"filing_type": "vat", "step": 2, "draft": {"inputs": inputs}}
+            send_telegram_text(chat_id, f"✅ Received: ₦{amount:,.2f}\n\n📋 Step 2 of 3: Input VAT\nEnter your input VAT, or 0 if none:")
+        except ValueError:
+            send_telegram_text(chat_id, "❌ Please enter a valid amount.")
+
+    elif step == 2:
+        try:
+            amount = _parse_amount(text)
+            inputs["input_vat"] = amount
+            save_filing_draft(account_id, "vat", inputs, [], step + 1)
+            calc = calculate_tax("vat", inputs)
+            vat_payable = calc.get("vat_payable", 0)
+            preview = (
+                "📋 *VAT Filing Summary*\n\n"
+                f"• Taxable Supplies: ₦{inputs.get('taxable_supplies', 0):,.2f}\n"
+                f"• Input VAT: ₦{inputs.get('input_vat', 0):,.2f}\n"
+                f"• Output VAT: ₦{calc.get('output_vat', 0):,.2f}\n"
+                f"• *VAT Payable: ₦{vat_payable:,.2f}*\n\n"
+                "Reply CONFIRM to submit, or CANCEL to abort."
+            )
+            user_states[chat_id] = {"filing_type": "vat", "step": 3, "draft": {"inputs": inputs}, "calculation": calc}
+            send_telegram_text(chat_id, preview)
+        except ValueError:
+            send_telegram_text(chat_id, "❌ Please enter a valid amount.")
+
+    elif step == 3:
+        if text.lower() == "confirm":
+            result = submit_tax_filing(account_id, "vat", inputs, [])
+            if result.get("ok"):
+                calc = result.get("calculation", {})
+                vat_payable = calc.get("vat_payable", 0)
+                reference = result.get("reference", "N/A")
+                submitted_at = result.get("submitted_at", datetime.now().isoformat())
+                send_telegram_text(chat_id, f"✅ *VAT Filing Submitted!*\n\n📋 Reference: {reference}\n📅 Date: {datetime.fromisoformat(submitted_at).strftime('%d %B %Y, %H:%M')}\n💰 VAT Payable: ₦{vat_payable:,.2f}\n\nReply HISTORY to see all filings.")
+                user_states.pop(chat_id, None)
+                delete_filing_draft(account_id, "vat")
+            else:
+                send_telegram_text(chat_id, f"❌ Filing failed: {result.get('error', 'Unknown error')}")
+        elif text.lower() == "cancel":
+            delete_filing_draft(account_id, "vat")
+            user_states.pop(chat_id, None)
+            send_telegram_text(chat_id, "❌ Filing cancelled. Reply MENU to see options.")
+        else:
+            send_telegram_text(chat_id, "Reply CONFIRM to submit or CANCEL to abort.")
+
+    return True
+
+
+def _handle_cit_filing_step(chat_id: str, account_id: str, user_state: dict[str, Any], text: str) -> bool:
+    step = int(user_state.get("step", 1))
+    draft = user_state.get("draft", {})
+    inputs = draft.get("inputs", {})
+
+    if step == 1:
+        try:
+            amount = _parse_amount(text)
+            inputs["gross_profit"] = amount
+            save_filing_draft(account_id, "cit", inputs, [], step + 1)
+            user_states[chat_id] = {"filing_type": "cit", "step": 2, "draft": {"inputs": inputs}}
+            send_telegram_text(chat_id, f"✅ Received: ₦{amount:,.2f}\n\n📋 Step 2 of 3: Allowable Expenses\nEnter your allowable expenses:")
+        except ValueError:
+            send_telegram_text(chat_id, "❌ Please enter a valid amount.")
+
+    elif step == 2:
+        try:
+            amount = _parse_amount(text)
+            inputs["allowable_expenses"] = amount
+            save_filing_draft(account_id, "cit", inputs, [], step + 1)
+            calc = calculate_tax("cit", inputs)
+            cit_payable = calc.get("cit_payable", 0)
+            company_size = calc.get("company_size", "N/A")
+            rate = calc.get("applicable_rate", 0)
+            preview = (
+                "📋 *CIT Filing Summary*\n\n"
+                f"• Gross Profit: ₦{inputs.get('gross_profit', 0):,.2f}\n"
+                f"• Allowable Expenses: ₦{inputs.get('allowable_expenses', 0):,.2f}\n"
+                f"• Assessable Profit: ₦{calc.get('assessable_profit', 0):,.2f}\n"
+                f"• Company Size: {str(company_size).title()}\n"
+                f"• Applicable Rate: {rate}%\n"
+                f"• *CIT Payable: ₦{cit_payable:,.2f}*\n\n"
+                "Reply CONFIRM to submit, or CANCEL to abort."
+            )
+            user_states[chat_id] = {"filing_type": "cit", "step": 3, "draft": {"inputs": inputs}, "calculation": calc}
+            send_telegram_text(chat_id, preview)
+        except ValueError:
+            send_telegram_text(chat_id, "❌ Please enter a valid amount.")
+
+    elif step == 3:
+        if text.lower() == "confirm":
+            result = submit_tax_filing(account_id, "cit", inputs, [])
+            if result.get("ok"):
+                calc = result.get("calculation", {})
+                cit_payable = calc.get("cit_payable", 0)
+                reference = result.get("reference", "N/A")
+                submitted_at = result.get("submitted_at", datetime.now().isoformat())
+                send_telegram_text(chat_id, f"✅ *CIT Filing Submitted!*\n\n📋 Reference: {reference}\n📅 Date: {datetime.fromisoformat(submitted_at).strftime('%d %B %Y, %H:%M')}\n💰 CIT Payable: ₦{cit_payable:,.2f}\n\nReply HISTORY to see all filings.")
+                user_states.pop(chat_id, None)
+                delete_filing_draft(account_id, "cit")
+            else:
+                send_telegram_text(chat_id, f"❌ Filing failed: {result.get('error', 'Unknown error')}")
+        elif text.lower() == "cancel":
+            delete_filing_draft(account_id, "cit")
+            user_states.pop(chat_id, None)
+            send_telegram_text(chat_id, "❌ Filing cancelled. Reply MENU to see options.")
+        else:
+            send_telegram_text(chat_id, "Reply CONFIRM to submit or CANCEL to abort.")
+
+    return True
+
+
+def _handle_continue_filing(chat_id: str, account_id: str, text: str) -> bool:
+    user_state = user_states.get(chat_id, {})
+    filing_type = user_state.get("filing_type")
+    if filing_type == "paye":
+        return _handle_paye_filing_step(chat_id, account_id, user_state, text)
+    if filing_type == "vat":
+        return _handle_vat_filing_step(chat_id, account_id, user_state, text)
+    if filing_type == "cit":
+        return _handle_cit_filing_step(chat_id, account_id, user_state, text)
+    return False
+
+
+def _handle_tax_filing_command(chat_id: str, account_id: str, text: str) -> bool:
+    text_lower = text.lower().strip()
+
+    if text_lower in ["/paye", "file paye", "file paye tax", "paye", "p"]:
+        user_states[chat_id] = {"filing_type": "paye", "step": 1, "draft": {"inputs": {}}}
+        send_telegram_text(chat_id, "📋 *PAYE Tax Filing - Step 1 of 4*\n\nPlease provide your monthly gross income.\nExample: 750000")
+        return True
+    if text_lower in ["/vat", "file vat", "file vat tax", "vat", "v"]:
+        user_states[chat_id] = {"filing_type": "vat", "step": 1, "draft": {"inputs": {}}}
+        send_telegram_text(chat_id, "📋 *VAT Filing - Step 1 of 3*\n\nEnter your total taxable supplies for the period.\nExample: 5000000")
+        return True
+    if text_lower in ["/cit", "file cit", "file cit tax", "file company tax", "cit", "c"]:
+        user_states[chat_id] = {"filing_type": "cit", "step": 1, "draft": {"inputs": {}}}
+        send_telegram_text(chat_id, "📋 *CIT Filing - Step 1 of 3*\n\nEnter your gross profit for the period.\nExample: 10000000")
+        return True
+    if text_lower in ["/history", "history", "my filings", "filing history"]:
+        filings = get_user_filings(account_id, limit=10)
+        if filings:
+            msg = "📋 *Your Tax Filings*\n\n"
+            for item in filings[:5]:
+                msg += f"• *{item.get('tax_type', '').upper()}*: {item.get('reference', 'N/A')}\n"
+                msg += f"  Status: {item.get('status', 'N/A')}\n"
+                msg += f"  Date: {item.get('submitted_at', '')[:10] if item.get('submitted_at') else 'N/A'}\n\n"
+            if len(filings) > 5:
+                msg += f"\n+ {len(filings) - 5} more. Visit web for full history."
+            send_telegram_text(chat_id, msg)
+        else:
+            send_telegram_text(chat_id, "📋 No tax filings found. Reply P to file PAYE tax.")
+        return True
+    if text_lower in ["/deadlines", "deadlines", "tax deadlines", "filing deadlines"]:
+        send_telegram_text(chat_id, "📅 *Tax Deadlines*\n\n• PAYE: Monthly by 10th\n• VAT: Monthly by 21st\n• CIT: 6 months after year end\n• Annual Returns: March 31st\n\nSet reminders in your web dashboard.")
+        return True
+    return False
+
+
+# ---------------------------------------------------------------------------
+# Telegram webhook
+# ---------------------------------------------------------------------------
+
+@bp.route("/telegram/webhook", methods=["POST"])
+def tg_webhook():
+    update = request.get_json(silent=True) or {}
+
+    if update.get("callback_query"):
+        return jsonify({"ok": True, "ignored": True, "type": "callback_query"})
+
+    msg = update.get("message") or update.get("edited_message") or {}
+    if not msg:
+        return jsonify({"ok": True, "ignored": True, "type": "no_message"})
+
+    chat = msg.get("chat") or {}
+    chat_id_str = str(chat.get("id") or "").strip()
+    text = (msg.get("text") or "").strip()
+    text_lower = text.lower().strip()
+
+    user = msg.get("from") or {}
+    tg_user_id = str(user.get("id") or "").strip()
+    display_name = " ".join([x for x in [user.get("first_name"), user.get("last_name")] if x]) or None
+
+    if not tg_user_id or not chat_id_str:
+        return jsonify({"ok": True, "ignored": True, "type": "missing_identity"})
+
+    resolved = _resolve_telegram_account(tg_user_id=tg_user_id, display_name=display_name)
+    if not resolved.get("ok"):
+        send_telegram_text(chat_id_str, "System error. Please try again.")
+        return jsonify({"ok": True, "resolved": False, "reason": resolved.get("reason")})
+
+    account_id = str(resolved.get("account_id"))
+    linked = bool(resolved.get("linked"))
+    user_state = user_states.get(chat_id_str, {})
+    has_subscription = bool(has_active_subscription(account_id))
+
+    if not text:
+        _send_welcome(chat_id_str, linked=linked)
+        return jsonify({"ok": True})
+
+    if text_lower in ["/start", "start", "0", "menu", "/menu"]:
+        user_states.pop(chat_id_str, None)
+        _send_main_menu(chat_id_str, linked=linked)
+        return jsonify({"ok": True})
+
+    if text_lower in ["help", "/help", "?"]:
+        _send_help(chat_id_str, linked=linked)
+        return jsonify({"ok": True})
+
+    if text_lower in ["back", "*", "cancel"]:
+        if user_state:
+            user_states.pop(chat_id_str, None)
+            send_telegram_text(chat_id_str, "Current flow cancelled.")
+        _send_main_menu(chat_id_str, linked=linked)
+        return jsonify({"ok": True})
+
+    if text_lower in ["unlink", "unlink telegram", "disconnect telegram", "remove telegram"]:
+        result = _unlink_telegram_identity(tg_user_id)
+        user_states.pop(chat_id_str, None)
+        if result.get("ok") and result.get("unlinked"):
+            send_telegram_text(chat_id_str, "✅ Telegram unlinked successfully.\n\nThis Telegram account is no longer connected to your website workspace. Reply 5 anytime to link again.")
+        elif result.get("ok"):
+            send_telegram_text(chat_id_str, "Telegram is not currently linked to a website account.\n\nReply 5 to get linking instructions.")
+        else:
+            send_telegram_text(chat_id_str, "❌ Telegram unlink failed. Please try again or use the Channels page on the website.")
+        return jsonify({"ok": True, "unlink": result})
+
+    if user_state.get("awaiting_email"):
+        email = text.strip().lower()
+        pending_plan = user_state.get("pending_plan")
+        if email in ["cancel", "0", "menu"]:
+            user_states.pop(chat_id_str, None)
+            send_telegram_text(chat_id_str, "❌ Subscription cancelled. Reply 4 to see plans.")
+            return jsonify({"ok": True})
+        if "@" in email and "." in email:
+            result = create_subscription_payment(account_id=account_id, plan=pending_plan, channel_type="telegram", provider_user_id=tg_user_id, email=email)
+            send_telegram_text(chat_id_str, result.get("message") if result.get("ok") else f"❌ {result.get('message', 'Please try again.')}")
+            user_states.pop(chat_id_str, None)
+        else:
+            send_telegram_text(chat_id_str, "❌ Invalid email. Send a valid email or CANCEL to abort.")
+        return jsonify({"ok": True})
+
+    # Direct top-up package commands work anytime and do not depend on in-memory worker state.
+    if _select_credit_package_number(text_lower) is not None:
+        if _handle_credit_package_selection(
+            chat_id=chat_id_str,
+            account_id=account_id,
+            tg_user_id=tg_user_id,
+            text_lower=text_lower,
+            has_subscription=has_subscription,
+        ):
+            return jsonify({"ok": True})
+
+    # WhatsApp master command registry must override stale conversational state.
+    # Clear old state before handling the command; the command handler may set a new
+    # state such as awaiting_email for a subscription checkout.
+    user_states.pop(chat_id_str, None)
+    if _handle_master_command(
+        chat_id=chat_id_str,
+        account_id=account_id,
+        tg_user_id=tg_user_id,
+        text_raw=text,
+        linked=linked,
+        has_subscription=has_subscription,
+    ):
+        return jsonify({"ok": True, "master_command": text.upper().split()[0]})
+
+
+    if user_state.get("awaiting_credit_package"):
+        if text_lower in ["0", "menu", "/menu"]:
+            user_states.pop(chat_id_str, None)
+            _send_main_menu(chat_id_str, linked=linked)
+            return jsonify({"ok": True})
+        send_telegram_text(chat_id_str, "Please reply T10, T50, T100, T500, or 0 to cancel. Other commands like PAY1, ACC1, and SET1 also work anytime.")
+        return jsonify({"ok": True})
+
+    if user_state.get("filing_type") and user_state.get("step"):
+        _handle_continue_filing(chat_id_str, account_id, text)
+        return jsonify({"ok": True})
+
+    if _handle_tax_filing_command(chat_id_str, account_id, text):
+        return jsonify({"ok": True})
+
+    if MENU_NUMBER_RE.match(text):
+        option = int(text)
+        if option == 1:
+            send_telegram_text(chat_id_str, "💬 Please type your Nigerian tax question.")
+            return jsonify({"ok": True})
+        if option == 2:
+            send_telegram_text(chat_id_str, format_balance_message(get_credit_balance(account_id)))
+            return jsonify({"ok": True})
+        if option == 3:
+            send_telegram_text(chat_id_str, format_subscription_message(account_id))
+            return jsonify({"ok": True})
+        if option == 4:
+            send_telegram_text(chat_id_str, _master_plans_menu())
+            return jsonify({"ok": True})
+        if option == 5:
+            _send_link_help(chat_id_str, linked=linked)
+            return jsonify({"ok": True})
+        if option == 6:
+            _send_credit_package_menu(chat_id_str, account_id, has_subscription=has_subscription)
+            return jsonify({"ok": True})
+        if option == 7:
+            _send_tax_menu(chat_id_str)
+            return jsonify({"ok": True})
+        if option == 8:
+            _send_help(chat_id_str, linked=linked)
+            return jsonify({"ok": True})
+
+    if _looks_like_bad_command(text):
+        send_telegram_text(chat_id_str, _invalid_command_text(text))
+        return jsonify({"ok": True, "invalid_command": text})
+
+    if LINK_CODE_RE.match(text.upper()):
+        attempt = _try_consume_link_code(tg_user_id, text, display_name=display_name)
+        if attempt.get("ok"):
+            send_telegram_text(chat_id_str, "✅ *Telegram linked successfully!*\n\nYour Telegram account is now connected to the website workspace. Your plan and Usage Credits will now sync here.\n\nReply 0 to refresh your menu, or reply CR1 to check Usage Credits.")
+            return jsonify({"ok": True, "linked": True, "account_id": attempt.get("account_id")})
+        send_telegram_text(chat_id_str, "❌ *Invalid or expired link code*\n\nPlease generate a fresh Telegram code from the website Channels page and send it here.\n\nReply 0 for main menu.")
+        return jsonify({"ok": True, "linked": False, "reason": attempt.get("reason")})
+
+    try:
+        answer_payload = _handle_telegram_tax_question(
+            chat_id=chat_id_str,
+            account_id=account_id,
+            tg_user_id=tg_user_id,
+            question=text,
+            account_source=_clean_text(resolved.get("source")),
+        )
+        return jsonify(answer_payload)
+    except Exception as exc:
+        logging.exception("Telegram AI ask flow error: %s", exc)
+        send_telegram_text(
+            chat_id_str,
+            "Sorry, I encountered an error while answering your tax question. No credit should be charged for this failed request. Please try again later.\n\nReply 0 for main menu.",
+        )
+        return jsonify({"ok": True, "error_handled": True, "stage": "telegram_ai_ask"})
