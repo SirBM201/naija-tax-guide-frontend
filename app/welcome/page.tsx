@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -10,7 +10,6 @@ import {
   Banner,
   Card,
   ShortcutCard,
-  formatDate,
   planDisplayName,
 } from "@/components/ui";
 import {
@@ -21,6 +20,7 @@ import {
 import { getWelcomeSeen, setWelcomeSeen } from "@/lib/preferences-storage";
 import { useWorkspaceState } from "@/hooks/useWorkspaceState";
 import { useAuth } from "@/lib/auth";
+import { formatPlanExpiry } from "@/lib/plan-display";
 
 function SafeMetricCard({
   label,
@@ -383,7 +383,7 @@ function WelcomePageContent() {
 
               <SafeMetricCard
                 label="Current Expiry"
-                value={formatDate(expiresAt)}
+                value={formatPlanExpiry(expiresAt, planCode)}
                 tone="default"
               />
             </CardsGrid>
@@ -657,3 +657,5 @@ export default function WelcomePage() {
     </Suspense>
   );
 }
+
+
