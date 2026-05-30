@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
@@ -325,7 +325,7 @@ function SignupPageContent() {
   const initDoneRef = useRef(false);
   const otpInputRef = useRef<HTMLInputElement | null>(null);
 
-  const queryReferralCode = normalizeReferralCode(sp?.get("ref"));
+  const queryReferralCode = normalizeReferralCode(sp?.get("ref") || sp?.get("promo") || sp?.get("code"));
   const queryNextPath = safeDecodeNext(sp?.get("next")) || "";
   const storedReferralCode = readStoredReferralCode();
   const storedNextPath = readStoredNextPath();
@@ -468,7 +468,7 @@ function SignupPageContent() {
           contact: normalizedEmail,
           otp: code,
           purpose: "web_login",
-          referral_code: normalizedReferral || undefined,
+          signup_code: normalizedReferral || undefined,
         },
         useAuthToken: false,
       });
@@ -538,7 +538,7 @@ function SignupPageContent() {
   const checkingText = checkingSession && !hasSession;
   const headerText = useMemo(() => {
     if (effectiveReferralCode) {
-      return "Start your account securely with email OTP. Referral support stays here so sign-up remains separate from normal sign-in.";
+      return "Start your account securely with email OTP. Referral / Promo support stays here so sign-up remains separate from normal sign-in.";
     }
     return "Start your account securely with email OTP. Referral code support is available here so account creation can remain separated from normal sign-in.";
   }, [effectiveReferralCode]);
@@ -729,14 +729,14 @@ function SignupPageContent() {
                     />
                   </WorkspaceField>
 
-                  <WorkspaceField label="Referral Code (Optional)" htmlFor="signup-referral">
+                  <WorkspaceField label="Referral or Promo Code (Optional)" htmlFor="signup-referral">
                     <input
                       id="signup-referral"
                       value={referralCode}
                       onChange={(event) =>
                         setReferralCode(normalizeReferralCode(event.target.value))
                       }
-                      placeholder="Referral code"
+                      placeholder="Referral or promo code"
                       style={authInput()}
                       autoComplete="off"
                     />
@@ -750,7 +750,7 @@ function SignupPageContent() {
                       marginTop: -2,
                     }}
                   >
-                    If you opened a referral link, the code is applied automatically. You can also paste a code manually before verification.
+                    If you opened a referral or promo link, the code is applied automatically. You can also paste one code manually before verification.
                   </div>
 
                   <WorkspaceActionBar
@@ -764,7 +764,7 @@ function SignupPageContent() {
                         disabled: busy || checkingSession || !email.trim(),
                       },
                       {
-                        label: "Clear Referral",
+                        label: "Clear Code",
                         onClick: clearReferral,
                         tone: "secondary",
                         disabled: busy || !referralCode,
@@ -811,9 +811,9 @@ function SignupPageContent() {
                   </div>
 
                   <div style={infoCardStyle()}>
-                    <div style={infoTitleStyle()}>Referral support</div>
+                    <div style={infoTitleStyle()}>Referral / Promo support</div>
                     <div style={infoTextStyle()}>
-                      Sign-up is the only page that should apply a referral code to a new account.
+                      Sign-up is the only page that should apply a referral or promo code to a new account. Use only one code per account.
                     </div>
                   </div>
 
@@ -879,3 +879,4 @@ export default function SignupPage() {
     </Suspense>
   );
 }
+
