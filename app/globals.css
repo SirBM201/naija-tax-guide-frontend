@@ -9,6 +9,15 @@
   --border-focus: rgba(59, 130, 246, 0.6);
   --text: rgba(255, 255, 255, 0.92);
   --muted: rgba(255, 255, 255, 0.58);
+  --text-muted: rgba(226, 232, 240, 0.76);
+  --text-faint: rgba(226, 232, 240, 0.56);
+  --surface: rgba(15, 23, 42, 0.86);
+  --surface-soft: rgba(255, 255, 255, 0.04);
+  --surface-muted: rgba(15, 23, 42, 0.74);
+  --success-bg: rgba(16, 185, 129, 0.12);
+  --success-border: rgba(16, 185, 129, 0.28);
+  --danger-bg: rgba(220, 38, 38, 0.12);
+  --danger-border: rgba(220, 38, 38, 0.30);
   --accent: rgba(255, 255, 255, 0.10);
   --accent-blue: #3b82f6;
   --accent-green: #10b981;
