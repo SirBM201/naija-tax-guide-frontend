@@ -275,7 +275,7 @@ export default function CalculatorPage() {
             <WorkspaceSectionCard title="Result">
               <div style={{ padding: 20, background: "linear-gradient(135deg, rgba(16,185,129,0.08), rgba(16,185,129,0.02))", borderRadius: 20, border: "1px solid rgba(16,185,129,0.2)" }}>
                 <div style={{ fontSize: 18, fontWeight: 900, color: "#10b981", marginBottom: 8 }}>📊 Tax Summary</div>
-                <div style={{ fontSize: 16, lineHeight: 1.6 }}>{result.answer}</div>
+                <div style={{ fontSize: 16, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{result.answer}</div>
                 <button
                   onClick={() => {
                     const pdf = generateTaxPDF({
