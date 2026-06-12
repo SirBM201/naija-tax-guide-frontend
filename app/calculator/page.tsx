@@ -9,45 +9,61 @@ import { generateTaxPDF } from "@/lib/pdf-generator";
 
 type TaxType = "paye" | "vat" | "cit";
 
+const initialInputs = {
+  monthly_gross_income: 0,
+  pension_contribution: 0,
+  pension_percent: 0,
+  nhf: 0,
+  nhf_percent: 0,
+  taxable_supplies: 0,
+  input_vat: 0,
+  gross_profit: 0,
+  allowable_expenses: 0,
+};
+
 export default function CalculatorPage() {
   const { user } = useAuth();
 
-  // Refs must be declared first
   const resultRef = useRef<HTMLDivElement>(null);
 
-  // State declarations
   const [activeTab, setActiveTab] = useState<TaxType>("paye");
-  const [inputs, setInputs] = useState<any>({
-    monthly_gross_income: 0,
-    pension_contribution: 0,
-    pension_percent: 0,
-    nhf: 0,
-    nhf_percent: 0,
-    taxable_supplies: 0,
-    input_vat: 0,
-    gross_profit: 0,
-    allowable_expenses: 0,
-  });
+  const [inputs, setInputs] = useState<any>(initialInputs);
   const [result, setResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Auto-scroll to result when result appears (must come AFTER result state is declared)
   useEffect(() => {
     if (resultRef.current) {
       resultRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   }, [result]);
 
-  // Log mount (optional)
   useEffect(() => {
     console.log("[Calculator] Component mounted successfully");
   }, []);
 
   const handleInputChange = (field: string, value: string) => {
-    const numValue = parseFloat(value) || 0;
-    setInputs({ ...inputs, [field]: numValue });
+    const numValue = value === "" ? 0 : parseFloat(value) || 0;
+    setInputs((previous: any) => ({ ...previous, [field]: numValue }));
     console.log(`[Calculator] Input changed: ${field} = ${numValue}`);
+  };
+
+  const resetPAYEInputs = () => {
+    setInputs((previous: any) => ({
+      ...previous,
+      monthly_gross_income: 0,
+      pension_contribution: 0,
+      pension_percent: 0,
+      nhf: 0,
+      nhf_percent: 0,
+    }));
+    setResult(null);
+    setError(null);
+  };
+
+  const inputValue = (field: string) => {
+    const value = Number(inputs[field]) || 0;
+    return value === 0 ? "" : value;
   };
 
   const formatNaira = (value: number) =>
@@ -121,6 +137,17 @@ export default function CalculatorPage() {
     lineHeight: 1.5,
   };
 
+  const resetButtonStyle: React.CSSProperties = {
+    justifySelf: "start",
+    padding: "8px 14px",
+    borderRadius: 12,
+    border: "1px solid var(--border)",
+    background: "var(--surface-soft)",
+    color: "var(--text)",
+    fontWeight: 800,
+    cursor: "pointer",
+  };
+
   const renderPAYEForm = () => {
     const monthlyGross = Number(inputs.monthly_gross_income) || 0;
     const pensionAmount = Number(inputs.pension_contribution) || 0;
@@ -133,12 +160,11 @@ export default function CalculatorPage() {
     return (
       <div style={{ display: "grid", gap: 24 }}>
         <div style={formGroupStyle}>
-          <label style={labelStyle} {...tooltip("Your total monthly income before any deductions")}>
-            Monthly Gross Income (₦)
-          </label>
+          <label style={labelStyle} {...tooltip("Your total monthly income before any deductions")}>Monthly Gross Income (₦)</label>
           <input
             type="number"
             style={inputStyle}
+            value={inputValue("monthly_gross_income")}
             onChange={(e) => handleInputChange("monthly_gross_income", e.target.value)}
             placeholder="e.g., 500000"
           />
@@ -147,9 +173,7 @@ export default function CalculatorPage() {
         <div style={{ display: "grid", gap: 12, padding: 16, borderRadius: 16, border: "1px solid var(--border)", background: "var(--surface-soft)" }}>
           <div>
             <div style={{ fontWeight: 900, marginBottom: 4 }}>Pension Deduction</div>
-            <div style={helperTextStyle}>
-              You may enter pension as an actual monthly amount, a percentage of gross salary, or both. If both are entered, the calculator adds them together.
-            </div>
+            <div style={helperTextStyle}>You may enter pension as an actual monthly amount, a percentage of gross salary, or both. If both are entered, the calculator adds them together.</div>
           </div>
           <div style={twoColumnStyle}>
             <div style={formGroupStyle}>
@@ -157,6 +181,7 @@ export default function CalculatorPage() {
               <input
                 type="number"
                 style={inputStyle}
+                value={inputValue("pension_contribution")}
                 onChange={(e) => handleInputChange("pension_contribution", e.target.value)}
                 placeholder="e.g., 32000"
               />
@@ -167,22 +192,19 @@ export default function CalculatorPage() {
                 type="number"
                 step="0.01"
                 style={inputStyle}
+                value={inputValue("pension_percent")}
                 onChange={(e) => handleInputChange("pension_percent", e.target.value)}
                 placeholder="e.g., 8"
               />
             </div>
           </div>
-          <div style={helperTextStyle}>
-            Pension used for this calculation: <strong>{formatNaira(computedPension)}</strong> monthly.
-          </div>
+          <div style={helperTextStyle}>Pension used for this calculation: <strong>{formatNaira(computedPension)}</strong> monthly.</div>
         </div>
 
         <div style={{ display: "grid", gap: 12, padding: 16, borderRadius: 16, border: "1px solid var(--border)", background: "var(--surface-soft)" }}>
           <div>
             <div style={{ fontWeight: 900, marginBottom: 4 }}>NHF Deduction</div>
-            <div style={helperTextStyle}>
-              You may enter NHF as an actual monthly amount, a percentage of gross salary, or both. If both are entered, the calculator adds them together.
-            </div>
+            <div style={helperTextStyle}>You may enter NHF as an actual monthly amount, a percentage of gross salary, or both. If both are entered, the calculator adds them together.</div>
           </div>
           <div style={twoColumnStyle}>
             <div style={formGroupStyle}>
@@ -190,6 +212,7 @@ export default function CalculatorPage() {
               <input
                 type="number"
                 style={inputStyle}
+                value={inputValue("nhf")}
                 onChange={(e) => handleInputChange("nhf", e.target.value)}
                 placeholder="e.g., 17500"
               />
@@ -200,15 +223,16 @@ export default function CalculatorPage() {
                 type="number"
                 step="0.01"
                 style={inputStyle}
+                value={inputValue("nhf_percent")}
                 onChange={(e) => handleInputChange("nhf_percent", e.target.value)}
                 placeholder="e.g., 2.5"
               />
             </div>
           </div>
-          <div style={helperTextStyle}>
-            NHF used for this calculation: <strong>{formatNaira(computedNhf)}</strong> monthly.
-          </div>
+          <div style={helperTextStyle}>NHF used for this calculation: <strong>{formatNaira(computedNhf)}</strong> monthly.</div>
         </div>
+
+        <button type="button" onClick={resetPAYEInputs} style={resetButtonStyle}>Clear PAYE inputs</button>
       </div>
     );
   };
@@ -216,22 +240,20 @@ export default function CalculatorPage() {
   const renderVATForm = () => (
     <div style={{ display: "grid", gap: 24 }}>
       <div style={formGroupStyle}>
-        <label style={labelStyle} {...tooltip("Total value of taxable goods/services supplied")}>
-          Taxable Supplies (₦)
-        </label>
+        <label style={labelStyle} {...tooltip("Total value of taxable goods/services supplied")}>Taxable Supplies (₦)</label>
         <input
           type="number"
           style={inputStyle}
+          value={inputValue("taxable_supplies")}
           onChange={(e) => handleInputChange("taxable_supplies", e.target.value)}
         />
       </div>
       <div style={formGroupStyle}>
-        <label style={labelStyle} {...tooltip("VAT already paid on purchases (deductible)")}>
-          Input VAT (₦)
-        </label>
+        <label style={labelStyle} {...tooltip("VAT already paid on purchases (deductible")}>Input VAT (₦)</label>
         <input
           type="number"
           style={inputStyle}
+          value={inputValue("input_vat")}
           onChange={(e) => handleInputChange("input_vat", e.target.value)}
           placeholder="Optional"
         />
@@ -242,22 +264,20 @@ export default function CalculatorPage() {
   const renderCITForm = () => (
     <div style={{ display: "grid", gap: 24 }}>
       <div style={formGroupStyle}>
-        <label style={labelStyle} {...tooltip("Total revenue minus cost of sales")}>
-          Gross Profit (₦)
-        </label>
+        <label style={labelStyle} {...tooltip("Total revenue minus cost of sales")}>Gross Profit (₦)</label>
         <input
           type="number"
           style={inputStyle}
+          value={inputValue("gross_profit")}
           onChange={(e) => handleInputChange("gross_profit", e.target.value)}
         />
       </div>
       <div style={formGroupStyle}>
-        <label style={labelStyle} {...tooltip("Allowable business expenses (e.g., rent, salaries)")}>
-          Allowable Expenses (₦)
-        </label>
+        <label style={labelStyle} {...tooltip("Allowable business expenses (e.g., rent, salaries)")}>Allowable Expenses (₦)</label>
         <input
           type="number"
           style={inputStyle}
+          value={inputValue("allowable_expenses")}
           onChange={(e) => handleInputChange("allowable_expenses", e.target.value)}
         />
       </div>
@@ -337,9 +357,7 @@ export default function CalculatorPage() {
           <WorkspaceSectionCard title="Error">
             <div style={{ padding: 18, background: "rgba(244,63,94,0.1)", borderRadius: 16, color: "#dc2626", borderLeft: "4px solid #dc2626" }}>
               <strong>Error:</strong> {error}
-              <div style={{ fontSize: 13, marginTop: 8, color: "var(--text-muted)" }}>
-                Check the browser console (F12) for detailed logs.
-              </div>
+              <div style={{ fontSize: 13, marginTop: 8, color: "var(--text-muted)" }}>Check the browser console (F12) for detailed logs.</div>
             </div>
           </WorkspaceSectionCard>
         )}
