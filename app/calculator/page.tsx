@@ -45,6 +45,7 @@ export default function CalculatorPage() {
   const handleInputChange = (field: string, value: string) => {
     const numValue = value === "" ? 0 : parseFloat(value) || 0;
     setInputs((previous: any) => ({ ...previous, [field]: numValue }));
+    setError(null);
     console.log(`[Calculator] Input changed: ${field} = ${numValue}`);
   };
 
@@ -73,6 +74,23 @@ export default function CalculatorPage() {
     })}`;
 
   const calculate = async () => {
+    const pensionAmount = Number(inputs.pension_contribution) || 0;
+    const pensionPercent = Number(inputs.pension_percent) || 0;
+    const nhfAmount = Number(inputs.nhf) || 0;
+    const nhfPercent = Number(inputs.nhf_percent) || 0;
+
+    if (activeTab === "paye" && pensionAmount > 0 && pensionPercent > 0) {
+      setResult(null);
+      setError("Please use either Pension Amount or Pension Percent, not both. Clear one pension field and try again.");
+      return;
+    }
+
+    if (activeTab === "paye" && nhfAmount > 0 && nhfPercent > 0) {
+      setResult(null);
+      setError("Please use either NHF Amount or NHF Percent, not both. Clear one NHF field and try again.");
+      return;
+    }
+
     setLoading(true);
     setError(null);
     setResult(null);
@@ -112,6 +130,12 @@ export default function CalculatorPage() {
     transition: "border 0.2s",
   };
 
+  const disabledInputStyle: React.CSSProperties = {
+    ...inputStyle,
+    opacity: 0.55,
+    cursor: "not-allowed",
+  };
+
   const labelStyle: React.CSSProperties = {
     display: "block",
     marginBottom: 8,
@@ -137,6 +161,13 @@ export default function CalculatorPage() {
     lineHeight: 1.5,
   };
 
+  const warningTextStyle: React.CSSProperties = {
+    fontSize: 13,
+    color: "#f59e0b",
+    lineHeight: 1.5,
+    fontWeight: 800,
+  };
+
   const resetButtonStyle: React.CSSProperties = {
     justifySelf: "start",
     padding: "8px 14px",
@@ -154,8 +185,8 @@ export default function CalculatorPage() {
     const pensionPercent = Number(inputs.pension_percent) || 0;
     const nhfAmount = Number(inputs.nhf) || 0;
     const nhfPercent = Number(inputs.nhf_percent) || 0;
-    const computedPension = pensionAmount + (monthlyGross * pensionPercent / 100);
-    const computedNhf = nhfAmount + (monthlyGross * nhfPercent / 100);
+    const computedPension = pensionAmount || (monthlyGross * pensionPercent / 100);
+    const computedNhf = nhfAmount || (monthlyGross * nhfPercent / 100);
 
     return (
       <div style={{ display: "grid", gap: 24 }}>
@@ -173,17 +204,18 @@ export default function CalculatorPage() {
         <div style={{ display: "grid", gap: 12, padding: 16, borderRadius: 16, border: "1px solid var(--border)", background: "var(--surface-soft)" }}>
           <div>
             <div style={{ fontWeight: 900, marginBottom: 4 }}>Pension Deduction</div>
-            <div style={helperTextStyle}>You may enter pension as an actual monthly amount, a percentage of gross salary, or both. If both are entered, the calculator adds them together.</div>
+            <div style={helperTextStyle}>Choose either actual monthly amount or percentage of gross salary. Do not enter both for pension.</div>
           </div>
           <div style={twoColumnStyle}>
             <div style={formGroupStyle}>
               <label style={labelStyle} {...tooltip("Monthly pension amount deducted by employer")}>Pension Amount (₦)</label>
               <input
                 type="number"
-                style={inputStyle}
+                style={pensionPercent > 0 ? disabledInputStyle : inputStyle}
                 value={inputValue("pension_contribution")}
+                disabled={pensionPercent > 0}
                 onChange={(e) => handleInputChange("pension_contribution", e.target.value)}
-                placeholder="e.g., 32000"
+                placeholder={pensionPercent > 0 ? "Clear percent first" : "e.g., 32000"}
               />
             </div>
             <div style={formGroupStyle}>
@@ -191,30 +223,34 @@ export default function CalculatorPage() {
               <input
                 type="number"
                 step="0.01"
-                style={inputStyle}
+                style={pensionAmount > 0 ? disabledInputStyle : inputStyle}
                 value={inputValue("pension_percent")}
+                disabled={pensionAmount > 0}
                 onChange={(e) => handleInputChange("pension_percent", e.target.value)}
-                placeholder="e.g., 8"
+                placeholder={pensionAmount > 0 ? "Clear amount first" : "e.g., 8"}
               />
             </div>
           </div>
           <div style={helperTextStyle}>Pension used for this calculation: <strong>{formatNaira(computedPension)}</strong> monthly.</div>
+          {pensionAmount > 0 && <div style={warningTextStyle}>Pension percent is locked because Pension Amount is being used.</div>}
+          {pensionPercent > 0 && <div style={warningTextStyle}>Pension amount is locked because Pension Percent is being used.</div>}
         </div>
 
         <div style={{ display: "grid", gap: 12, padding: 16, borderRadius: 16, border: "1px solid var(--border)", background: "var(--surface-soft)" }}>
           <div>
             <div style={{ fontWeight: 900, marginBottom: 4 }}>NHF Deduction</div>
-            <div style={helperTextStyle}>You may enter NHF as an actual monthly amount, a percentage of gross salary, or both. If both are entered, the calculator adds them together.</div>
+            <div style={helperTextStyle}>Choose either actual monthly amount or percentage of gross salary. Do not enter both for NHF.</div>
           </div>
           <div style={twoColumnStyle}>
             <div style={formGroupStyle}>
               <label style={labelStyle} {...tooltip("Monthly National Housing Fund amount deducted by employer")}>NHF Amount (₦)</label>
               <input
                 type="number"
-                style={inputStyle}
+                style={nhfPercent > 0 ? disabledInputStyle : inputStyle}
                 value={inputValue("nhf")}
+                disabled={nhfPercent > 0}
                 onChange={(e) => handleInputChange("nhf", e.target.value)}
-                placeholder="e.g., 17500"
+                placeholder={nhfPercent > 0 ? "Clear percent first" : "e.g., 17500"}
               />
             </div>
             <div style={formGroupStyle}>
@@ -222,14 +258,17 @@ export default function CalculatorPage() {
               <input
                 type="number"
                 step="0.01"
-                style={inputStyle}
+                style={nhfAmount > 0 ? disabledInputStyle : inputStyle}
                 value={inputValue("nhf_percent")}
+                disabled={nhfAmount > 0}
                 onChange={(e) => handleInputChange("nhf_percent", e.target.value)}
-                placeholder="e.g., 2.5"
+                placeholder={nhfAmount > 0 ? "Clear amount first" : "e.g., 2.5"}
               />
             </div>
           </div>
           <div style={helperTextStyle}>NHF used for this calculation: <strong>{formatNaira(computedNhf)}</strong> monthly.</div>
+          {nhfAmount > 0 && <div style={warningTextStyle}>NHF percent is locked because NHF Amount is being used.</div>}
+          {nhfPercent > 0 && <div style={warningTextStyle}>NHF amount is locked because NHF Percent is being used.</div>}
         </div>
 
         <button type="button" onClick={resetPAYEInputs} style={resetButtonStyle}>Clear PAYE inputs</button>
@@ -249,7 +288,7 @@ export default function CalculatorPage() {
         />
       </div>
       <div style={formGroupStyle}>
-        <label style={labelStyle} {...tooltip("VAT already paid on purchases (deductible")}>Input VAT (₦)</label>
+        <label style={labelStyle} {...tooltip("VAT already paid on purchases (deductible)")}>Input VAT (₦)</label>
         <input
           type="number"
           style={inputStyle}
