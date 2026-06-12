@@ -20,7 +20,9 @@ export default function CalculatorPage() {
   const [inputs, setInputs] = useState<any>({
     monthly_gross_income: 0,
     pension_contribution: 0,
+    pension_percent: 0,
     nhf: 0,
+    nhf_percent: 0,
     taxable_supplies: 0,
     input_vat: 0,
     gross_profit: 0,
@@ -47,6 +49,12 @@ export default function CalculatorPage() {
     setInputs({ ...inputs, [field]: numValue });
     console.log(`[Calculator] Input changed: ${field} = ${numValue}`);
   };
+
+  const formatNaira = (value: number) =>
+    `₦${(Number(value) || 0).toLocaleString("en-NG", {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    })}`;
 
   const calculate = async () => {
     setLoading(true);
@@ -101,43 +109,109 @@ export default function CalculatorPage() {
     gap: 8,
   };
 
-  const renderPAYEForm = () => (
-    <div style={{ display: "grid", gap: 24 }}>
-      <div style={formGroupStyle}>
-        <label style={labelStyle} {...tooltip("Your total monthly income before any deductions")}>
-          Monthly Gross Income (₦)
-        </label>
-        <input
-          type="number"
-          style={inputStyle}
-          onChange={(e) => handleInputChange("monthly_gross_income", e.target.value)}
-          placeholder="e.g., 500000"
-        />
+  const twoColumnStyle: React.CSSProperties = {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+    gap: 16,
+  };
+
+  const helperTextStyle: React.CSSProperties = {
+    fontSize: 13,
+    color: "var(--text-muted)",
+    lineHeight: 1.5,
+  };
+
+  const renderPAYEForm = () => {
+    const monthlyGross = Number(inputs.monthly_gross_income) || 0;
+    const pensionAmount = Number(inputs.pension_contribution) || 0;
+    const pensionPercent = Number(inputs.pension_percent) || 0;
+    const nhfAmount = Number(inputs.nhf) || 0;
+    const nhfPercent = Number(inputs.nhf_percent) || 0;
+    const computedPension = pensionAmount + (monthlyGross * pensionPercent / 100);
+    const computedNhf = nhfAmount + (monthlyGross * nhfPercent / 100);
+
+    return (
+      <div style={{ display: "grid", gap: 24 }}>
+        <div style={formGroupStyle}>
+          <label style={labelStyle} {...tooltip("Your total monthly income before any deductions")}>
+            Monthly Gross Income (₦)
+          </label>
+          <input
+            type="number"
+            style={inputStyle}
+            onChange={(e) => handleInputChange("monthly_gross_income", e.target.value)}
+            placeholder="e.g., 500000"
+          />
+        </div>
+
+        <div style={{ display: "grid", gap: 12, padding: 16, borderRadius: 16, border: "1px solid var(--border)", background: "var(--surface-soft)" }}>
+          <div>
+            <div style={{ fontWeight: 900, marginBottom: 4 }}>Pension Deduction</div>
+            <div style={helperTextStyle}>
+              You may enter pension as an actual monthly amount, a percentage of gross salary, or both. If both are entered, the calculator adds them together.
+            </div>
+          </div>
+          <div style={twoColumnStyle}>
+            <div style={formGroupStyle}>
+              <label style={labelStyle} {...tooltip("Monthly pension amount deducted by employer")}>Pension Amount (₦)</label>
+              <input
+                type="number"
+                style={inputStyle}
+                onChange={(e) => handleInputChange("pension_contribution", e.target.value)}
+                placeholder="e.g., 32000"
+              />
+            </div>
+            <div style={formGroupStyle}>
+              <label style={labelStyle} {...tooltip("Pension percentage of monthly gross salary")}>Pension Percent (%)</label>
+              <input
+                type="number"
+                step="0.01"
+                style={inputStyle}
+                onChange={(e) => handleInputChange("pension_percent", e.target.value)}
+                placeholder="e.g., 8"
+              />
+            </div>
+          </div>
+          <div style={helperTextStyle}>
+            Pension used for this calculation: <strong>{formatNaira(computedPension)}</strong> monthly.
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gap: 12, padding: 16, borderRadius: 16, border: "1px solid var(--border)", background: "var(--surface-soft)" }}>
+          <div>
+            <div style={{ fontWeight: 900, marginBottom: 4 }}>NHF Deduction</div>
+            <div style={helperTextStyle}>
+              You may enter NHF as an actual monthly amount, a percentage of gross salary, or both. If both are entered, the calculator adds them together.
+            </div>
+          </div>
+          <div style={twoColumnStyle}>
+            <div style={formGroupStyle}>
+              <label style={labelStyle} {...tooltip("Monthly National Housing Fund amount deducted by employer")}>NHF Amount (₦)</label>
+              <input
+                type="number"
+                style={inputStyle}
+                onChange={(e) => handleInputChange("nhf", e.target.value)}
+                placeholder="e.g., 17500"
+              />
+            </div>
+            <div style={formGroupStyle}>
+              <label style={labelStyle} {...tooltip("NHF percentage of monthly gross salary")}>NHF Percent (%)</label>
+              <input
+                type="number"
+                step="0.01"
+                style={inputStyle}
+                onChange={(e) => handleInputChange("nhf_percent", e.target.value)}
+                placeholder="e.g., 2.5"
+              />
+            </div>
+          </div>
+          <div style={helperTextStyle}>
+            NHF used for this calculation: <strong>{formatNaira(computedNhf)}</strong> monthly.
+          </div>
+        </div>
       </div>
-      <div style={formGroupStyle}>
-        <label style={labelStyle} {...tooltip("Monthly pension contribution (usually 8% of gross)")}>
-          Pension Contribution (₦)
-        </label>
-        <input
-          type="number"
-          style={inputStyle}
-          onChange={(e) => handleInputChange("pension_contribution", e.target.value)}
-          placeholder="Optional"
-        />
-      </div>
-      <div style={formGroupStyle}>
-        <label style={labelStyle} {...tooltip("National Housing Fund contribution (2.5% of gross)")}>
-          NHF Contribution (₦)
-        </label>
-        <input
-          type="number"
-          style={inputStyle}
-          onChange={(e) => handleInputChange("nhf", e.target.value)}
-          placeholder="Optional"
-        />
-      </div>
-    </div>
-  );
+    );
+  };
 
   const renderVATForm = () => (
     <div style={{ display: "grid", gap: 24 }}>
@@ -275,7 +349,7 @@ export default function CalculatorPage() {
             <WorkspaceSectionCard title="Result">
               <div style={{ padding: 20, background: "linear-gradient(135deg, rgba(16,185,129,0.08), rgba(16,185,129,0.02))", borderRadius: 20, border: "1px solid rgba(16,185,129,0.2)" }}>
                 <div style={{ fontSize: 18, fontWeight: 900, color: "#10b981", marginBottom: 8 }}>📊 Tax Summary</div>
-                <div style={{ fontSize: 16, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{result.answer}</div>
+                <div style={{ fontSize: 16, lineHeight: 1.7, whiteSpace: "pre-line" }}>{result.answer}</div>
                 <button
                   onClick={() => {
                     const pdf = generateTaxPDF({
