@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 
 type PayeResult = {
   annualGross: number;
+  monthlyPension: number;
+  monthlyNhf: number;
+  annualPension: number;
+  annualNhf: number;
   consolidatedRelief: number;
   payrollDeductions: number;
   chargeableIncome: number;
@@ -58,6 +62,10 @@ function calculatePAYE(monthlyGross: number, monthlyPension: number = 0, monthly
 
   return {
     annualGross,
+    monthlyPension,
+    monthlyNhf,
+    annualPension,
+    annualNhf,
     consolidatedRelief,
     payrollDeductions,
     chargeableIncome,
@@ -79,11 +87,18 @@ export async function POST(req: NextRequest) {
 
     if (type === 'paye') {
       const monthlyGross = toNumber(inputs.monthly_gross_income);
-      const monthlyPension = toNumber(inputs.pension_contribution);
-      const monthlyNhf = toNumber(inputs.nhf);
+      const pensionAmount = toNumber(inputs.pension_contribution);
+      const nhfAmount = toNumber(inputs.nhf);
+      const pensionPercent = toNumber(inputs.pension_percent);
+      const nhfPercent = toNumber(inputs.nhf_percent);
+      const monthlyPension = pensionAmount + (monthlyGross * pensionPercent / 100);
+      const monthlyNhf = nhfAmount + (monthlyGross * nhfPercent / 100);
       const result = calculatePAYE(monthlyGross, monthlyPension, monthlyNhf);
 
       breakdown = {
+        monthly_gross_income: monthlyGross,
+        monthly_pension_deduction_used: result.monthlyPension,
+        monthly_nhf_deduction_used: result.monthlyNhf,
         annual_gross_income: result.annualGross,
         consolidated_relief: result.consolidatedRelief,
         payroll_deductions: result.payrollDeductions,
@@ -101,6 +116,11 @@ export async function POST(req: NextRequest) {
         `Payroll deductions used: ${formatNaira(result.payrollDeductions)}.`,
         `Estimated chargeable income: ${formatNaira(result.chargeableIncome)}.`,
         `Estimated monthly net after PAYE/deductions: ${formatNaira(result.netMonthlyPay)}.`,
+        '',
+        'Company payroll deductions used:',
+        `Pension: ${formatNaira(result.monthlyPension)} monthly = ${formatNaira(result.annualPension)} yearly.`,
+        `NHF: ${formatNaira(result.monthlyNhf)} monthly = ${formatNaira(result.annualNhf)} yearly.`,
+        '',
         'Note: This is an estimate for guidance only. Confirm taxpayer-specific facts, current law, exemptions, and filing position before submission.',
       ].join('\n');
     }
