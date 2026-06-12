@@ -91,8 +91,25 @@ export async function POST(req: NextRequest) {
       const nhfAmount = toNumber(inputs.nhf);
       const pensionPercent = toNumber(inputs.pension_percent);
       const nhfPercent = toNumber(inputs.nhf_percent);
-      const monthlyPension = pensionAmount + (monthlyGross * pensionPercent / 100);
-      const monthlyNhf = nhfAmount + (monthlyGross * nhfPercent / 100);
+
+      const pensionConflict = pensionAmount > 0 && pensionPercent > 0;
+      const nhfConflict = nhfAmount > 0 && nhfPercent > 0;
+      if (pensionConflict || nhfConflict) {
+        const conflictItems = [
+          pensionConflict ? 'Pension' : '',
+          nhfConflict ? 'NHF' : '',
+        ].filter(Boolean).join(' and ');
+        return NextResponse.json(
+          {
+            ok: false,
+            error: `Please enter either ${conflictItems} amount or ${conflictItems} percent, not both. Clear one field and try again.`,
+          },
+          { status: 400 }
+        );
+      }
+
+      const monthlyPension = pensionAmount || (monthlyGross * pensionPercent / 100);
+      const monthlyNhf = nhfAmount || (monthlyGross * nhfPercent / 100);
       const result = calculatePAYE(monthlyGross, monthlyPension, monthlyNhf);
 
       breakdown = {
