@@ -14,6 +14,15 @@ type PayeResult = {
   netMonthlyPay: number;
 };
 
+type CitResult = {
+  annualRevenue: number;
+  allowableExpenses: number;
+  taxableProfit: number;
+  companySize: string;
+  citRate: number;
+  citDue: number;
+};
+
 function toNumber(value: unknown): number {
   const parsed = Number(value ?? 0);
   return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
@@ -72,6 +81,32 @@ function calculatePAYE(monthlyGross: number, monthlyPension: number = 0, monthly
     annualTax,
     monthlyTax,
     netMonthlyPay,
+  };
+}
+
+function calculateCIT(annualRevenue: number, allowableExpenses: number): CitResult {
+  const taxableProfit = Math.max(0, annualRevenue - allowableExpenses);
+
+  let companySize = 'Small company';
+  let citRate = 0;
+
+  if (annualRevenue > 100000000) {
+    companySize = 'Large company';
+    citRate = 0.3;
+  } else if (annualRevenue > 25000000) {
+    companySize = 'Medium company';
+    citRate = 0.2;
+  }
+
+  const citDue = taxableProfit * citRate;
+
+  return {
+    annualRevenue,
+    allowableExpenses,
+    taxableProfit,
+    companySize,
+    citRate,
+    citDue,
   };
 }
 
@@ -152,20 +187,34 @@ export async function POST(req: NextRequest) {
         input_vat: inputVat,
         vat_payable: vatDue,
       };
-      answer = `VAT payable is ${formatNaira(vatDue)}.`;
+      answer = [
+        `VAT payable is ${formatNaira(vatDue)}.`,
+        `Taxable supplies: ${formatNaira(supplies)}.`,
+        `Output VAT at 7.5%: ${formatNaira(outputVat)}.`,
+        `Input VAT used: ${formatNaira(inputVat)}.`,
+        'Note: Confirm that the transaction is VATable and that input VAT is properly supported before filing.',
+      ].join('\n');
     }
     else if (type === 'cit') {
-      const profit = toNumber(inputs.gross_profit);
-      const expenses = toNumber(inputs.allowable_expenses);
-      const taxableProfit = Math.max(0, profit - expenses);
-      const citDue = taxableProfit * 0.2;
+      const annualRevenue = toNumber(inputs.gross_profit);
+      const allowableExpenses = toNumber(inputs.allowable_expenses);
+      const result = calculateCIT(annualRevenue, allowableExpenses);
       breakdown = {
-        gross_profit: profit,
-        allowable_expenses: expenses,
-        taxable_profit: taxableProfit,
-        cit_payable: citDue,
+        annual_revenue: result.annualRevenue,
+        allowable_expenses: result.allowableExpenses,
+        taxable_profit: result.taxableProfit,
+        cit_rate_percent: result.citRate * 100,
+        cit_payable: result.citDue,
       };
-      answer = `Company Income Tax (CIT) payable is ${formatNaira(citDue)}.`;
+      answer = [
+        `Company Income Tax (CIT) payable is ${formatNaira(result.citDue)}.`,
+        `Annual revenue/turnover used: ${formatNaira(result.annualRevenue)}.`,
+        `Allowable expenses used: ${formatNaira(result.allowableExpenses)}.`,
+        `Estimated taxable profit: ${formatNaira(result.taxableProfit)}.`,
+        `Company category: ${result.companySize}.`,
+        `Estimated CIT rate: ${Math.round(result.citRate * 100)}%.`,
+        'Note: This is a basic estimate. Final CIT depends on allowable deductions, exemptions, and current FIRS rules.',
+      ].join('\n');
     }
     else {
       return NextResponse.json({ ok: false, error: 'Invalid tax type' }, { status: 400 });
