@@ -96,8 +96,30 @@ function safeNumber(value: unknown): number {
   return Number.isFinite(num) ? num : 0;
 }
 
-function normalizeAnswer(text: string): string {
+function stripRepeatedAnswerLabels(text: string): string {
+  let clean = safeText(text, "");
+
+  for (let i = 0; i < 8; i += 1) {
+    const next = clean
+      .replace(/\bDirect answer\s*:\s*Direct answer\s*:/gi, "Direct answer:")
+      .replace(/\bShort answer\s*:\s*Short answer\s*:/gi, "Short answer:")
+      .replace(/\bDirect answer\s*:\s*Short answer\s*:/gi, "Direct answer:")
+      .replace(/\bShort answer\s*:\s*Direct answer\s*:/gi, "Direct answer:");
+    if (next === clean) break;
+    clean = next;
+  }
+
+  return clean.replace(/^(?:\s*(?:Direct answer|Short answer)\s*:\s*){2,}/i, "Direct answer: ").trim();
+}
+
+function stripLeadingSectionLabels(text: string): string {
   return safeText(text, "")
+    .replace(/^(?:\s*(?:Direct answer|Short answer|Answer)\s*:\s*)+/i, "")
+    .trim();
+}
+
+function normalizeAnswer(text: string): string {
+  return stripRepeatedAnswerLabels(text)
     .replace(/\r\n/g, "\n")
     .replace(/\*\*(.*?)\*\*/g, "$1")
     .replace(/^\s*#{1,6}\s*/gm, "")
@@ -110,7 +132,7 @@ function splitAnswer(answer: string): AnswerSection[] {
   const clean = normalizeAnswer(answer);
   if (!clean) return [];
 
-  const labels = ["Direct answer:", "Key points:", "What to do:", "Note:"];
+  const labels = ["Direct answer:", "Short answer:", "Key points:", "What to do:", "Next steps:", "Note:"];
   const sections: AnswerSection[] = [];
 
   const lower = clean.toLowerCase();
@@ -126,7 +148,7 @@ function splitAnswer(answer: string): AnswerSection[] {
     return [
       {
         title: "Answer",
-        body: clean,
+        body: stripLeadingSectionLabels(clean),
         tone: "primary",
       },
     ];
@@ -137,16 +159,16 @@ function splitAnswer(answer: string): AnswerSection[] {
     const next = found[i + 1];
     const start = current.index + current.label.length;
     const end = next ? next.index : clean.length;
-    const body = clean.slice(start, end).trim();
+    const body = stripLeadingSectionLabels(clean.slice(start, end));
 
     if (!body) continue;
 
     const lowerLabel = current.label.toLowerCase();
     sections.push({
-      title: current.label.replace(":", ""),
+      title: lowerLabel.startsWith("short") ? "Direct answer" : current.label.replace(":", ""),
       body,
       tone:
-        lowerLabel.startsWith("direct")
+        lowerLabel.startsWith("direct") || lowerLabel.startsWith("short")
           ? "primary"
           : lowerLabel.startsWith("note")
             ? "note"
@@ -159,7 +181,7 @@ function splitAnswer(answer: string): AnswerSection[] {
     : [
         {
           title: "Answer",
-          body: clean,
+          body: stripLeadingSectionLabels(clean),
           tone: "primary",
         },
       ];
@@ -171,7 +193,7 @@ function formatBody(body: string): React.ReactNode {
   if (!lines.length) return null;
 
   return (
-    <div style={{ display: "grid", gap: 10 }}>
+    <div style={{ display: "grid", gap: 8 }}>
       {lines.map((line, index) => {
         const numbered = line.match(/^(\d+)[.)]\s+(.*)$/);
         const bullet = line.match(/^[•-]\s+(.*)$/);
@@ -212,7 +234,7 @@ function formatBody(body: string): React.ReactNode {
                 alignItems: "start",
               }}
             >
-              <span style={{ color: "var(--brand)", fontWeight: 900 }}>•</span>
+              <span style={{ color: "#10b981", fontWeight: 900 }}>•</span>
               <span style={answerTextStyle}>{bullet[1]}</span>
             </div>
           );
@@ -302,19 +324,19 @@ function sectionCardStyle(tone: AnswerSection["tone"]): React.CSSProperties {
 
   return {
     border: primary
-      ? "1px solid rgba(22, 163, 74, 0.2)"
+      ? "1px solid rgba(16, 185, 129, 0.32)"
       : note
-        ? "1px solid rgba(217, 119, 6, 0.22)"
+        ? "1px solid rgba(245, 158, 11, 0.3)"
         : "1px solid var(--border)",
-    borderRadius: 22,
+    borderRadius: 20,
     background: primary
-      ? "rgba(240, 253, 244, 0.72)"
+      ? "rgba(16, 185, 129, 0.10)"
       : note
-        ? "rgba(255, 251, 235, 0.72)"
+        ? "rgba(245, 158, 11, 0.10)"
         : "var(--surface)",
-    padding: primary ? "22px" : "20px",
+    padding: "18px 20px",
     display: "grid",
-    gap: 14,
+    gap: 10,
     minWidth: 0,
     overflowWrap: "anywhere",
   };
@@ -330,8 +352,8 @@ const labelStyle: React.CSSProperties = {
 
 const answerTextStyle: React.CSSProperties = {
   color: "var(--text)",
-  fontSize: "clamp(16px, 1.65vw, 18px)",
-  lineHeight: 1.75,
+  fontSize: "clamp(15px, 1.45vw, 17px)",
+  lineHeight: 1.7,
   fontWeight: 500,
   overflowWrap: "anywhere",
   wordBreak: "break-word",
@@ -340,9 +362,9 @@ const answerTextStyle: React.CSSProperties = {
 
 const directTextStyle: React.CSSProperties = {
   color: "var(--text)",
-  fontSize: "clamp(18px, 2vw, 22px)",
-  lineHeight: 1.55,
-  fontWeight: 800,
+  fontSize: "clamp(16px, 1.55vw, 18px)",
+  lineHeight: 1.65,
+  fontWeight: 650,
   overflowWrap: "anywhere",
   wordBreak: "break-word",
   margin: 0,
@@ -351,15 +373,15 @@ const directTextStyle: React.CSSProperties = {
 const formInputStyle: React.CSSProperties = {
   width: "100%",
   border: "1px solid var(--border)",
-  borderRadius: 22,
+  borderRadius: 18,
   background: "var(--surface)",
   color: "var(--text)",
-  padding: "18px 20px",
-  fontSize: "clamp(16px, 2vw, 18px)",
-  lineHeight: 1.7,
+  padding: "16px 18px",
+  fontSize: "clamp(15px, 1.7vw, 17px)",
+  lineHeight: 1.55,
   outline: "none",
   resize: "vertical",
-  minHeight: 160,
+  minHeight: 118,
   overflowWrap: "anywhere",
 };
 
@@ -470,6 +492,135 @@ export default function AskPage() {
     }
   }
 
+  const latestAnswer = (
+    <WorkspaceSectionCard
+      title="Latest answer"
+      subtitle={
+        result?.meta?.usage_charged
+          ? `AI answer used ${result.meta.credits_consumed || result.meta.credit_cost || 1} Usage Credit.`
+          : result?.answer
+            ? "This answer was served without a new AI credit charge when cache/database was used."
+            : "Your answer will appear here after you submit a question."
+      }
+    >
+      {!result?.answer ? (
+        <div
+          style={{
+            border: "1px dashed var(--border)",
+            borderRadius: 18,
+            padding: 18,
+            color: "var(--text-muted)",
+            lineHeight: 1.65,
+          }}
+        >
+          No answer yet. Ask a tax question above to see the structured response here.
+        </div>
+      ) : (
+        <div style={{ display: "grid", gap: 14 }}>
+          <div
+            style={{
+              border: "1px solid var(--border)",
+              borderRadius: 16,
+              background: "var(--surface-soft)",
+              padding: "12px 14px",
+              color: "var(--text)",
+              fontWeight: 800,
+              lineHeight: 1.5,
+              overflowWrap: "anywhere",
+            }}
+          >
+            Question: {lastQuestion || question}
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gap: 12,
+              maxWidth: "100%",
+              width: "100%",
+              margin: 0,
+            }}
+          >
+            {answerSections.map((section, index) => (
+              <section
+                key={`${section.title}-${index}`}
+                style={sectionCardStyle(section.tone)}
+              >
+                <h3
+                  style={{
+                    color: "var(--text)",
+                    fontSize:
+                      section.tone === "primary"
+                        ? "clamp(18px, 1.9vw, 22px)"
+                        : "clamp(17px, 1.8vw, 20px)",
+                    lineHeight: 1.25,
+                    fontWeight: 950,
+                    margin: 0,
+                  }}
+                >
+                  {section.title}
+                </h3>
+
+                <div
+                  style={
+                    section.tone === "primary"
+                      ? directTextStyle
+                      : { display: "grid", gap: 10 }
+                  }
+                >
+                  {section.tone === "primary"
+                    ? section.body
+                    : formatBody(section.body)}
+                </div>
+              </section>
+            ))}
+          </div>
+
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+            <span
+              style={{
+                border: "1px solid var(--border)",
+                borderRadius: 999,
+                padding: "8px 12px",
+                color: "var(--text-muted)",
+                fontWeight: 800,
+                fontSize: 13,
+              }}
+            >
+              Source: {safeText(result.source || result.mode, "answer")}
+            </span>
+            <span
+              style={{
+                border: "1px solid var(--border)",
+                borderRadius: 999,
+                padding: "8px 12px",
+                color: "var(--text-muted)",
+                fontWeight: 800,
+                fontSize: 13,
+              }}
+            >
+              Credits charged: {result.meta?.usage_charged ? "Yes" : "No"}
+            </span>
+            {typeof result.meta?.credits_left === "number" ? (
+              <span
+                style={{
+                  border: "1px solid var(--border)",
+                  borderRadius: 999,
+                  padding: "8px 12px",
+                  color: "var(--text-muted)",
+                  fontWeight: 800,
+                  fontSize: 13,
+                }}
+              >
+                Credits left: {result.meta.credits_left}
+              </span>
+            ) : null}
+          </div>
+        </div>
+      )}
+    </WorkspaceSectionCard>
+  );
+
   return (
     <AppShell
       title="Ask Naija Tax Guide"
@@ -510,107 +661,112 @@ export default function AskPage() {
         ) : null}
 
         <TwoColumnSection leftRatio={1.15} rightRatio={0.85} gap={18} collapseAt={1020}>
-          <WorkspaceSectionCard
-            title="Ask a tax question"
-            subtitle="Use one clear question at a time. Database/library answers are free; AI fallback uses Usage Credits."
-          >
-            <CardsGrid min={180} gap={14}>
-              <MetricCard
-                label="Plan"
-                value={planName}
-                helper={`Code: ${planCode}`}
-              />
-              <MetricCard
-                label="Credits"
-                value={String(balance)}
-                tone={balance > 10 ? "good" : balance > 0 ? "warn" : "danger"}
-                helper="Available Usage Credits"
-              />
-              <MetricCard
-                label="Channels"
-                value={channelSummary}
-                helper="Linked messaging access"
-              />
-            </CardsGrid>
+          <div style={{ display: "grid", gap: 18, minWidth: 0 }}>
+            <WorkspaceSectionCard
+              title="Ask a tax question"
+              subtitle="Use one clear question at a time. Database/library answers are free; AI fallback uses Usage Credits."
+            >
+              <CardsGrid min={180} gap={14}>
+                <MetricCard
+                  label="Plan"
+                  value={planName}
+                  helper={`Code: ${planCode}`}
+                />
+                <MetricCard
+                  label="Credits"
+                  value={String(balance)}
+                  tone={balance > 10 ? "good" : balance > 0 ? "warn" : "danger"}
+                  helper="Available Usage Credits"
+                />
+                <MetricCard
+                  label="Channels"
+                  value={channelSummary}
+                  helper="Linked messaging access"
+                />
+              </CardsGrid>
 
-            <div style={{ display: "grid", gap: 12, marginTop: 18 }}>
-              <label htmlFor="tax-question" style={{ fontWeight: 900, fontSize: 18 }}>
-                Question
-              </label>
+              <div style={{ display: "grid", gap: 12, marginTop: 16 }}>
+                <label htmlFor="tax-question" style={{ fontWeight: 900, fontSize: 17 }}>
+                  Question
+                </label>
 
-              <textarea
-                id="tax-question"
-                value={question}
-                onChange={(event) => setQuestion(event.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Example: As a company owner, will I still pay personal income tax on salary from my company?"
-                style={formInputStyle}
-              />
+                <textarea
+                  id="tax-question"
+                  value={question}
+                  onChange={(event) => setQuestion(event.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder="Example: As a company owner, will I still pay personal income tax on salary from my company?"
+                  style={formInputStyle}
+                />
 
-              <p style={{ color: "var(--text-muted)", margin: 0, lineHeight: 1.6 }}>
-                Tip: Press Ctrl + Enter to submit quickly.
-              </p>
+                <p style={{ color: "var(--text-muted)", margin: 0, lineHeight: 1.5 }}>
+                  Tip: Press Ctrl + Enter to submit quickly.
+                </p>
 
-              <div
-                style={{
-                  display: "grid",
-                  gap: 14,
-                  gridTemplateColumns: "minmax(180px, 0.8fr) minmax(220px, 1.2fr)",
-                }}
-                className="ask-form-actions-grid"
-              >
-                <div style={{ display: "grid", gap: 8 }}>
-                  <label htmlFor="reply-lang" style={{ fontWeight: 900 }}>
-                    Reply language
-                  </label>
-                  <select
-                    id="reply-lang"
-                    value={lang}
-                    onChange={(event) => setLang(event.target.value)}
-                    style={selectStyle}
-                  >
-                    <option value="en">English</option>
-                    <option value="pidgin">Pidgin English</option>
-                    <option value="yo">Yoruba</option>
-                    <option value="ha">Hausa</option>
-                    <option value="ig">Igbo</option>
-                  </select>
+                <div
+                  style={{
+                    display: "grid",
+                    gap: 12,
+                    gridTemplateColumns: "minmax(180px, 0.8fr) minmax(220px, 1.2fr)",
+                  }}
+                  className="ask-form-actions-grid"
+                >
+                  <div style={{ display: "grid", gap: 8 }}>
+                    <label htmlFor="reply-lang" style={{ fontWeight: 900 }}>
+                      Reply language
+                    </label>
+                    <select
+                      id="reply-lang"
+                      value={lang}
+                      onChange={(event) => setLang(event.target.value)}
+                      style={selectStyle}
+                    >
+                      <option value="en">English</option>
+                      <option value="pidgin">Pidgin English</option>
+                      <option value="yo">Yoruba</option>
+                      <option value="ha">Hausa</option>
+                      <option value="ig">Igbo</option>
+                    </select>
+                  </div>
+
+                  <div style={{ display: "flex", alignItems: "end" }}>
+                    <button
+                      type="button"
+                      onClick={submitQuestion}
+                      disabled={submitting}
+                      style={{
+                        ...shellButtonPrimary(),
+                        width: "100%",
+                        justifyContent: "center",
+                        opacity: submitting ? 0.7 : 1,
+                      }}
+                    >
+                      {submitting ? "Asking..." : "Ask Question"}
+                    </button>
+                  </div>
                 </div>
 
-                <div style={{ display: "flex", alignItems: "end" }}>
-                  <button
-                    type="button"
-                    onClick={submitQuestion}
-                    disabled={submitting}
-                    style={{
-                      ...shellButtonPrimary(),
-                      width: "100%",
-                      justifyContent: "center",
-                      opacity: submitting ? 0.7 : 1,
-                    }}
-                  >
-                    {submitting ? "Asking..." : "Ask Question"}
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQuestion("");
+                    setResult(null);
+                    setLocalError(null);
+                    setLastQuestion("");
+                  }}
+                  style={{
+                    ...shellButtonSecondary(),
+                    width: "100%",
+                    justifyContent: "center",
+                  }}
+                >
+                  Clear
+                </button>
               </div>
+            </WorkspaceSectionCard>
 
-              <button
-                type="button"
-                onClick={() => {
-                  setQuestion("");
-                  setResult(null);
-                  setLocalError(null);
-                }}
-                style={{
-                  ...shellButtonSecondary(),
-                  width: "100%",
-                  justifyContent: "center",
-                }}
-              >
-                Clear
-              </button>
-            </div>
-          </WorkspaceSectionCard>
+            {latestAnswer}
+          </div>
 
           <WorkspaceSectionCard
             title="Starter questions"
@@ -624,7 +780,12 @@ export default function AskPage() {
                     <button
                       key={item}
                       type="button"
-                      onClick={() => setQuestion(item)}
+                      onClick={() => {
+                        setQuestion(item);
+                        setResult(null);
+                        setLocalError(null);
+                        setLastQuestion("");
+                      }}
                       style={{
                         border: "1px solid var(--border)",
                         borderRadius: 18,
@@ -645,133 +806,6 @@ export default function AskPage() {
             </div>
           </WorkspaceSectionCard>
         </TwoColumnSection>
-
-        <WorkspaceSectionCard
-          title="Latest answer"
-          subtitle={
-            result?.meta?.usage_charged
-              ? `AI answer used ${result.meta.credits_consumed || result.meta.credit_cost || 1} Usage Credit.`
-              : result?.answer
-                ? "This answer was served without a new AI credit charge when cache/database was used."
-                : "Your answer will appear here after you submit a question."
-          }
-        >
-          {!result?.answer ? (
-            <div
-              style={{
-                border: "1px dashed var(--border)",
-                borderRadius: 22,
-                padding: 24,
-                color: "var(--text-muted)",
-                lineHeight: 1.7,
-              }}
-            >
-              No answer yet. Ask a tax question above to see the structured response here.
-            </div>
-          ) : (
-            <div style={{ display: "grid", gap: 16 }}>
-              <div
-                style={{
-                  border: "1px solid var(--border)",
-                  borderRadius: 18,
-                  background: "var(--surface-soft)",
-                  padding: "14px 16px",
-                  color: "var(--text)",
-                  fontWeight: 800,
-                  lineHeight: 1.55,
-                  overflowWrap: "anywhere",
-                }}
-              >
-                Question: {lastQuestion || question}
-              </div>
-
-              <div
-                style={{
-                  display: "grid",
-                  gap: 14,
-                  maxWidth: 920,
-                  width: "100%",
-                  margin: "0 auto",
-                }}
-              >
-                {answerSections.map((section, index) => (
-                  <section
-                    key={`${section.title}-${index}`}
-                    style={sectionCardStyle(section.tone)}
-                  >
-                    <h3
-                      style={{
-                        color: "var(--text)",
-                        fontSize:
-                          section.tone === "primary"
-                            ? "clamp(20px, 2.3vw, 26px)"
-                            : "clamp(18px, 2vw, 22px)",
-                        lineHeight: 1.25,
-                        fontWeight: 950,
-                        margin: 0,
-                      }}
-                    >
-                      {section.title}
-                    </h3>
-
-                    <div
-                      style={
-                        section.tone === "primary"
-                          ? directTextStyle
-                          : { display: "grid", gap: 10 }
-                      }
-                    >
-                      {section.tone === "primary"
-                        ? section.body
-                        : formatBody(section.body)}
-                    </div>
-                  </section>
-                ))}
-              </div>
-
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-                <span
-                  style={{
-                    border: "1px solid var(--border)",
-                    borderRadius: 999,
-                    padding: "8px 12px",
-                    color: "var(--text-muted)",
-                    fontWeight: 800,
-                    fontSize: 13,
-                  }}
-                >
-                  Source: {safeText(result.source || result.mode, "answer")}
-                </span>
-                <span
-                  style={{
-                    border: "1px solid var(--border)",
-                    borderRadius: 999,
-                    padding: "8px 12px",
-                    color: "var(--text-muted)",
-                    fontWeight: 800,
-                    fontSize: 13,
-                  }}
-                >
-                  Credits charged: {result.meta?.usage_charged ? "Yes" : "No"}
-                </span>
-                {typeof result.meta?.credits_left === "number" ? (
-                  <span
-                    style={{
-                      border: "1px solid var(--border)",
-                      borderRadius: 999,
-                      padding: "8px 12px",
-                      color: "var(--text-muted)",
-                      fontWeight: 800,
-                      fontSize: 13,
-                    }}
-                  >
-                    Credits left: {result.meta.credits_left}
-                  </span>
-                ) : null}
-              </div>
-            </div>
-          )}
-        </WorkspaceSectionCard>
 
         <WorkspaceSectionCard
           title="Quick actions"
