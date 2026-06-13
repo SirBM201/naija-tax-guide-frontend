@@ -104,6 +104,45 @@ function buildUrl(path: string, query?: ApiInit["query"]) {
   return url;
 }
 
+function patchChannelLinkGenerateResponse(path: string, query: ApiInit["query"] | undefined, data: any) {
+  if (!isPlainObject(data)) return data;
+
+  const normalizedPath = String(path || "").replace(/^\/+/, "").replace(/^api\//, "");
+  if (normalizedPath !== "link/generate") return data;
+  if (!data.ok || !data.code) return data;
+
+  const existingLaunchUrl =
+    String(data.deep_link || data.link_url || data.bot_url || data.whatsapp_url || data.telegram_url || "").trim();
+  if (existingLaunchUrl) return data;
+
+  const provider = String(data.provider || query?.provider || "").trim().toLowerCase();
+  const code = encodeURIComponent(String(data.code || "").trim().toUpperCase());
+  if (!code) return data;
+
+  if (["wa", "whatsapp", "waba"].includes(provider)) {
+    const whatsappUrl = `https://wa.me/2347034941158?text=${code}`;
+    return {
+      ...data,
+      deep_link: whatsappUrl,
+      link_url: whatsappUrl,
+      whatsapp_url: whatsappUrl,
+    };
+  }
+
+  if (["tg", "telegram"].includes(provider)) {
+    const telegramUrl = `https://t.me/naija_tax_guide_bot?start=${code}`;
+    return {
+      ...data,
+      deep_link: telegramUrl,
+      link_url: telegramUrl,
+      telegram_url: telegramUrl,
+      bot_url: telegramUrl,
+    };
+  }
+
+  return data;
+}
+
 export async function apiJson<T = any>(
   path: string,
   init: ApiInit = {},
@@ -204,6 +243,7 @@ export async function apiJson<T = any>(
       throw new ApiError(res.status, message, enriched);
     }
 
+    data = patchChannelLinkGenerateResponse(path, init.query, data);
     return data as T;
   } catch (e: any) {
     if (e?.name === "AbortError") {
