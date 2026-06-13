@@ -5,17 +5,19 @@ import EntryBootstrapProvider from "@/components/entry-bootstrap-provider";
 import { SITE } from "@/lib/site";
 
 const companyLogo = "/bms-logo.jpg";
+const companyFavicon = "/favicon.svg";
 
 export const metadata: Metadata = {
   title: `${SITE.name} | ${SITE.companyName}`,
   description: `${SITE.name} by ${SITE.companyName}. ${SITE.slogan}`,
   icons: {
     icon: [
-      { url: companyLogo, type: "image/jpeg" },
+      { url: companyFavicon, type: "image/svg+xml", sizes: "any" },
+      { url: companyLogo, type: "image/jpeg", sizes: "512x512" },
     ],
-    shortcut: [companyLogo],
+    shortcut: [companyFavicon],
     apple: [
-      { url: companyLogo, type: "image/jpeg" },
+      { url: companyLogo, type: "image/jpeg", sizes: "180x180" },
     ],
   },
   other: {
