@@ -311,7 +311,7 @@ export default function CalculatorPage() {
           onChange={(e) => handleInputChange("gross_profit", e.target.value)}
           placeholder="e.g., 30000000"
         />
-        <div style={helperTextStyle}>CIT rate is based on annual revenue/turnover: small company ≤ ₦25m, medium company > ₦25m to ₦100m, large company > ₦100m.</div>
+        <div style={helperTextStyle}>CIT rate is based on annual revenue/turnover: small company ≤ ₦25m, medium company &gt; ₦25m to ₦100m, large company &gt; ₦100m.</div>
       </div>
       <div style={formGroupStyle}>
         <label style={labelStyle} {...tooltip("Allowable business expenses deducted from revenue to estimate taxable profit")}>Allowable Expenses (₦)</label>
