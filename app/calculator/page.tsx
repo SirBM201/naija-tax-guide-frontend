@@ -303,21 +303,24 @@ export default function CalculatorPage() {
   const renderCITForm = () => (
     <div style={{ display: "grid", gap: 24 }}>
       <div style={formGroupStyle}>
-        <label style={labelStyle} {...tooltip("Total revenue minus cost of sales")}>Gross Profit (₦)</label>
+        <label style={labelStyle} {...tooltip("Company annual turnover/revenue used to determine small, medium, or large company CIT rate")}>Annual Revenue / Turnover (₦)</label>
         <input
           type="number"
           style={inputStyle}
           value={inputValue("gross_profit")}
           onChange={(e) => handleInputChange("gross_profit", e.target.value)}
+          placeholder="e.g., 30000000"
         />
+        <div style={helperTextStyle}>CIT rate is based on annual revenue/turnover: small company ≤ ₦25m, medium company > ₦25m to ₦100m, large company > ₦100m.</div>
       </div>
       <div style={formGroupStyle}>
-        <label style={labelStyle} {...tooltip("Allowable business expenses (e.g., rent, salaries)")}>Allowable Expenses (₦)</label>
+        <label style={labelStyle} {...tooltip("Allowable business expenses deducted from revenue to estimate taxable profit")}>Allowable Expenses (₦)</label>
         <input
           type="number"
           style={inputStyle}
           value={inputValue("allowable_expenses")}
           onChange={(e) => handleInputChange("allowable_expenses", e.target.value)}
+          placeholder="e.g., 10000000"
         />
       </div>
     </div>
