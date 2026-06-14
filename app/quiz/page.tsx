@@ -1,10 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import React, { useEffect, useMemo, useState } from "react";
 import AppShell from "@/components/app-shell";
 import WorkspaceSectionCard from "@/components/workspace-section-card";
 import { Banner, Card, MetricCard, appSelectStyle } from "@/components/ui";
-import { apiJson } from "@/lib/api";
+import { apiJson, clearStoredAuthToken, isApiError } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 
 type QuizOption = { label: string; option_id: string; text: string };
 type QuizQuestion = {
@@ -23,6 +25,7 @@ type AnswerResp = { ok?: boolean; is_correct?: boolean; selected?: { label?: str
 type ScoreResp = { ok?: boolean; score?: { attempts_today?: number; correct_today?: number; wrong_today?: number }; limit?: QuizLimit };
 
 const FALLBACK_CATEGORIES = ["Mixed", "PAYE", "VAT", "Company Tax", "WHT", "Records", "Deadlines", "Penalties"];
+const LOGIN_EXPIRED_MESSAGE = "Your login session has expired. Please sign in again to use the quiz.";
 
 function safeText(value: unknown, fallback = "—") {
   const text = typeof value === "string" ? value.trim() : value == null ? "" : String(value).trim();
@@ -40,7 +43,32 @@ function scorePercent(correct: number, attempts: number) {
   return `${Math.round((correct / attempts) * 100)}%`;
 }
 
+function isAuthFailure(error: unknown) {
+  if (!isApiError(error)) return false;
+  const code = String(error.data?.error || error.data?.message || error.message || "").trim().toLowerCase();
+  return ["invalid_token", "missing_token", "token_expired", "token_revoked", "unauthorized"].includes(code);
+}
+
+function apiErrorMessage(error: unknown, fallback: string) {
+  if (isAuthFailure(error)) {
+    clearStoredAuthToken();
+    return LOGIN_EXPIRED_MESSAGE;
+  }
+
+  if (isApiError(error)) {
+    return error.message || fallback;
+  }
+
+  if (error instanceof Error) {
+    return error.message || fallback;
+  }
+
+  return fallback;
+}
+
 export default function QuizPage() {
+  const { authReady, hasSession, token, bypassEnabled, requireAuth } = useAuth();
+
   const [categories, setCategories] = useState<string[]>(FALLBACK_CATEGORIES);
   const [category, setCategory] = useState("Mixed");
   const [question, setQuestion] = useState<QuizQuestion | null>(null);
@@ -52,26 +80,30 @@ export default function QuizPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
+  const canUseQuiz = bypassEnabled || hasSession || Boolean(token);
   const selectedOption = useMemo(() => (question?.options || []).find((option) => option.option_id === selectedOptionId), [question, selectedOptionId]);
 
   async function loadCategories() {
     try {
-      const res = await apiJson<{ ok?: boolean; categories?: string[] }>("/web/quiz/categories", { method: "GET", timeoutMs: 20000, useAuthToken: false });
+      const res = await apiJson<{ ok?: boolean; categories?: string[] }>("/web/quiz/categories", { method: "GET", timeoutMs: 20000 });
       const list = Array.isArray(res.categories) && res.categories.length ? res.categories : FALLBACK_CATEGORIES;
       setCategories(["Mixed", ...list.filter((item) => item && item !== "Mixed")]);
-    } catch {
+    } catch (err) {
+      if (isAuthFailure(err)) setError(apiErrorMessage(err, LOGIN_EXPIRED_MESSAGE));
       setCategories(FALLBACK_CATEGORIES);
     }
   }
 
   async function loadScore() {
     try {
-      const res = await apiJson<ScoreResp>("/web/quiz/score", { method: "GET", timeoutMs: 20000, useAuthToken: false });
+      const res = await apiJson<ScoreResp>("/web/quiz/score", { method: "GET", timeoutMs: 20000 });
       if (res.ok) {
         setScore(res.score || null);
         setLimit(res.limit);
       }
-    } catch {}
+    } catch (err) {
+      if (isAuthFailure(err)) setError(apiErrorMessage(err, LOGIN_EXPIRED_MESSAGE));
+    }
   }
 
   async function loadQuestion(nextCategory = category) {
@@ -82,7 +114,7 @@ export default function QuizPage() {
     try {
       const query: Record<string, string> = {};
       if (nextCategory && nextCategory !== "Mixed") query.category = nextCategory;
-      const res = await apiJson<QuestionResp>("/web/quiz/question", { method: "GET", query, timeoutMs: 20000, useAuthToken: false });
+      const res = await apiJson<QuestionResp>("/web/quiz/question", { method: "GET", query, timeoutMs: 20000 });
       if (!res.ok || !res.question) {
         setError(res.message || res.error || "Unable to load quiz question.");
         setQuestion(null);
@@ -91,8 +123,8 @@ export default function QuizPage() {
       }
       setQuestion(res.question);
       setLimit(res.limit);
-    } catch (err: any) {
-      setError(err?.message || "Unable to load quiz question.");
+    } catch (err) {
+      setError(apiErrorMessage(err, "Unable to load quiz question."));
       setQuestion(null);
     } finally {
       setLoading(false);
@@ -113,7 +145,6 @@ export default function QuizPage() {
           selected_label: selectedOption.label,
         },
         timeoutMs: 20000,
-        useAuthToken: false,
       });
       if (!res.ok) {
         setError(res.message || res.error || "Unable to submit answer.");
@@ -123,22 +154,30 @@ export default function QuizPage() {
       setAnswer(res);
       setLimit(res.limit);
       await loadScore();
-    } catch (err: any) {
-      setError(err?.message || "Unable to submit answer.");
+    } catch (err) {
+      setError(apiErrorMessage(err, "Unable to submit answer."));
     } finally {
       setSubmitting(false);
     }
   }
 
   useEffect(() => {
+    if (!authReady) return;
+
+    if (!canUseQuiz) {
+      requireAuth();
+      return;
+    }
+
     void loadCategories();
     void loadScore();
     void loadQuestion("Mixed");
-  }, []);
+  }, [authReady, canUseQuiz]);
 
   const attempts = Number(score?.attempts_today || limit?.attempts_today || 0);
   const correct = Number(score?.correct_today || 0);
   const wrong = Number(score?.wrong_today || 0);
+  const showLoginAction = error === LOGIN_EXPIRED_MESSAGE || (authReady && !canUseQuiz);
 
   return (
     <AppShell title="Tax Quiz" subtitle="Practice Nigerian tax concepts with non-AI quiz questions and convincing answer options.">
@@ -156,12 +195,14 @@ export default function QuizPage() {
           <div style={{ display: "grid", gap: 14 }}>
             <label style={{ display: "grid", gap: 8 }}>
               <span style={{ color: "var(--text)", fontWeight: 900 }}>Category</span>
-              <select value={category} onChange={(event) => { const next = event.target.value; setCategory(next); void loadQuestion(next); }} style={appSelectStyle()}>
+              <select value={category} onChange={(event) => { const next = event.target.value; setCategory(next); void loadQuestion(next); }} disabled={!authReady || !canUseQuiz} style={appSelectStyle()}>
                 {categories.map((item) => <option key={item} value={item}>{item}</option>)}
               </select>
             </label>
 
-            {error ? <Card tone="danger"><div style={{ color: "var(--text)", fontWeight: 900 }}>{error}</div></Card> : null}
+            {!authReady ? <Card><div style={{ color: "var(--text)", fontWeight: 900 }}>Checking your login session...</div></Card> : null}
+
+            {error ? <Card tone="danger"><div style={{ color: "var(--text)", fontWeight: 900 }}>{error}</div>{showLoginAction ? <Link href="/login?next=%2Fquiz" style={styles.loginLink}>Sign in again</Link> : null}</Card> : null}
 
             {question ? (
               <Card>
@@ -214,4 +255,5 @@ const styles: Record<string, React.CSSProperties> = {
   optionButton: { width: "100%", borderRadius: 16, border: "1px solid var(--border)", color: "var(--text)", padding: "14px 16px", textAlign: "left", cursor: "pointer", fontWeight: 800, lineHeight: 1.65 },
   primaryButton: { borderRadius: 16, border: "1px solid var(--accent-border)", background: "var(--button-bg-strong)", color: "var(--text)", padding: "14px 18px", fontWeight: 900, cursor: "pointer" },
   secondaryButton: { borderRadius: 16, border: "1px solid var(--border-strong)", background: "var(--button-bg)", color: "var(--text)", padding: "14px 18px", fontWeight: 900, cursor: "pointer" },
+  loginLink: { display: "inline-flex", marginTop: 12, width: "fit-content", borderRadius: 14, border: "1px solid var(--accent-border)", background: "var(--accent-soft)", color: "var(--text)", padding: "10px 14px", fontWeight: 900, textDecoration: "none" },
 };
