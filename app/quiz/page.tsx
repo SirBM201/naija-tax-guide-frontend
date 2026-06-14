@@ -23,6 +23,7 @@ type QuizLimit = { paid?: boolean; daily_limit?: number | null; attempts_today?:
 type QuestionResp = { ok?: boolean; question?: QuizQuestion; limit?: QuizLimit; message?: string; error?: string };
 type AnswerResp = { ok?: boolean; is_correct?: boolean; selected?: { label?: string; text?: string }; correct?: { label?: string; text?: string }; explanation?: string; premium_explanation?: string; source_reference?: string; limit?: QuizLimit; message?: string; error?: string };
 type ScoreResp = { ok?: boolean; score?: { attempts_today?: number; correct_today?: number; wrong_today?: number }; limit?: QuizLimit };
+type Q5Resp = { ok?: boolean; explanation?: string; source_reference?: string; credit?: { deducted?: boolean; credits_deducted?: number; balance_before?: number; balance_after?: number; reference?: string; live_ai_called?: boolean }; message?: string; error?: string };
 
 const FALLBACK_CATEGORIES = ["Mixed", "PAYE", "VAT", "Company Tax", "WHT", "Records", "Deadlines", "Penalties"];
 const LOGIN_EXPIRED_MESSAGE = "Your login session has expired. Please sign in again to use the quiz.";
@@ -83,11 +84,21 @@ export default function QuizPage() {
   const [limit, setLimit] = useState<QuizLimit | undefined>();
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [q5Loading, setQ5Loading] = useState(false);
+  const [q5Error, setQ5Error] = useState("");
+  const [q5Explanation, setQ5Explanation] = useState("");
+  const [q5Credit, setQ5Credit] = useState<Q5Resp["credit"] | null>(null);
   const [error, setError] = useState("");
 
   const canUseQuiz = bypassEnabled || hasSession || Boolean(token);
   const useLocalTokenForQuiz = !hasSession && Boolean(token);
   const selectedOption = useMemo(() => (question?.options || []).find((option) => option.option_id === selectedOptionId), [question, selectedOptionId]);
+
+  function clearQ5() {
+    setQ5Error("");
+    setQ5Explanation("");
+    setQ5Credit(null);
+  }
 
   async function loadCategories() {
     try {
@@ -124,6 +135,7 @@ export default function QuizPage() {
     setLoading(true);
     setError("");
     setAnswer(null);
+    clearQ5();
     setSelectedOptionId("");
     try {
       const query: Record<string, string> = {};
@@ -164,6 +176,7 @@ export default function QuizPage() {
     if (!question || !selectedOption) return;
     setSubmitting(true);
     setError("");
+    clearQ5();
     try {
       const optionOrder = (question.options || []).map((option) => ({
         label: option.label,
@@ -195,6 +208,34 @@ export default function QuizPage() {
       setError(apiErrorMessage(err, "Unable to submit answer."));
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function unlockDetailedExplanation() {
+    if (!question || !answer || q5Loading || q5Explanation) return;
+    setQ5Loading(true);
+    setQ5Error("");
+    try {
+      const res = await apiJson<Q5Resp>("/web/quiz/explanation", {
+        method: "POST",
+        body: {
+          question_id: question.db_id,
+          question_code: question.question_code || question.id,
+        },
+        timeoutMs: 20000,
+        useAuthToken: useLocalTokenForQuiz,
+      });
+      if (!res.ok || !res.explanation) {
+        setQ5Error(res.message || res.error || "Detailed explanation could not be unlocked.");
+        return;
+      }
+      setQ5Explanation(res.explanation);
+      setQ5Credit(res.credit || null);
+      await loadScore();
+    } catch (err) {
+      setQ5Error(apiErrorMessage(err, "Detailed explanation could not be unlocked."));
+    } finally {
+      setQ5Loading(false);
     }
   }
 
@@ -278,6 +319,22 @@ export default function QuizPage() {
                 <div style={{ color: "var(--text-muted)", lineHeight: 1.8 }}>Correct answer: <strong>{safeText(answer.correct?.label)}</strong> — {safeText(answer.correct?.text)}</div>
                 <div style={{ color: "var(--text)", lineHeight: 1.85, fontWeight: 700 }}>{safeText(answer.explanation, "Review this topic and try another question.")}</div>
                 {answer.source_reference ? <div style={{ color: "var(--text-faint)", fontSize: 13 }}>Source: {answer.source_reference}</div> : null}
+
+                <div style={styles.q5Box}>
+                  <div style={{ color: "var(--text)", fontWeight: 900 }}>Detailed saved explanation</div>
+                  <div style={{ color: "var(--text-muted)", lineHeight: 1.7 }}>Unlock the fuller Q5 explanation for this same question. This costs 1 Usage Credit and does not call live AI.</div>
+                  {!q5Explanation ? (
+                    <button type="button" onClick={unlockDetailedExplanation} disabled={q5Loading} style={styles.primaryButton}>{q5Loading ? "Unlocking..." : "Unlock Q5 explanation — 1 credit"}</button>
+                  ) : null}
+                  {q5Error ? <div style={styles.q5Error}>{q5Error}</div> : null}
+                  {q5Explanation ? (
+                    <div style={styles.q5Unlocked}>
+                      <div style={{ color: "var(--text)", fontWeight: 900 }}>Q5 explanation unlocked</div>
+                      <div style={{ color: "var(--text)", lineHeight: 1.85 }}>{q5Explanation}</div>
+                      <div style={{ color: "var(--text-faint)", fontSize: 13 }}>Usage Credit deducted: {q5Credit?.credits_deducted ?? 1}{q5Credit?.balance_after !== undefined ? ` · Balance: ${q5Credit.balance_after}` : ""}</div>
+                    </div>
+                  ) : null}
+                </div>
               </div>
             </Card>
           </WorkspaceSectionCard>
@@ -293,4 +350,7 @@ const styles: Record<string, React.CSSProperties> = {
   primaryButton: { borderRadius: 16, border: "1px solid var(--accent-border)", background: "var(--button-bg-strong)", color: "var(--text)", padding: "14px 18px", fontWeight: 900, cursor: "pointer" },
   secondaryButton: { borderRadius: 16, border: "1px solid var(--border-strong)", background: "var(--button-bg)", color: "var(--text)", padding: "14px 18px", fontWeight: 900, cursor: "pointer" },
   loginLink: { display: "inline-flex", marginTop: 12, width: "fit-content", borderRadius: 14, border: "1px solid var(--accent-border)", background: "var(--accent-soft)", color: "var(--text)", padding: "10px 14px", fontWeight: 900, textDecoration: "none" },
+  q5Box: { marginTop: 8, display: "grid", gap: 12, padding: 16, borderRadius: 18, border: "1px solid var(--border)", background: "var(--surface-soft)" },
+  q5Error: { padding: 12, borderRadius: 14, border: "1px solid rgba(239,68,68,0.35)", background: "rgba(239,68,68,0.12)", color: "var(--text)", fontWeight: 800 },
+  q5Unlocked: { display: "grid", gap: 10, padding: 14, borderRadius: 16, border: "1px solid rgba(16,185,129,0.28)", background: "rgba(16,185,129,0.10)" },
 };
