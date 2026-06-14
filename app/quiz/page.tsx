@@ -81,11 +81,16 @@ export default function QuizPage() {
   const [error, setError] = useState("");
 
   const canUseQuiz = bypassEnabled || hasSession || Boolean(token);
+  const useLocalTokenForQuiz = !hasSession && Boolean(token);
   const selectedOption = useMemo(() => (question?.options || []).find((option) => option.option_id === selectedOptionId), [question, selectedOptionId]);
 
   async function loadCategories() {
     try {
-      const res = await apiJson<{ ok?: boolean; categories?: string[] }>("/web/quiz/categories", { method: "GET", timeoutMs: 20000 });
+      const res = await apiJson<{ ok?: boolean; categories?: string[] }>("/web/quiz/categories", {
+        method: "GET",
+        timeoutMs: 20000,
+        useAuthToken: useLocalTokenForQuiz,
+      });
       const list = Array.isArray(res.categories) && res.categories.length ? res.categories : FALLBACK_CATEGORIES;
       setCategories(["Mixed", ...list.filter((item) => item && item !== "Mixed")]);
     } catch (err) {
@@ -96,7 +101,11 @@ export default function QuizPage() {
 
   async function loadScore() {
     try {
-      const res = await apiJson<ScoreResp>("/web/quiz/score", { method: "GET", timeoutMs: 20000 });
+      const res = await apiJson<ScoreResp>("/web/quiz/score", {
+        method: "GET",
+        timeoutMs: 20000,
+        useAuthToken: useLocalTokenForQuiz,
+      });
       if (res.ok) {
         setScore(res.score || null);
         setLimit(res.limit);
@@ -114,7 +123,12 @@ export default function QuizPage() {
     try {
       const query: Record<string, string> = {};
       if (nextCategory && nextCategory !== "Mixed") query.category = nextCategory;
-      const res = await apiJson<QuestionResp>("/web/quiz/question", { method: "GET", query, timeoutMs: 20000 });
+      const res = await apiJson<QuestionResp>("/web/quiz/question", {
+        method: "GET",
+        query,
+        timeoutMs: 20000,
+        useAuthToken: useLocalTokenForQuiz,
+      });
       if (!res.ok || !res.question) {
         setError(res.message || res.error || "Unable to load quiz question.");
         setQuestion(null);
@@ -145,6 +159,7 @@ export default function QuizPage() {
           selected_label: selectedOption.label,
         },
         timeoutMs: 20000,
+        useAuthToken: useLocalTokenForQuiz,
       });
       if (!res.ok) {
         setError(res.message || res.error || "Unable to submit answer.");
@@ -172,7 +187,7 @@ export default function QuizPage() {
     void loadCategories();
     void loadScore();
     void loadQuestion("Mixed");
-  }, [authReady, canUseQuiz]);
+  }, [authReady, canUseQuiz, useLocalTokenForQuiz]);
 
   const attempts = Number(score?.attempts_today || limit?.attempts_today || 0);
   const correct = Number(score?.correct_today || 0);
