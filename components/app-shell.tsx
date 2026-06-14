@@ -58,6 +58,7 @@ const navSections = [
     items: [
       { href: "/dashboard", label: "Dashboard" },
       { href: "/ask", label: "Ask" },
+      { href: "/quiz", label: "Quiz" },
       { href: "/calculator", label: "Calculator" },
       { href: "/file", label: "File Taxes" },
       { href: "/deadlines", label: "Deadlines" },
