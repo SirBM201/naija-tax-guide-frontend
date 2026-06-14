@@ -32,6 +32,10 @@ function safeText(value: unknown, fallback = "—") {
   return text || fallback;
 }
 
+function questionKey(question?: QuizQuestion | null) {
+  return safeText(question?.question_code || question?.id || question?.db_id || question?.question, "");
+}
+
 function limitLabel(limit?: QuizLimit) {
   if (!limit) return "—";
   if (limit.paid) return "Unlimited";
@@ -46,7 +50,7 @@ function scorePercent(correct: number, attempts: number) {
 function isAuthFailure(error: unknown) {
   if (!isApiError(error)) return false;
   const code = String(error.data?.error || error.data?.message || error.message || "").trim().toLowerCase();
-  return ["invalid_token", "missing_token", "token_expired", "token_revoked", "unauthorized"].includes(code);
+  return ["invalid_token", "missing_token", "token_expired", "token_revoked", "unauthorized", "login_required"].includes(code);
 }
 
 function apiErrorMessage(error: unknown, fallback: string) {
@@ -72,6 +76,7 @@ export default function QuizPage() {
   const [categories, setCategories] = useState<string[]>(FALLBACK_CATEGORIES);
   const [category, setCategory] = useState("Mixed");
   const [question, setQuestion] = useState<QuizQuestion | null>(null);
+  const [seenQuestionCodes, setSeenQuestionCodes] = useState<string[]>([]);
   const [selectedOptionId, setSelectedOptionId] = useState("");
   const [answer, setAnswer] = useState<AnswerResp | null>(null);
   const [score, setScore] = useState<ScoreResp["score"] | null>(null);
@@ -123,6 +128,8 @@ export default function QuizPage() {
     try {
       const query: Record<string, string> = {};
       if (nextCategory && nextCategory !== "Mixed") query.category = nextCategory;
+      if (seenQuestionCodes.length) query.seen = seenQuestionCodes.slice(-24).join(",");
+
       const res = await apiJson<QuestionResp>("/web/quiz/question", {
         method: "GET",
         query,
@@ -137,6 +144,14 @@ export default function QuizPage() {
       }
       setQuestion(res.question);
       setLimit(res.limit);
+
+      const key = questionKey(res.question);
+      if (key) {
+        setSeenQuestionCodes((prev) => {
+          const next = [...prev.filter((item) => item !== key), key];
+          return next.slice(-50);
+        });
+      }
     } catch (err) {
       setError(apiErrorMessage(err, "Unable to load quiz question."));
       setQuestion(null);
@@ -150,6 +165,11 @@ export default function QuizPage() {
     setSubmitting(true);
     setError("");
     try {
+      const optionOrder = (question.options || []).map((option) => ({
+        label: option.label,
+        option_id: option.option_id,
+      }));
+
       const res = await apiJson<AnswerResp>("/web/quiz/answer", {
         method: "POST",
         body: {
@@ -157,6 +177,8 @@ export default function QuizPage() {
           question_code: question.question_code || question.id,
           selected_option_id: selectedOption.option_id,
           selected_label: selectedOption.label,
+          option_order: optionOrder,
+          channel: "web",
         },
         timeoutMs: 20000,
         useAuthToken: useLocalTokenForQuiz,
