@@ -13,13 +13,20 @@ export async function proxyToBackend(req: Request, backendPath: string) {
     );
   }
 
-  // Forward headers (Authorization is key)
   const headers = new Headers(req.headers);
   headers.set("content-type", "application/json");
 
+  const authHeader = (headers.get("authorization") || "").trim();
+  const hasBearer = authHeader.toLowerCase().startsWith("bearer ");
+
+  // If the browser sends both a fresh bearer token and an old cookie, do not let
+  // the old cookie override the bearer token on the backend auth guard.
+  if (hasBearer) {
+    headers.delete("cookie");
+  }
+
   const url = backendUrl(backendPath);
 
-  // Read body only if needed
   const method = req.method.toUpperCase();
   const hasBody = !["GET", "HEAD"].includes(method);
 
@@ -29,7 +36,6 @@ export async function proxyToBackend(req: Request, backendPath: string) {
     method,
     headers,
     body,
-    // no cookies needed unless you decide cookie auth later
   });
 
   const text = await r.text();
