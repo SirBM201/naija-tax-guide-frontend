@@ -1,453 +1,264 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
-import RequireAuth from "@/components/RequireAuth";
-import AppShell from "@/components/app-shell";
-import { useAuth } from "@/lib/auth";
-import { apiJson, isApiError } from "@/lib/api";
+import React from "react";
+import { useRouter } from "next/navigation";
+import { SITE } from "@/lib/site";
+import { themeVars, useSharedTheme } from "@/lib/theme";
 
-type Plan = {
-  plan_code: string;
+type PublicPlan = {
   name: string;
-  duration_days: number;
-  active: boolean;
-  price?: number;
+  audience: string;
+  monthly: string;
+  quarterly: string;
+  yearly: string;
+  credits: string;
+  channels: string;
+  support: string;
+  highlights: string[];
+  recommended?: boolean;
 };
 
-type PlansResponse = {
-  ok?: boolean;
-  plans?: Plan[];
-  error?: string;
-  message?: string;
-};
+const plans: PublicPlan[] = [
+  {
+    name: "Free Forever",
+    audience: "Simple learning, basic calculators, and first-time exploration.",
+    monthly: "₦0",
+    quarterly: "₦0",
+    yearly: "₦0",
+    credits: "0 AI credits",
+    channels: "Web basics",
+    support: "Standard help",
+    highlights: [
+      "Free PAYE, VAT, CIT, and WHT calculators",
+      "Basic library/database tax answers",
+      "12 daily non-AI quiz attempts",
+      "General Nigerian tax calendar view",
+    ],
+  },
+  {
+    name: "Starter",
+    audience: "Individuals, salary earners, and light tax guidance needs.",
+    monthly: "₦5,000",
+    quarterly: "₦14,000",
+    yearly: "₦51,000",
+    credits: "100 monthly credits",
+    channels: "Web + WhatsApp or Telegram",
+    support: "Standard support",
+    highlights: [
+      "AI tax answers using Usage Credits",
+      "Custom deadlines and reminders",
+      "Basic document drafts and summaries",
+      "Credit top-ups while subscription is active",
+    ],
+  },
+  {
+    name: "Professional",
+    audience: "Freelancers, consultants, creators, and growing SMEs.",
+    monthly: "₦12,000",
+    quarterly: "₦33,600",
+    yearly: "₦122,400",
+    credits: "300 monthly credits",
+    channels: "Web + WhatsApp + Telegram",
+    support: "Priority support",
+    recommended: true,
+    highlights: [
+      "Everything in Starter",
+      "Advanced AI tax explanations",
+      "Document generation using credits",
+      "Filing checklist support",
+    ],
+  },
+  {
+    name: "Business",
+    audience: "Teams, businesses, consultants, and heavier compliance workflows.",
+    monthly: "₦25,000",
+    quarterly: "₦70,000",
+    yearly: "₦255,000",
+    credits: "800 monthly credits",
+    channels: "More channel capacity",
+    support: "Priority business support",
+    highlights: [
+      "Everything in Professional",
+      "Advanced business tax workflows",
+      "Document generation and review",
+      "Usage reports and audit trail",
+    ],
+  },
+];
 
-type CheckoutResponse = {
-  ok?: boolean;
-  authorization_url?: string;
-  reference?: string;
-  access_code?: string;
-  plan?: any;
-  account_id?: string;
-  error?: string;
-  message?: string;
-};
+const topUps = [
+  "10 credits - ₦500",
+  "50 credits - ₦2,000",
+  "100 credits - ₦3,500",
+  "500 credits - ₦15,000",
+];
 
-type WebMeResp = {
-  ok?: boolean;
-  account_id?: string;
-  error?: string;
-  debug?: any;
-};
+function pageShell(): React.CSSProperties {
+  return {
+    minHeight: "100vh",
+    background: "var(--app-bg)",
+    color: "var(--text)",
+    padding: "20px 14px 64px",
+  };
+}
 
-export default function PricingPage() {
+function card(accent = false): React.CSSProperties {
+  return {
+    borderRadius: 22,
+    border: accent ? "1px solid var(--gold)" : "1px solid var(--border)",
+    background: "var(--panel-bg)",
+    padding: 20,
+    display: "grid",
+    gap: 14,
+    minWidth: 0,
+    boxShadow: accent ? "var(--shadow-soft)" : undefined,
+  };
+}
+
+function button(primary = true): React.CSSProperties {
+  return {
+    borderRadius: 16,
+    border: primary ? "1px solid var(--accent-border)" : "1px solid var(--border-strong)",
+    background: primary ? "var(--button-bg-strong)" : "var(--button-bg)",
+    color: "var(--text)",
+    fontWeight: 900,
+    padding: "14px 16px",
+    cursor: "pointer",
+    width: "100%",
+    fontSize: 14,
+  };
+}
+
+function pill(tone: "default" | "warn" | "good" = "default"): React.CSSProperties {
+  const border = tone === "warn" ? "var(--warn-border)" : tone === "good" ? "var(--success-border)" : "var(--border)";
+  const bg = tone === "warn" ? "var(--warn-bg)" : tone === "good" ? "var(--success-bg)" : "var(--surface)";
+  return {
+    display: "inline-flex",
+    alignItems: "center",
+    borderRadius: 999,
+    border: `1px solid ${border}`,
+    background: bg,
+    padding: "7px 11px",
+    color: "var(--text-soft)",
+    fontSize: 12,
+    fontWeight: 800,
+    width: "fit-content",
+    maxWidth: "100%",
+    overflowWrap: "anywhere",
+  };
+}
+
+function priceCell(label: string, value: string): React.ReactNode {
   return (
-    <RequireAuth>
-      <Inner />
-    </RequireAuth>
+    <div style={{ border: "1px solid var(--border)", borderRadius: 16, background: "var(--surface)", padding: 14 }}>
+      <div style={{ color: "var(--text-muted)", fontSize: 12, fontWeight: 800 }}>{label}</div>
+      <div style={{ marginTop: 5, color: "var(--text)", fontSize: 20, fontWeight: 950 }}>{value}</div>
+    </div>
   );
 }
 
-function Inner() {
-  const { token } = useAuth();
-
-  const [me, setMe] = useState<WebMeResp | null>(null);
-  const [plans, setPlans] = useState<Plan[]>([]);
-  const [email, setEmail] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [loadingPlans, setLoadingPlans] = useState(false);
-  const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
-
-  const accountId = useMemo(() => (me?.account_id || "").trim(), [me]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadMe() {
-      setError(null);
-      try {
-        const json = await apiJson<WebMeResp>(
-          "/web/auth/me",
-          { method: "GET", timeoutMs: 20000 },
-          token
-        );
-        if (!cancelled) setMe(json);
-      } catch (e: any) {
-        const msg = isApiError(e)
-          ? e.message
-          : e?.message || "Failed to load identity";
-        if (!cancelled) setError(msg);
-      }
-    }
-
-    void loadMe();
-    return () => {
-      cancelled = true;
-    };
-  }, [token]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadPlans() {
-      setLoadingPlans(true);
-      setError(null);
-
-      try {
-        const json = await apiJson<PlansResponse>(
-          "/billing/plans?active_only=1",
-          { method: "GET", timeoutMs: 20000 },
-          token
-        );
-        const list = json?.plans || [];
-        if (!cancelled) setPlans(list.filter((plan) => plan.active));
-      } catch (e: any) {
-        const msg = isApiError(e)
-          ? e.message
-          : e?.message || "Failed to load plans";
-        if (!cancelled) setError(msg);
-      } finally {
-        if (!cancelled) setLoadingPlans(false);
-      }
-    }
-
-    void loadPlans();
-    return () => {
-      cancelled = true;
-    };
-  }, [token]);
-
-  async function startPayment(planCode: string) {
-    if (!email.trim()) {
-      setError("Email is required for Paystack.");
-      return;
-    }
-
-    if (!accountId) {
-      setError("Missing account_id from /web/auth/me. Please login again and retry.");
-      return;
-    }
-
-    setLoadingPlan(planCode);
-    setError(null);
-
-    try {
-      const data = await apiJson<CheckoutResponse>(
-        "/billing/checkout",
-        {
-          method: "POST",
-          timeoutMs: 25000,
-          body: {
-            plan_code: planCode,
-            email: email.trim().toLowerCase(),
-          },
-        },
-        token
-      );
-
-      const url = data?.authorization_url;
-      if (!url) {
-        throw new Error(data?.error || data?.message || "Missing Paystack authorization_url");
-      }
-
-      window.location.href = url;
-    } catch (e: any) {
-      const msg = isApiError(e)
-        ? e.message
-        : e?.message || "Unable to start payment";
-      setError(msg);
-      alert(msg);
-    } finally {
-      setLoadingPlan(null);
-    }
-  }
+export default function PublicPricingPage() {
+  const router = useRouter();
+  const { resolvedMode } = useSharedTheme();
 
   return (
-    <AppShell
-      title="Pricing"
-      subtitle="Choose a subscription plan. Your account is already detected after login. Only the Paystack email is needed here."
-      rightSlot={
-        <div style={rightSlotWrap}>
-          <div style={pill}>
-            <span style={{ opacity: 0.75 }}>Account:</span>
-            <span style={{ fontWeight: 950, wordBreak: "break-all" }}>
-              {accountId ? shortId(accountId) : "…"}
-            </span>
-          </div>
-        </div>
-      }
-    >
-      <div style={grid}>
-        <div style={card}>
-          <div style={cardTitle}>Paystack Email</div>
-          <div style={cardText}>
-            Enter the email Paystack should use for this payment. Your logged-in
-            account is already linked in the background.
+    <main style={{ ...pageShell(), ...themeVars(resolvedMode) }}>
+      <div style={{ maxWidth: 1260, margin: "0 auto", display: "grid", gap: 28 }}>
+        <header style={{ display: "grid", gap: 16 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+            <button onClick={() => router.push("/")} style={{ ...button(false), width: "auto" }}>
+              Back Home
+            </button>
+            <button onClick={() => router.push("/login?next=/plans")} style={{ ...button(true), width: "auto" }}>
+              Login to Choose Plan
+            </button>
           </div>
 
-          <label htmlFor="pricing-email" style={labelStyle}>
-            Email address
-          </label>
-          <input
-            id="pricing-email"
-            placeholder="your@email.com"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            style={inputStyle}
-            inputMode="email"
-            autoComplete="email"
-          />
-
-          <div style={note}>
-            Your <code style={code}>account_id</code> is detected automatically
-            after login, so you do not need to enter it here.
-          </div>
-
-          {error ? <div style={errorBoxStyle}>{error}</div> : null}
-        </div>
-
-        <div style={card}>
-          <div style={cardTitle}>Available Plans</div>
-          <div style={cardText}>
-            Pick the plan that fits your current usage and continue to Paystack.
-          </div>
-
-          {loadingPlans ? (
-            <div style={empty}>Loading plans…</div>
-          ) : plans.length === 0 ? (
-            <div style={empty}>No active plans found.</div>
-          ) : (
-            <div style={plansWrap}>
-              {plans.map((plan) => {
-                const busy = loadingPlan === plan.plan_code;
-
-                return (
-                  <div key={plan.plan_code} style={planCard}>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={planName}>{plan.name}</div>
-
-                      <div style={planMetaWrap}>
-                        <div style={planMetaItem}>
-                          Duration:
-                          <span style={planMetaValue}>{plan.duration_days} days</span>
-                        </div>
-
-                        {typeof plan.price === "number" ? (
-                          <div style={planMetaItem}>
-                            Price:
-                            <span style={planMetaValue}>
-                              ₦{plan.price.toLocaleString()}
-                            </span>
-                          </div>
-                        ) : null}
-                      </div>
-                    </div>
-
-                    <button
-                      disabled={!!loadingPlan}
-                      style={{
-                        ...payBtn,
-                        opacity: !!loadingPlan && !busy ? 0.55 : 1,
-                        cursor: !!loadingPlan ? "not-allowed" : "pointer",
-                      }}
-                      onClick={() => startPayment(plan.plan_code)}
-                    >
-                      {busy ? "Processing…" : "Pay Now"}
-                    </button>
-                  </div>
-                );
-              })}
+          <section style={card(true)}>
+            <div style={pill("good")}>Public pricing transparency</div>
+            <h1 style={{ margin: 0, color: "var(--text)", fontSize: "clamp(34px, 7vw, 56px)", lineHeight: 1.02, letterSpacing: -1.2 }}>
+              Clear plans before you create or upgrade an account.
+            </h1>
+            <p style={{ margin: 0, color: "var(--text-muted)", fontSize: "clamp(16px, 2.6vw, 18px)", lineHeight: 1.8, maxWidth: 900 }}>
+              {SITE.name} uses a freemium model. Basic calculators and learning tools remain available, while AI-powered answers, document tools, reminders, and stronger channel access use subscription plans and Usage Credits.
+            </p>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <span style={pill()}>Prices shown in Nigerian Naira</span>
+              <span style={pill("warn")}>Secure checkout confirms final active price</span>
+              <span style={pill()}>Last public review: {SITE.trustReviewDate}</span>
             </div>
-          )}
-        </div>
-      </div>
+          </section>
+        </header>
 
-      <div style={{ height: 14 }} />
+        <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 18 }}>
+          {plans.map((plan) => (
+            <article key={plan.name} style={card(Boolean(plan.recommended))}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                <div>
+                  <h2 style={{ margin: 0, color: "var(--text)", fontSize: 24, lineHeight: 1.2 }}>{plan.name}</h2>
+                  <p style={{ margin: "8px 0 0", color: "var(--text-muted)", lineHeight: 1.65 }}>{plan.audience}</p>
+                </div>
+                {plan.recommended ? <span style={pill("good")}>Recommended</span> : null}
+              </div>
 
-      <div style={card}>
-        <div style={cardTitle}>What happens next</div>
-        <div style={note}>
-          After payment, Paystack redirects back with a reference. The app then
-          verifies that reference through <code style={code}>/billing/verify</code>
-          and refreshes your billing state automatically.
-        </div>
+              <div style={{ display: "grid", gap: 10 }}>
+                {priceCell("Monthly", plan.monthly)}
+                {priceCell("Quarterly", plan.quarterly)}
+                {priceCell("Yearly", plan.yearly)}
+              </div>
+
+              <div style={{ display: "grid", gap: 8, color: "var(--text)", lineHeight: 1.6 }}>
+                <strong>{plan.credits}</strong>
+                <span>{plan.channels}</span>
+                <span>{plan.support}</span>
+              </div>
+
+              <div style={{ display: "grid", gap: 8 }}>
+                {plan.highlights.map((item) => (
+                  <div key={item} style={{ display: "grid", gridTemplateColumns: "22px 1fr", gap: 8, color: "var(--text-muted)", lineHeight: 1.55 }}>
+                    <strong style={{ color: "var(--accent)" }}>✓</strong>
+                    <span>{item}</span>
+                  </div>
+                ))}
+              </div>
+
+              <button onClick={() => router.push("/login?next=/plans")} style={button(true)}>
+                Choose {plan.name}
+              </button>
+            </article>
+          ))}
+        </section>
+
+        <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 18 }}>
+          <div style={card()}>
+            <div style={pill()}>Credit top-ups</div>
+            <h2 style={{ margin: 0, color: "var(--text)", fontSize: 26 }}>Optional credits for active paid users</h2>
+            <p style={{ margin: 0, color: "var(--text-muted)", lineHeight: 1.8 }}>
+              Top-ups add Usage Credits only. They do not extend subscription validity, and they are available only when a paid subscription is active.
+            </p>
+            <div style={{ display: "grid", gap: 10 }}>
+              {topUps.map((item) => (
+                <div key={item} style={{ border: "1px solid var(--border)", borderRadius: 14, background: "var(--surface)", padding: 12, color: "var(--text)", fontWeight: 800 }}>
+                  {item}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div style={card()}>
+            <div style={pill("warn")}>Important tax guidance boundary</div>
+            <h2 style={{ margin: 0, color: "var(--text)", fontSize: 26 }}>Guidance, not official tax representation</h2>
+            <p style={{ margin: 0, color: "var(--text-muted)", lineHeight: 1.8 }}>
+              {SITE.name} provides general Nigerian tax information and guided support. It is not a government portal, law firm, accounting firm, or substitute for a qualified tax professional in sensitive matters, audits, disputes, penalties, or formal filing decisions.
+            </p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10 }}>
+              <button onClick={() => router.push("/terms")} style={button(false)}>Terms</button>
+              <button onClick={() => router.push("/privacy")} style={button(false)}>Privacy</button>
+              <button onClick={() => router.push("/support")} style={button(false)}>Support</button>
+            </div>
+          </div>
+        </section>
       </div>
-    </AppShell>
+    </main>
   );
-}
-
-const grid: React.CSSProperties = {
-  display: "grid",
-  gap: 16,
-  gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-  alignItems: "start",
-};
-
-const rightSlotWrap: React.CSSProperties = {
-  display: "flex",
-  gap: 10,
-  flexWrap: "wrap",
-  minWidth: 0,
-};
-
-const card: React.CSSProperties = {
-  borderRadius: 22,
-  padding: 18,
-  border: "1px solid var(--border)",
-  background: "var(--panel-bg)",
-  boxShadow: "var(--shadow-soft)",
-  minWidth: 0,
-};
-
-const cardTitle: React.CSSProperties = {
-  fontWeight: 950,
-  fontSize: 20,
-  lineHeight: 1.2,
-  color: "var(--text)",
-};
-
-const cardText: React.CSSProperties = {
-  marginTop: 8,
-  color: "var(--text-muted)",
-  lineHeight: 1.7,
-  fontSize: 14,
-};
-
-const labelStyle: React.CSSProperties = {
-  display: "block",
-  fontSize: 13,
-  color: "var(--text-soft)",
-  marginTop: 16,
-  marginBottom: 8,
-  fontWeight: 700,
-};
-
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "14px 15px",
-  borderRadius: 16,
-  border: "1px solid var(--border)",
-  background: "var(--surface)",
-  color: "var(--text)",
-  outline: "none",
-  fontSize: 16,
-  minWidth: 0,
-};
-
-const plansWrap: React.CSSProperties = {
-  display: "grid",
-  gap: 12,
-  marginTop: 14,
-};
-
-const planCard: React.CSSProperties = {
-  border: "1px solid var(--border)",
-  borderRadius: 18,
-  padding: 16,
-  background: "var(--surface)",
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-  alignItems: "center",
-  gap: 14,
-  minWidth: 0,
-};
-
-const planName: React.CSSProperties = {
-  fontSize: 16,
-  fontWeight: 950,
-  color: "var(--text)",
-  lineHeight: 1.35,
-  wordBreak: "break-word",
-};
-
-const planMetaWrap: React.CSSProperties = {
-  display: "grid",
-  gap: 6,
-  marginTop: 8,
-};
-
-const planMetaItem: React.CSSProperties = {
-  display: "flex",
-  gap: 6,
-  flexWrap: "wrap",
-  alignItems: "center",
-  fontSize: 13,
-  color: "var(--text-muted)",
-  lineHeight: 1.5,
-};
-
-const planMetaValue: React.CSSProperties = {
-  fontWeight: 900,
-  color: "var(--text)",
-  wordBreak: "break-word",
-};
-
-const payBtn: React.CSSProperties = {
-  padding: "13px 16px",
-  borderRadius: 14,
-  border: "1px solid var(--accent-border)",
-  background: "linear-gradient(180deg, rgba(99,102,241,0.96), rgba(79,70,229,0.92))",
-  color: "#fff",
-  fontWeight: 950,
-  fontSize: 14,
-  width: "100%",
-};
-
-const errorBoxStyle: React.CSSProperties = {
-  marginTop: 14,
-  padding: 14,
-  borderRadius: 16,
-  border: "1px solid rgba(244,63,94,0.25)",
-  background: "rgba(244,63,94,0.10)",
-  color: "var(--text)",
-  whiteSpace: "pre-wrap",
-  wordBreak: "break-word",
-  lineHeight: 1.6,
-};
-
-const note: React.CSSProperties = {
-  marginTop: 14,
-  padding: 13,
-  borderRadius: 16,
-  border: "1px solid var(--border)",
-  background: "var(--surface-soft)",
-  color: "var(--text-soft)",
-  fontSize: 13,
-  lineHeight: 1.7,
-  wordBreak: "break-word",
-};
-
-const empty: React.CSSProperties = {
-  padding: 14,
-  marginTop: 14,
-  borderRadius: 16,
-  border: "1px dashed var(--border-strong)",
-  background: "var(--surface-soft)",
-  color: "var(--text-muted)",
-  fontSize: 13,
-  lineHeight: 1.6,
-};
-
-const code: React.CSSProperties = {
-  padding: "2px 6px",
-  borderRadius: 8,
-  border: "1px solid var(--border)",
-  background: "var(--surface)",
-};
-
-const pill: React.CSSProperties = {
-  padding: "8px 10px",
-  borderRadius: 999,
-  border: "1px solid var(--border)",
-  background: "var(--surface-soft)",
-  fontSize: 12,
-  display: "inline-flex",
-  gap: 6,
-  alignItems: "center",
-  minWidth: 0,
-  flexWrap: "wrap",
-};
-
-function shortId(id: string) {
-  if (!id) return "";
-  return id.length <= 12 ? id : `${id.slice(0, 6)}…${id.slice(-4)}`;
 }
