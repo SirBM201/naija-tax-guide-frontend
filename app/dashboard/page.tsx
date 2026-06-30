@@ -92,6 +92,14 @@ function truthyValue(value: unknown): boolean {
   return false;
 }
 
+function paidPlanFamilyFromIdentity(...values: unknown[]): string {
+  const combined = values.map((value) => safeText(value, "")).join(" ").toLowerCase();
+  if (combined.includes("business")) return "business";
+  if (combined.includes("professional") || combined.includes("pro_")) return "professional";
+  if (combined.includes("starter")) return "starter";
+  return "";
+}
+
 function summaryGridStyle(): React.CSSProperties {
   return {
     display: "grid",
@@ -323,30 +331,56 @@ export default function DashboardPage() {
     profile?.first_name || profile?.full_name || user?.email || "Workspace User"
   );
 
+  const rawPlanCode = safeText(
+    subscription?.plan_code ||
+      billing?.plan_code ||
+      limitsData?.entitlements?.plan_code ||
+      limitsData?.entitlements?.plan?.code ||
+      "",
+    ""
+  );
+
   const rawPlanName = safeText(
     subscription?.plan_name ||
       billing?.plan_name ||
+      rawPlanCode ||
       limitsData?.entitlements?.plan?.name ||
-      subscription?.plan_code ||
-      billing?.plan_code ||
-      limitsData?.entitlements?.plan_code ||
       "Free"
   );
 
+  const paidPlanFamily = paidPlanFamilyFromIdentity(
+    subscription?.plan_code,
+    billing?.plan_code,
+    subscription?.plan_name,
+    billing?.plan_name,
+    rawPlanCode,
+    rawPlanName,
+    limitsData?.entitlements?.plan_code,
+    limitsData?.entitlements?.plan?.code,
+    limitsData?.entitlements?.plan?.name,
+    limitsData?.entitlements?.plan_family,
+    limitsData?.entitlements?.plan?.plan_family
+  );
+
   const rawPlanFamily = safeText(
-    limitsData?.entitlements?.plan_family ||
+    paidPlanFamily ||
+      limitsData?.entitlements?.plan_family ||
       limitsData?.entitlements?.plan?.plan_family ||
       "",
     ""
   );
 
   const normalizedPlanName = rawPlanName.toLowerCase();
+  const normalizedPlanCode = rawPlanCode.toLowerCase();
   const normalizedPlanFamily = rawPlanFamily.toLowerCase();
+  const hasPaidPlanIdentity = Boolean(paidPlanFamily);
 
   const isFreePlan =
-    normalizedPlanName === "free" ||
-    normalizedPlanFamily === "free" ||
-    normalizedPlanFamily === "starter-free";
+    !hasPaidPlanIdentity &&
+    (normalizedPlanName === "free" ||
+      normalizedPlanCode === "free" ||
+      normalizedPlanFamily === "free" ||
+      normalizedPlanFamily === "starter-free");
 
   const billingStatus = safeText(billing?.status || "", "");
   const subscriptionStatus = safeText(subscription?.status || "", "");
@@ -359,7 +393,8 @@ export default function DashboardPage() {
           billing?.active ||
           limitsData?.entitlements?.plan?.active ||
           rawPlanStatus.toLowerCase() === "active" ||
-          rawPlanStatus.toLowerCase() === "paid"
+          rawPlanStatus.toLowerCase() === "paid" ||
+          hasPaidPlanIdentity
       );
 
   const planName = isFreePlan ? "Free" : rawPlanName;
