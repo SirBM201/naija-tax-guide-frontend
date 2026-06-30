@@ -23,21 +23,32 @@ This document records the first improvement batches applied after the external A
 - Public FAQ page added at `/faq`.
 - Startup Readiness page added at `/startup-readiness`.
 - Reviewer index page added at `/review`.
+- Public Source Transparency page added at `/sources`.
+- About page expanded with CAC business registration details.
 - This roadmap document added for repo-level audit traceability.
+
+## Batch 3 completed
+
+- Backend AI safety helper utilities added for guidance-note enforcement and basic refuse/escalate routing.
+- Backend source metadata catalog added at `app/services/tax_source_catalog.py`.
+- Backend source transparency policy added at `docs/source-transparency-policy.md`.
+- Verification scripts added for AI safety and source catalog checks.
+- Reviewer test script expanded with source/freshness checks.
 
 ## Current strengths
 
 - The product targets a clear Nigerian tax education and guidance pain point.
 - Web, WhatsApp, and Telegram channels match common user behavior.
-- Public trust pages now cover pricing, support, privacy, terms, refund, data deletion, about, safety, FAQ, and reviewer readiness.
+- Public trust pages now cover pricing, support, privacy, terms, refund, data deletion, about, safety, source transparency, FAQ, and reviewer readiness.
 - AI guidance boundaries are more explicit in frontend copy and backend prompt policy.
+- Company registration details are publicly visible on the About page.
 - The public product now gives reviewers more evidence without requiring repository access.
 
 ## Remaining technical gaps
 
-1. Source/date metadata
+1. Curated answer source/date integration
 
-   Add source and review-date metadata to curated tax answers. Numeric claims such as rates, thresholds, penalties, deadlines, and effective dates should show stronger source awareness.
+   The source catalog exists, but curated answer records still need source category, review date, jurisdiction, tax year, and risk-level fields wired into response rendering.
 
 2. Human escalation workflow
 
@@ -45,11 +56,11 @@ This document records the first improvement batches applied after the external A
 
 3. Regression test set
 
-   Maintain a benchmark suite of common Nigerian tax questions, unsafe requests, missing-fact prompts, and high-risk escalation cases. Use it to test web, WhatsApp, Telegram, and API behavior.
+   Maintain a benchmark suite of common Nigerian tax questions, unsafe requests, missing-fact prompts, high-risk escalation cases, and source/freshness prompts. Use it to test web, WhatsApp, Telegram, and API behavior.
 
 4. Channel response consistency
 
-   Ensure web, WhatsApp, and Telegram all apply the same guidance note, escalation policy, and refusal behavior. The core AI prompt is improved, but some channel menus and non-AI responses may still need copy-level alignment.
+   Ensure web, WhatsApp, and Telegram all apply the same guidance note, escalation policy, refusal behavior, and source/freshness caution. The core AI prompt is improved, but some channel menus and non-AI responses may still need copy-level alignment.
 
 5. Public update log
 
@@ -57,22 +68,24 @@ This document records the first improvement batches applied after the external A
 
 ## Recommended next engineering batch
 
-- Add a shared backend helper for appending guidance notes to tax answers where appropriate.
-- Add source metadata fields to curated answer records.
+- Wire source metadata fields into curated answer records.
 - Update web, WhatsApp, and Telegram response rendering to display source/date metadata when available.
-- Add automated tests for unsafe tax evasion requests, audit/dispute escalation, and missing-fact handling.
-- Add a reviewer test script with sample questions and expected behavior.
+- Add automated tests for unsafe tax evasion requests, audit/dispute escalation, missing-fact handling, and source/freshness caution.
+- Add professional escalation routing for audit, dispute, penalty, and formal filing cases.
+- Add a lightweight tax-content update log.
 
 ## Reviewer test checklist
 
 Use this checklist before external submission:
 
-- Visit `/`, `/pricing`, `/about`, `/safety`, `/faq`, `/startup-readiness`, `/review`, `/privacy`, `/terms`, `/support`, and `/contact`.
+- Visit `/`, `/pricing`, `/about`, `/safety`, `/sources`, `/faq`, `/startup-readiness`, `/review`, `/privacy`, `/terms`, `/support`, and `/contact`.
 - Confirm public pages load without login unless intentionally protected.
 - Confirm `/pricing` shows monthly prices by default and can switch to quarterly and yearly prices.
+- Confirm `/about` shows BMS SparkVision Hub and CAC registration number.
 - Ask a simple PAYE/VAT/WHT question and confirm the answer includes a guidance boundary.
 - Ask a high-risk audit or penalty question and confirm escalation language appears.
 - Ask an unsafe tax evasion question and confirm refusal behavior.
+- Ask a deadline/penalty question and confirm source or freshness caution appears.
 - Confirm WhatsApp and Telegram entry points are visible and correct.
 - Confirm checkout/pricing values match backend plan configuration.
 - Confirm footer/company identity consistently says BMS SparkVision Hub.
