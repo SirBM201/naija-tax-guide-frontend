@@ -1,16 +1,16 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { SITE } from "@/lib/site";
 import { themeVars, useSharedTheme } from "@/lib/theme";
 
+type BillingCycle = "monthly" | "quarterly" | "yearly";
+
 type PublicPlan = {
   name: string;
   audience: string;
-  monthly: string;
-  quarterly: string;
-  yearly: string;
+  prices: Record<BillingCycle, string>;
   credits: string;
   channels: string;
   support: string;
@@ -18,29 +18,21 @@ type PublicPlan = {
   recommended?: boolean;
 };
 
+const billingOptions: { key: BillingCycle; label: string; helper: string }[] = [
+  { key: "monthly", label: "Monthly", helper: "Pay month to month" },
+  { key: "quarterly", label: "Quarterly", helper: "Pay every 3 months" },
+  { key: "yearly", label: "Yearly", helper: "Pay once per year" },
+];
+
 const plans: PublicPlan[] = [
-  {
-    name: "Free Forever",
-    audience: "Simple learning, basic calculators, and first-time exploration.",
-    monthly: "₦0",
-    quarterly: "₦0",
-    yearly: "₦0",
-    credits: "0 AI credits",
-    channels: "Web basics",
-    support: "Standard help",
-    highlights: [
-      "Free PAYE, VAT, CIT, and WHT calculators",
-      "Basic library/database tax answers",
-      "12 daily non-AI quiz attempts",
-      "General Nigerian tax calendar view",
-    ],
-  },
   {
     name: "Starter",
     audience: "Individuals, salary earners, and light tax guidance needs.",
-    monthly: "₦5,000",
-    quarterly: "₦14,000",
-    yearly: "₦51,000",
+    prices: {
+      monthly: "₦5,000",
+      quarterly: "₦14,000",
+      yearly: "₦51,000",
+    },
     credits: "100 monthly credits",
     channels: "Web + WhatsApp or Telegram",
     support: "Standard support",
@@ -54,9 +46,11 @@ const plans: PublicPlan[] = [
   {
     name: "Professional",
     audience: "Freelancers, consultants, creators, and growing SMEs.",
-    monthly: "₦12,000",
-    quarterly: "₦33,600",
-    yearly: "₦122,400",
+    prices: {
+      monthly: "₦12,000",
+      quarterly: "₦33,600",
+      yearly: "₦122,400",
+    },
     credits: "300 monthly credits",
     channels: "Web + WhatsApp + Telegram",
     support: "Priority support",
@@ -71,9 +65,11 @@ const plans: PublicPlan[] = [
   {
     name: "Business",
     audience: "Teams, businesses, consultants, and heavier compliance workflows.",
-    monthly: "₦25,000",
-    quarterly: "₦70,000",
-    yearly: "₦255,000",
+    prices: {
+      monthly: "₦25,000",
+      quarterly: "₦70,000",
+      yearly: "₦255,000",
+    },
     credits: "800 monthly credits",
     channels: "More channel capacity",
     support: "Priority business support",
@@ -129,6 +125,21 @@ function button(primary = true): React.CSSProperties {
   };
 }
 
+function cycleButton(active: boolean): React.CSSProperties {
+  return {
+    borderRadius: 16,
+    border: active ? "1px solid var(--accent-border)" : "1px solid var(--border)",
+    background: active ? "var(--accent-soft)" : "var(--surface)",
+    color: "var(--text)",
+    padding: "12px 14px",
+    cursor: "pointer",
+    display: "grid",
+    gap: 4,
+    textAlign: "left",
+    minWidth: 0,
+  };
+}
+
 function pill(tone: "default" | "warn" | "good" = "default"): React.CSSProperties {
   const border = tone === "warn" ? "var(--warn-border)" : tone === "good" ? "var(--success-border)" : "var(--border)";
   const bg = tone === "warn" ? "var(--warn-bg)" : tone === "good" ? "var(--success-bg)" : "var(--surface)";
@@ -148,18 +159,16 @@ function pill(tone: "default" | "warn" | "good" = "default"): React.CSSPropertie
   };
 }
 
-function priceCell(label: string, value: string): React.ReactNode {
-  return (
-    <div style={{ border: "1px solid var(--border)", borderRadius: 16, background: "var(--surface)", padding: 14 }}>
-      <div style={{ color: "var(--text-muted)", fontSize: 12, fontWeight: 800 }}>{label}</div>
-      <div style={{ marginTop: 5, color: "var(--text)", fontSize: 20, fontWeight: 950 }}>{value}</div>
-    </div>
-  );
+function billingLabel(cycle: BillingCycle): string {
+  if (cycle === "quarterly") return "per quarter";
+  if (cycle === "yearly") return "per year";
+  return "per month";
 }
 
 export default function PublicPricingPage() {
   const router = useRouter();
   const { resolvedMode } = useSharedTheme();
+  const [billingCycle, setBillingCycle] = useState<BillingCycle>("monthly");
 
   return (
     <main style={{ ...pageShell(), ...themeVars(resolvedMode) }}>
@@ -176,13 +185,14 @@ export default function PublicPricingPage() {
 
           <section style={card(true)}>
             <div style={pill("good")}>Public pricing transparency</div>
-            <h1 style={{ margin: 0, color: "var(--text)", fontSize: "clamp(34px, 7vw, 56px)", lineHeight: 1.02, letterSpacing: -1.2 }}>
+            <h1 style={{ margin: 0, color: "var(--text)", fontSize: "clamp(34px, 7vw, 56px)", lineHeight: 1.02 }}>
               Clear plans before you create or upgrade an account.
             </h1>
             <p style={{ margin: 0, color: "var(--text-muted)", fontSize: "clamp(16px, 2.6vw, 18px)", lineHeight: 1.8, maxWidth: 900 }}>
-              {SITE.name} uses a freemium model. Basic calculators and learning tools remain available, while AI-powered answers, document tools, reminders, and stronger channel access use subscription plans and Usage Credits.
+              {SITE.name} shows monthly pricing first for Starter, Professional, and Business. Use the billing switch to compare quarterly or yearly payment structures without crowding each plan card.
             </p>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <span style={pill()}>Free tools remain available in the app</span>
               <span style={pill()}>Prices shown in Nigerian Naira</span>
               <span style={pill("warn")}>Secure checkout confirms final active price</span>
               <span style={pill()}>Last public review: {SITE.trustReviewDate}</span>
@@ -190,7 +200,27 @@ export default function PublicPricingPage() {
           </section>
         </header>
 
-        <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 18 }}>
+        <section style={{ ...card(), gap: 16 }}>
+          <div>
+            <h2 style={{ margin: 0, color: "var(--text)", fontSize: 24, lineHeight: 1.25 }}>Choose billing period</h2>
+            <p style={{ margin: "8px 0 0", color: "var(--text-muted)", lineHeight: 1.65 }}>
+              Monthly is shown by default. Switch only when you want to compare quarterly or yearly totals.
+            </p>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
+            {billingOptions.map((option) => {
+              const active = billingCycle === option.key;
+              return (
+                <button key={option.key} type="button" onClick={() => setBillingCycle(option.key)} style={cycleButton(active)}>
+                  <span style={{ fontWeight: 950, fontSize: 15 }}>{option.label}</span>
+                  <span style={{ color: "var(--text-muted)", fontSize: 12, lineHeight: 1.4 }}>{option.helper}</span>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
+        <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 18 }}>
           {plans.map((plan) => (
             <article key={plan.name} style={card(Boolean(plan.recommended))}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
@@ -201,10 +231,16 @@ export default function PublicPricingPage() {
                 {plan.recommended ? <span style={pill("good")}>Recommended</span> : null}
               </div>
 
-              <div style={{ display: "grid", gap: 10 }}>
-                {priceCell("Monthly", plan.monthly)}
-                {priceCell("Quarterly", plan.quarterly)}
-                {priceCell("Yearly", plan.yearly)}
+              <div style={{ border: "1px solid var(--border)", borderRadius: 18, background: "var(--surface)", padding: 16 }}>
+                <div style={{ color: "var(--text-muted)", fontSize: 12, fontWeight: 850, textTransform: "uppercase" }}>
+                  {billingCycle} billing
+                </div>
+                <div style={{ marginTop: 6, color: "var(--text)", fontSize: "clamp(30px, 6vw, 42px)", lineHeight: 1.05, fontWeight: 950 }}>
+                  {plan.prices[billingCycle]}
+                </div>
+                <div style={{ marginTop: 6, color: "var(--text-muted)", fontSize: 14, fontWeight: 800 }}>
+                  {billingLabel(billingCycle)}
+                </div>
               </div>
 
               <div style={{ display: "grid", gap: 8, color: "var(--text)", lineHeight: 1.6 }}>
@@ -215,8 +251,8 @@ export default function PublicPricingPage() {
 
               <div style={{ display: "grid", gap: 8 }}>
                 {plan.highlights.map((item) => (
-                  <div key={item} style={{ display: "grid", gridTemplateColumns: "22px 1fr", gap: 8, color: "var(--text-muted)", lineHeight: 1.55 }}>
-                    <strong style={{ color: "var(--accent)" }}>✓</strong>
+                  <div key={item} style={{ display: "grid", gridTemplateColumns: "22px minmax(0, 1fr)", gap: 8, color: "var(--text-muted)", lineHeight: 1.55 }}>
+                    <strong style={{ color: "var(--accent)" }}>-</strong>
                     <span>{item}</span>
                   </div>
                 ))}
