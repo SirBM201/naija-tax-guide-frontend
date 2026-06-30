@@ -1,7 +1,7 @@
 # Naija Tax Guide Improvement Roadmap
 
 Last reviewed: 30 June 2026
-Owner: BMS Creative Concept
+Owner: BMS SparkVision Hub
 
 ## Purpose
 
@@ -9,9 +9,10 @@ This document records the first improvement batches applied after the external A
 
 ## Batch 1 completed
 
-- Public pricing page added with visible Free, Starter, Professional, Business, and credit top-up options.
+- Public pricing page added for Starter, Professional, Business, and credit top-up options.
+- Pricing page now shows one billing structure at a time, with monthly selected by default and a switcher for quarterly and yearly structures.
 - Homepage updated to expose product purpose, public channels, pricing summary, legal links, sample questions, and guidance boundaries.
-- Company metadata aligned to BMS Creative Concept.
+- Company metadata aligned to BMS SparkVision Hub.
 - About page added to clarify ownership, target users, channels, and responsible-use boundary.
 - Backend AI system prompt tightened for Nigerian-tax-specific safety, escalation, refusal, and uncertainty handling.
 - Legacy WhatsApp response copy and PDF receipt footer updated with guidance disclaimers.
@@ -21,13 +22,14 @@ This document records the first improvement batches applied after the external A
 - AI Safety and Tax Accuracy page added at `/safety`.
 - Public FAQ page added at `/faq`.
 - Startup Readiness page added at `/startup-readiness`.
+- Reviewer index page added at `/review`.
 - This roadmap document added for repo-level audit traceability.
 
 ## Current strengths
 
 - The product targets a clear Nigerian tax education and guidance pain point.
 - Web, WhatsApp, and Telegram channels match common user behavior.
-- Public trust pages now cover pricing, support, privacy, terms, refund, data deletion, about, safety, and FAQ.
+- Public trust pages now cover pricing, support, privacy, terms, refund, data deletion, about, safety, FAQ, and reviewer readiness.
 - AI guidance boundaries are more explicit in frontend copy and backend prompt policy.
 - The public product now gives reviewers more evidence without requiring repository access.
 
@@ -65,11 +67,12 @@ This document records the first improvement batches applied after the external A
 
 Use this checklist before external submission:
 
-- Visit `/`, `/pricing`, `/about`, `/safety`, `/faq`, `/startup-readiness`, `/privacy`, `/terms`, `/support`, and `/contact`.
+- Visit `/`, `/pricing`, `/about`, `/safety`, `/faq`, `/startup-readiness`, `/review`, `/privacy`, `/terms`, `/support`, and `/contact`.
 - Confirm public pages load without login unless intentionally protected.
+- Confirm `/pricing` shows monthly prices by default and can switch to quarterly and yearly prices.
 - Ask a simple PAYE/VAT/WHT question and confirm the answer includes a guidance boundary.
 - Ask a high-risk audit or penalty question and confirm escalation language appears.
 - Ask an unsafe tax evasion question and confirm refusal behavior.
 - Confirm WhatsApp and Telegram entry points are visible and correct.
 - Confirm checkout/pricing values match backend plan configuration.
-- Confirm footer/company identity consistently says BMS Creative Concept.
+- Confirm footer/company identity consistently says BMS SparkVision Hub.
