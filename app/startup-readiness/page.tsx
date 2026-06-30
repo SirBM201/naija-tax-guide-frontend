@@ -92,7 +92,7 @@ export default function StartupReadinessPage() {
     >
       <SectionStack>
         <Banner
-          tone="success"
+          tone="good"
           title="Committee-readiness focus"
           subtitle={`Last reviewed: ${SITE.trustReviewDate}. This page records what Naija Tax Guide currently does well and what should still be strengthened before deeper external review.`}
         />
