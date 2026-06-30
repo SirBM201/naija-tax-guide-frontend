@@ -17,7 +17,7 @@ const faqs = [
   {
     question: "Is Naija Tax Guide a government tax authority?",
     answer:
-      "No. Naija Tax Guide is operated by BMS Creative Concept. It is not FIRS, NRS, a State Internal Revenue Service, a law firm, an accounting firm, or an official tax representative.",
+      `No. Naija Tax Guide is operated by ${SITE.companyName}. It is not FIRS, NRS, a State Internal Revenue Service, a law firm, an accounting firm, or an official tax representative.`,
   },
   {
     question: "Can I rely on it as formal legal or accounting advice?",
@@ -32,7 +32,7 @@ const faqs = [
   {
     question: "How does pricing work?",
     answer:
-      "The public pricing page shows Free, Starter, Professional, and Business plans, plus credit top-ups. Paid plans are designed for users who need higher monthly answer limits and channel access.",
+      "The public pricing page shows Starter, Professional, and Business subscription plans first, with a billing switcher for monthly, quarterly, and yearly pricing. Credit top-ups are also shown for active paid users.",
   },
   {
     question: "Does the assistant always know current tax rules?",
