@@ -10,9 +10,10 @@ import { CardsGrid, SectionStack } from "@/components/page-layout";
 import { SITE } from "@/lib/site";
 
 const reviewLinks = [
-  { href: "/pricing", title: "Pricing", text: "Plan limits, public prices, and credit top-ups." },
-  { href: "/about", title: "About", text: "Ownership, product purpose, user audience, and channels." },
+  { href: "/pricing", title: "Pricing", text: "Plan limits, public prices, billing switcher, and credit top-ups." },
+  { href: "/about", title: "About", text: "Ownership, CAC registration details, product purpose, user audience, and channels." },
   { href: "/safety", title: "AI Safety", text: "Guidance boundaries, escalation cases, refusal cases, and source discipline." },
+  { href: "/sources", title: "Source Transparency", text: "Source categories, freshness discipline, and high-risk tax claims." },
   { href: "/faq", title: "FAQ", text: "Plain-language reviewer questions and answers." },
   { href: "/startup-readiness", title: "Startup Readiness", text: "Current strengths, remaining risks, and next improvement priorities." },
   { href: "/support", title: "Support", text: "How users can get help." },
