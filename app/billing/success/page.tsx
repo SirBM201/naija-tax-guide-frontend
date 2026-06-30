@@ -102,7 +102,7 @@ function BillingSuccessPageContent() {
         try {
           const data = await apiJson<VerifyResp>("/billing/verify", {
             method: "GET",
-            query: { reference },
+            query: { reference, plan: planHint || undefined },
             timeoutMs: 25000,
             useAuthToken: false,
           });
@@ -160,7 +160,7 @@ function BillingSuccessPageContent() {
     return () => {
       cancelled = true;
     };
-  }, [reference, refreshAll]);
+  }, [reference, planHint, refreshAll]);
 
   const copy = statusCopy(state, response, errorMessage);
   const activePlan =
