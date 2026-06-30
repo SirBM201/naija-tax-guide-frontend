@@ -91,6 +91,29 @@ export default function AboutPage() {
         </WorkspaceSectionCard>
 
         <WorkspaceSectionCard
+          title="Registered business information"
+          subtitle="Public company details included for reviewer and user trust."
+        >
+          <CardsGrid min={220}>
+            <div style={infoCard()}>
+              <div style={labelText()}>Registered business name</div>
+              <div style={valueText()}>{SITE.companyName}</div>
+              <p style={bodyText()}>Naija Tax Guide is presented as a product operated under this business name.</p>
+            </div>
+            <div style={infoCard()}>
+              <div style={labelText()}>CAC registration no.</div>
+              <div style={valueText()}>{SITE.businessRegistrationNo}</div>
+              <p style={bodyText()}>Registered as a business name in Nigeria on {SITE.registrationDate}.</p>
+            </div>
+            <div style={infoCard()}>
+              <div style={labelText()}>Business nature</div>
+              <div style={valueText()}>{SITE.registeredNature}</div>
+              <p style={bodyText()}>Principal place of business: {SITE.registeredAddress}.</p>
+            </div>
+          </CardsGrid>
+        </WorkspaceSectionCard>
+
+        <WorkspaceSectionCard
           title="Who it is for"
           subtitle="The first target users are people who need direction before hiring or escalating."
         >
