@@ -1,9 +1,14 @@
 export const SITE = {
   name: "Naija Tax Guide",
-  companyName: "BMS SparkVision Hub",
-  slogan: "Igniting Ideas. Building the Future.",
+  companyName: "BMS Creative Concept",
+  productOwnerLine: "A BMS Creative Concept product",
+  slogan: "Clear Nigerian tax guidance for individuals, freelancers, and SMEs.",
   supportEmail: "support@naijataxguides.com",
+  whatsappDisplay: "07034941158",
+  whatsappInternational: "2347034941158",
+  telegramBot: "naija-tax-guide-bot",
   domain: process.env.NEXT_PUBLIC_DOMAIN || "naijataxguides.com",
   url: process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000",
   apiBase: process.env.NEXT_PUBLIC_API_BASE || "",
+  trustReviewDate: "30 June 2026",
 };
