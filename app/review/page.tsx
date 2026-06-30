@@ -54,7 +54,6 @@ export default function ReviewPage() {
     >
       <SectionStack>
         <Banner
-          tone="info"
           title="Review Naija Tax Guide from this page"
           subtitle={`Last reviewed: ${SITE.trustReviewDate}. ${SITE.name} is operated by ${SITE.companyName} and provides general Nigerian tax guidance, not formal professional representation.`}
         />
