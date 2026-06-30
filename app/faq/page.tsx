@@ -91,7 +91,6 @@ export default function FaqPage() {
     >
       <SectionStack>
         <Banner
-          tone="info"
           title="Plain-language product facts"
           subtitle={`${SITE.name} is a guidance product, not a tax authority or substitute for professional representation in sensitive tax matters.`}
         />
