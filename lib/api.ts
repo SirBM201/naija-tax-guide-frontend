@@ -23,10 +23,16 @@ type ApiInit = Omit<RequestInit, "body"> & {
   useAuthToken?: boolean;
 };
 
+const BILLING_CACHE_KEY = "ntg_last_active_billing";
+
 function isPlainObject(v: any) {
   if (v === null || typeof v !== "object") return false;
   const proto = Object.getPrototypeOf(v);
   return proto === Object.prototype || proto === null;
+}
+
+function normalizedApiPath(path: string) {
+  return String(path || "").replace(/^\/+/, "").replace(/^api\//, "");
 }
 
 function safeGetLocalToken(): string | null {
@@ -78,18 +84,7 @@ export function clearStoredAuthToken() {
 }
 
 function buildUrl(path: string, query?: ApiInit["query"]) {
-  // Remove leading slash if present
-  let cleanPath = path;
-  if (cleanPath.startsWith("/")) {
-    cleanPath = cleanPath.substring(1);
-  }
-  
-  // Remove any /api/ prefix to avoid duplication
-  if (cleanPath.startsWith("api/")) {
-    cleanPath = cleanPath.substring(4);
-  }
-  
-  const url = `/api/${cleanPath}`;
+  const url = `/api/${normalizedApiPath(path)}`;
 
   if (query) {
     const params = new URLSearchParams();
@@ -104,10 +99,198 @@ function buildUrl(path: string, query?: ApiInit["query"]) {
   return url;
 }
 
+function truthyValue(value: unknown): boolean {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value > 0;
+  if (typeof value === "string") {
+    return ["1", "true", "yes", "active", "paid", "enabled"].includes(value.trim().toLowerCase());
+  }
+  return false;
+}
+
+function cleanText(value: unknown): string {
+  return String(value || "").trim();
+}
+
+function planFamilyFromBilling(billing: any): string {
+  const direct = cleanText(
+    billing?.plan_family || billing?.subscription?.plan_family || billing?.plan?.plan_family || billing?.plan?.tier
+  ).toLowerCase();
+  if (direct && direct !== "free") return direct;
+
+  const code = cleanText(
+    billing?.plan_code || billing?.subscription?.plan_code || billing?.plan?.code
+  ).toLowerCase();
+  const name = cleanText(
+    billing?.plan_name || billing?.subscription?.plan_name || billing?.plan?.name
+  ).toLowerCase();
+  const combined = `${code} ${name}`;
+
+  if (combined.includes("business")) return "business";
+  if (combined.includes("professional") || combined.includes("pro_")) return "professional";
+  if (combined.includes("starter")) return "starter";
+  return "free";
+}
+
+function planNameFromBilling(billing: any, family: string): string {
+  const name = cleanText(billing?.plan_name || billing?.subscription?.plan_name || billing?.plan?.name);
+  if (name && name.toLowerCase() !== "free") return name;
+
+  const code = cleanText(billing?.plan_code || billing?.subscription?.plan_code || billing?.plan?.code);
+  if (code && code.toLowerCase() !== "free") {
+    return code.replace(/[_-]+/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+  }
+
+  return family ? family.replace(/\b\w/g, (char) => char.toUpperCase()) : "Paid Plan";
+}
+
+function planCodeFromBilling(billing: any): string {
+  return cleanText(billing?.plan_code || billing?.subscription?.plan_code || billing?.plan?.code).toLowerCase();
+}
+
+function isActivePaidBilling(billing: any): boolean {
+  if (!isPlainObject(billing)) return false;
+  const code = planCodeFromBilling(billing);
+  const family = planFamilyFromBilling(billing);
+  const status = cleanText(billing?.status || billing?.subscription?.status).toLowerCase();
+  const active = truthyValue(
+    billing?.active || billing?.is_active || billing?.subscription?.active || billing?.subscription?.is_active
+  );
+
+  return Boolean(
+    code &&
+      code !== "free" &&
+      code !== "free_forever" &&
+      family !== "free" &&
+      (active || status === "active" || status === "paid")
+  );
+}
+
+function limitBundleForFamily(family: string) {
+  if (family === "business") {
+    return {
+      workspace_limits: { max_workspace_users: 10, max_linked_web_accounts: 10 },
+      channel_limits: { max_total_channels: 8, max_whatsapp_channels: 4, max_telegram_channels: 4 },
+    };
+  }
+  if (family === "professional") {
+    return {
+      workspace_limits: { max_workspace_users: 3, max_linked_web_accounts: 3 },
+      channel_limits: { max_total_channels: 4, max_whatsapp_channels: 2, max_telegram_channels: 2 },
+    };
+  }
+  if (family === "starter") {
+    return {
+      workspace_limits: { max_workspace_users: 1, max_linked_web_accounts: 1 },
+      channel_limits: { max_total_channels: 2, max_whatsapp_channels: 1, max_telegram_channels: 1 },
+    };
+  }
+  return null;
+}
+
+function workspaceLimitsLookFree(data: any): boolean {
+  if (!isPlainObject(data)) return false;
+  const ent = data.entitlements || {};
+  const plan = ent.plan || {};
+  const code = cleanText(ent.plan_code || plan.code).toLowerCase();
+  const family = cleanText(ent.plan_family || plan.plan_family || plan.tier).toLowerCase();
+  const name = cleanText(plan.name).toLowerCase();
+  return !code || code === "free" || family === "free" || name === "free";
+}
+
+function cacheActiveBilling(billing: any) {
+  if (!isActivePaidBilling(billing)) return;
+  try {
+    if (typeof window === "undefined") return;
+    localStorage.setItem(BILLING_CACHE_KEY, JSON.stringify({ billing, saved_at: Date.now() }));
+  } catch {
+    // ignore cache failures
+  }
+}
+
+function cachedActiveBilling(): any | null {
+  try {
+    if (typeof window === "undefined") return null;
+    const raw = localStorage.getItem(BILLING_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const savedAt = Number(parsed?.saved_at || 0);
+    if (!savedAt || Date.now() - savedAt > 10 * 60 * 1000) return null;
+    return isActivePaidBilling(parsed?.billing) ? parsed.billing : null;
+  } catch {
+    return null;
+  }
+}
+
+function mergeBillingIntoWorkspaceLimits(data: any, billing: any) {
+  if (!isPlainObject(data) || !isActivePaidBilling(billing)) return data;
+
+  const family = planFamilyFromBilling(billing);
+  const limits = limitBundleForFamily(family);
+  if (!limits) return data;
+
+  const planCode = planCodeFromBilling(billing);
+  const planName = planNameFromBilling(billing, family);
+  const existingEntitlements = isPlainObject(data.entitlements) ? data.entitlements : {};
+  const existingPlan = isPlainObject(existingEntitlements.plan) ? existingEntitlements.plan : {};
+
+  return {
+    ...data,
+    entitlements: {
+      ...existingEntitlements,
+      ok: true,
+      plan_code: planCode,
+      plan_family: family,
+      workspace_limits: limits.workspace_limits,
+      channel_limits: limits.channel_limits,
+      plan: {
+        ...existingPlan,
+        ...limits.workspace_limits,
+        ...limits.channel_limits,
+        code: planCode,
+        name: planName,
+        plan_family: family,
+        tier: family,
+        active: true,
+      },
+      subscription: billing.subscription || existingEntitlements.subscription || null,
+      access_mode: "billing_frontend_fallback",
+    },
+  };
+}
+
+async function fetchBillingForWorkspaceFallback(headers: Record<string, string>, signal?: AbortSignal | null) {
+  try {
+    const res = await fetch(buildUrl("billing/me"), {
+      method: "GET",
+      headers,
+      credentials: "include",
+      signal: signal || undefined,
+    });
+    const text = await res.text();
+    const data = text ? JSON.parse(text) : null;
+    if (res.ok && isActivePaidBilling(data)) {
+      cacheActiveBilling(data);
+      return data;
+    }
+  } catch {
+    // ignore fallback fetch failures
+  }
+  return cachedActiveBilling();
+}
+
+async function patchWorkspaceLimitsResponse(path: string, data: any, headers: Record<string, string>, signal?: AbortSignal | null) {
+  if (normalizedApiPath(path) !== "workspace/limits") return data;
+  if (!workspaceLimitsLookFree(data)) return data;
+
+  const billing = await fetchBillingForWorkspaceFallback(headers, signal);
+  return mergeBillingIntoWorkspaceLimits(data, billing);
+}
+
 function patchChannelLinkGenerateResponse(path: string, query: ApiInit["query"] | undefined, data: any) {
   if (!isPlainObject(data)) return data;
 
-  const normalizedPath = String(path || "").replace(/^\/+/, "").replace(/^api\//, "");
+  const normalizedPath = normalizedApiPath(path);
   if (normalizedPath !== "link/generate") return data;
   if (!data.ok || !data.code) return data;
 
@@ -243,6 +426,11 @@ export async function apiJson<T = any>(
       throw new ApiError(res.status, message, enriched);
     }
 
+    if (["billing/me", "billing/subscription", "me", "subscription"].includes(normalizedApiPath(path))) {
+      cacheActiveBilling(data);
+    }
+
+    data = await patchWorkspaceLimitsResponse(path, data, headers, controller?.signal ?? init.signal ?? null);
     data = patchChannelLinkGenerateResponse(path, init.query, data);
     return data as T;
   } catch (e: any) {
