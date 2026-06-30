@@ -1,7 +1,7 @@
 export const SITE = {
   name: "Naija Tax Guide",
-  companyName: "BMS Creative Concept",
-  productOwnerLine: "A BMS Creative Concept product",
+  companyName: "BMS SparkVision Hub",
+  productOwnerLine: "A BMS SparkVision Hub product",
   slogan: "Clear Nigerian tax guidance for individuals, freelancers, and SMEs.",
   supportEmail: "support@naijataxguides.com",
   whatsappDisplay: "07034941158",
