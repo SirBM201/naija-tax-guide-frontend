@@ -64,7 +64,7 @@ function list(items: string[]): React.ReactNode {
     <div style={{ display: "grid", gap: 10 }}>
       {items.map((item) => (
         <div key={item} style={{ display: "grid", gridTemplateColumns: "22px minmax(0, 1fr)", gap: 8, color: "var(--text-muted)", lineHeight: 1.65 }}>
-          <strong style={{ color: "var(--accent)" }}>✓</strong>
+          <strong style={{ color: "var(--accent)" }}>-</strong>
           <span>{item}</span>
         </div>
       ))}
