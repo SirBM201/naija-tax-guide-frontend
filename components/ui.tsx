@@ -2,7 +2,7 @@
 
 import React from "react";
 
-type Tone = "default" | "good" | "warn" | "danger";
+type Tone = "default" | "info" | "good" | "warn" | "danger";
 
 type BannerProps = {
   tone?: Tone;
@@ -31,6 +31,7 @@ type CardProps = {
 };
 
 function toneBorder(tone: Tone): string {
+  if (tone === "info") return "var(--accent-border)";
   if (tone === "good") return "var(--success-border)";
   if (tone === "warn") return "var(--warn-border)";
   if (tone === "danger") return "var(--danger-border)";
@@ -38,6 +39,7 @@ function toneBorder(tone: Tone): string {
 }
 
 function toneBackground(tone: Tone): string {
+  if (tone === "info") return "var(--accent-soft)";
   if (tone === "good") return "var(--success-bg)";
   if (tone === "warn") return "var(--warn-bg)";
   if (tone === "danger") return "var(--danger-bg)";
