@@ -55,6 +55,21 @@ const LS_SESSION_KEY = "nt_has_session";
 const LS_AUTH_DEBUG_KEY = "nt_auth_debug";
 const LS_WELCOME_SEEN_KEY = "ntg-welcome-seen";
 
+const PUBLIC_PATHS = new Set([
+  "/",
+  "/login",
+  "/signup",
+  "/pricing",
+  "/privacy",
+  "/terms",
+  "/refund",
+  "/data-deletion",
+  "/support",
+  "/contact",
+  "/faq",
+  "/review",
+]);
+
 type WebMeResp = {
   ok?: boolean;
   account_id?: string;
@@ -134,7 +149,7 @@ async function probeCookieSession(): Promise<{
 
 function isPublicPath(pathname: string | null) {
   if (!pathname) return false;
-  return pathname === "/" || pathname === "/login" || pathname === "/signup";
+  return PUBLIC_PATHS.has(pathname) || pathname.startsWith("/review/");
 }
 
 function isProtectedPath(pathname: string | null) {
