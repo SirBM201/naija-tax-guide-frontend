@@ -195,7 +195,7 @@ export default function PublicPricingPage() {
               <span style={pill()}>Free tools remain available in the app</span>
               <span style={pill()}>Prices shown in Nigerian Naira</span>
               <span style={pill("warn")}>Secure checkout confirms final active price</span>
-              <span style={pill()}>Last public review: {SITE.trustReviewDate}</span>
+              <span style={pill()}>Information updated: {SITE.trustReviewDate}</span>
             </div>
           </section>
         </header>
