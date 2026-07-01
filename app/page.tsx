@@ -215,21 +215,21 @@ export default function LandingPage() {
         <section style={{ display: "grid", gap: 18 }}>
           {sectionTitle(
             "What the product does",
-            "Practical tax support, not vague AI hype.",
-            "The first experience should prove value quickly: clearer explanations, basic calculators, usage control, and escalation boundaries where the issue is too sensitive for AI alone."
+            "Practical tax support without confusing jargon.",
+            "The product is designed to deliver value quickly: clearer explanations, basic calculators, usage control, and escalation boundaries where a tax matter needs professional review."
           )}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 18 }}>
             <div style={cardStyle()}>{["Ask plain-language Nigerian tax questions", "Get structured answers and next steps", "Use basic PAYE, VAT, CIT, and WHT calculators"].map(bullet)}</div>
             <div style={cardStyle()}>{["Track plans, billing, credits, and usage", "Connect supported WhatsApp or Telegram channels", "Keep support, help, and legal pages accessible"].map(bullet)}</div>
-            <div style={cardStyle("warn")}>{["Complex cases should be verified", "Sensitive tax disputes should be escalated", "Official filing decisions remain the user’s responsibility"].map(bullet)}</div>
+            <div style={cardStyle("warn")}>{["Complex cases should be verified", "Sensitive tax disputes should be escalated", "Official filing decisions remain the user's responsibility"].map(bullet)}</div>
           </div>
         </section>
 
         <section style={{ display: "grid", gap: 18 }}>
           {sectionTitle(
             "Sample questions",
-            "Show reviewers the exact kind of help users can expect.",
-            "Publishing examples reduces the feeling that the product is hidden behind login and helps users understand whether the tool is for them."
+            "See the kind of help users can expect.",
+            "These examples make the product scope clearer before signup and help users decide whether the tool fits their needs."
           )}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 14 }}>
             {sampleQuestions.map((question) => (
@@ -245,7 +245,7 @@ export default function LandingPage() {
           {sectionTitle(
             "Pricing snapshot",
             "Users can understand the model before login.",
-            "Reviewers flagged hidden pricing as a trust weakness. The public pricing page now explains free access, subscriptions, credit top-ups, and the professional-use boundary."
+            "The public pricing page explains free access, subscriptions, credit top-ups, and the boundary between general guidance and professional tax representation."
           )}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 18 }}>
             <div style={cardStyle()}><span style={pillStyle()}>Free Forever</span><strong style={{ fontSize: 24 }}>₦0</strong><p style={{ margin: 0, color: "var(--text-muted)", lineHeight: 1.7 }}>Basic calculators, library answers, quiz learning, and calendar view.</p></div>
