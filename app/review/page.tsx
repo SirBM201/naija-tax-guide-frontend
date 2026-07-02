@@ -10,13 +10,15 @@ import { CardsGrid, SectionStack } from "@/components/page-layout";
 import { SITE } from "@/lib/site";
 
 const reviewLinks = [
+  { href: "/", title: "Homepage & Sample Answers", text: "Public positioning, sample answer previews, bot entry points, and main signup flow." },
   { href: "/pricing", title: "Pricing", text: "Plan limits, public prices, billing switcher, and credit top-ups." },
   { href: "/about", title: "About", text: "Ownership, CAC registration details, product purpose, user audience, and channels." },
   { href: "/safety", title: "AI Safety", text: "Guidance boundaries, escalation cases, refusal cases, and source discipline." },
   { href: "/sources", title: "Source Transparency", text: "Source categories, freshness discipline, and high-risk tax claims." },
   { href: "/faq", title: "FAQ", text: "Plain-language reviewer questions and answers." },
   { href: "/startup-readiness", title: "Startup Readiness", text: "Current strengths, remaining risks, and next improvement priorities." },
-  { href: "/support", title: "Support", text: "How users can get help." },
+  { href: "/contact", title: "Professional Review Route", text: "Public escalation guidance for audits, notices, penalties, formal filing decisions, and high-risk tax matters." },
+  { href: "/support", title: "Support", text: "How logged-in users can get ticket-based help." },
   { href: "/privacy", title: "Privacy", text: "How privacy commitments are presented publicly." },
   { href: "/terms", title: "Terms", text: "Terms of use and service boundaries." },
   { href: "/refund", title: "Refund", text: "Refund policy visibility." },
@@ -59,7 +61,7 @@ export default function ReviewPage() {
           subtitle={`Last reviewed: ${SITE.trustReviewDate}. ${SITE.name} is operated by ${SITE.companyName} and provides general Nigerian tax guidance, not formal professional representation.`}
         />
 
-        <WorkspaceSectionCard title="Public review links" subtitle="Use these pages to inspect product clarity, trust, safety, pricing, and user support.">
+        <WorkspaceSectionCard title="Public review links" subtitle="Use these pages to inspect product clarity, trust, safety, pricing, source discipline, sample answers, and user support.">
           <CardsGrid min={240}>
             {reviewLinks.map((item) => (
               <Link key={item.href} href={item.href} style={{ ...card(), color: "inherit", textDecoration: "none" }}>
