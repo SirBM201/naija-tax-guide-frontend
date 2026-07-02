@@ -12,15 +12,39 @@ type WebMeResp = {
   error?: string;
 };
 
-const sampleQuestions = [
-  "I earn salary in Lagos. What should I know about PAYE?",
-  "My small business sells online. When should I think about VAT?",
-  "What records should a freelancer keep for tax compliance?",
-  "How do I know when a tax issue needs a human professional?",
+const sampleInteractions = [
+  {
+    question: "I earn salary in Lagos. What should I know about PAYE?",
+    answer:
+      "PAYE is normally deducted by an employer from salary and remitted to the relevant State Internal Revenue Service based on residence. Keep payslips and annual tax records, and verify unusual deductions with payroll or a tax professional.",
+    note: "Typical source area: Personal Income Tax administration and state practice.",
+  },
+  {
+    question: "My small business sells online. When should I think about VAT?",
+    answer:
+      "VAT depends on your business activity, turnover, registration status, exemptions, and current rules. The safe next step is to check whether your sales are taxable, whether registration applies, and whether monthly filing obligations are triggered.",
+    note: "Typical source area: VAT law, federal tax authority guidance, and current implementation rules.",
+  },
+  {
+    question: "What records should a freelancer keep for tax compliance?",
+    answer:
+      "Keep invoices, receipts, contracts, bank records, expense evidence, client payment records, and filing/payment confirmations. Good records make tax calculations easier and reduce risk if questions arise later.",
+    note: "Typical source area: general compliance practice and internal reviewed guidance.",
+  },
+  {
+    question: "I received a tax notice. Can the AI tell me what to do?",
+    answer:
+      "The product can explain what the notice may mean and help you prepare questions, but notices, audits, penalties, disputes, and formal replies should be handled with a qualified tax professional or the relevant authority.",
+    note: "Escalation case: professional review is strongly recommended.",
+  },
 ];
 
 const trustLinks = [
   { label: "Pricing", href: "/pricing" },
+  { label: "About", href: "/about" },
+  { label: "FAQ", href: "/faq" },
+  { label: "Safety", href: "/safety" },
+  { label: "Sources", href: "/sources" },
   { label: "Privacy", href: "/privacy" },
   { label: "Terms", href: "/terms" },
   { label: "Support", href: "/support" },
@@ -107,7 +131,7 @@ function sectionTitle(eyebrow: string, title: string, subtitle: string): React.R
 function bullet(item: string): React.ReactNode {
   return (
     <div key={item} style={{ display: "grid", gridTemplateColumns: "22px minmax(0, 1fr)", gap: 8, color: "var(--text-muted)", lineHeight: 1.65 }}>
-      <strong style={{ color: "var(--accent)" }}>✓</strong>
+      <strong style={{ color: "var(--accent)" }}>-</strong>
       <span>{item}</span>
     </div>
   );
@@ -144,6 +168,8 @@ export default function LandingPage() {
   }, []);
 
   const goToApp = () => router.push(hasSession ? "/dashboard" : "/login");
+  const openWhatsApp = () => window.open(`https://wa.me/${SITE.whatsappInternational}?text=Hi`, "_blank", "noopener,noreferrer");
+  const openTelegram = () => window.open(`https://t.me/${SITE.telegramBot}`, "_blank", "noopener,noreferrer");
   const appLabel = checkingSession ? "Checking..." : hasSession ? "Continue to Dashboard" : `Start Using ${SITE.name}`;
 
   return (
@@ -185,6 +211,8 @@ export default function LandingPage() {
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12 }}>
                 <button onClick={goToApp} disabled={checkingSession} style={primaryButton(checkingSession)}>{appLabel}</button>
                 <button onClick={() => router.push("/pricing")} style={secondaryButton()}>View Public Pricing</button>
+                <button onClick={openWhatsApp} style={secondaryButton()}>Open WhatsApp Bot</button>
+                <button onClick={openTelegram} style={secondaryButton()}>Open Telegram Bot</button>
               </div>
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                 <span style={pillStyle()}>Web workspace</span>
@@ -203,7 +231,7 @@ export default function LandingPage() {
               <div style={cardStyle()}>
                 <div style={pillStyle()}>Trust pages visible before signup</div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10 }}>
-                  {trustLinks.map((link) => (
+                  {trustLinks.slice(0, 6).map((link) => (
                     <button key={link.href} onClick={() => router.push(link.href)} style={secondaryButton()}>{link.label}</button>
                   ))}
                 </div>
@@ -227,15 +255,17 @@ export default function LandingPage() {
 
         <section style={{ display: "grid", gap: 18 }}>
           {sectionTitle(
-            "Sample questions",
-            "See the kind of help users can expect.",
-            "These examples make the product scope clearer before signup and help users decide whether the tool fits their needs."
+            "Sample answers",
+            "Preview the kind of help users can expect before signup.",
+            "These examples show the intended answer style: practical, cautious, Nigeria-specific, and clear about when professional review is needed."
           )}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 14 }}>
-            {sampleQuestions.map((question) => (
-              <div key={question} style={cardStyle()}>
-                <div style={pillStyle()}>Example prompt</div>
-                <strong style={{ color: "var(--text)", lineHeight: 1.5 }}>{question}</strong>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 14 }}>
+            {sampleInteractions.map((item) => (
+              <div key={item.question} style={cardStyle()}>
+                <div style={pillStyle()}>Example question</div>
+                <strong style={{ color: "var(--text)", lineHeight: 1.5 }}>{item.question}</strong>
+                <p style={{ margin: 0, color: "var(--text-muted)", lineHeight: 1.75 }}>{item.answer}</p>
+                <p style={{ margin: 0, color: "var(--text-faint)", lineHeight: 1.6, fontSize: 13 }}>{item.note}</p>
               </div>
             ))}
           </div>
@@ -260,6 +290,10 @@ export default function LandingPage() {
           <h2 style={{ margin: 0, color: "var(--text)", fontSize: "clamp(28px, 5vw, 36px)", lineHeight: 1.1 }}>Built to answer carefully, not carelessly.</h2>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: 14 }}>
             {["General guidance should be verified before sensitive action", "High-risk matters should move to a qualified tax professional", "Users should avoid sharing unnecessary sensitive personal or financial data", "Tax rules and administrative practice can change, so important answers need source/date awareness"].map(bullet)}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12 }}>
+            <button onClick={() => router.push("/safety")} style={secondaryButton()}>Read AI Safety</button>
+            <button onClick={() => router.push("/contact")} style={secondaryButton()}>Ask About Professional Review</button>
           </div>
         </section>
 
