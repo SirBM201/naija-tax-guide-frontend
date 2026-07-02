@@ -52,6 +52,21 @@ type SidebarStatus = {
   channelsTone: "default" | "good" | "warn";
 };
 
+const PUBLIC_SHELL_PATHS = new Set([
+  "/about",
+  "/contact",
+  "/data-deletion",
+  "/faq",
+  "/privacy",
+  "/refund",
+  "/review",
+  "/safety",
+  "/sources",
+  "/startup-readiness",
+  "/support",
+  "/terms",
+]);
+
 const navSections = [
   {
     title: "WORKSPACE",
@@ -96,6 +111,11 @@ const navSections = [
     ],
   },
 ];
+
+function isPublicShellPath(pathname: string | null) {
+  if (!pathname) return false;
+  return PUBLIC_SHELL_PATHS.has(pathname) || pathname.startsWith("/review/");
+}
 
 function safeNumber(value: unknown, fallback = 0) {
   const n = Number(value);
@@ -144,14 +164,15 @@ export default function AppShell({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const isPublicShell = isPublicShellPath(pathname);
 
   const [isMobile, setIsMobile] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [userCollapsedDesktop, setUserCollapsedDesktop] = useState(false);
   const [sidebarStatus, setSidebarStatus] = useState<SidebarStatus>({
-    workspaceBadge: "…",
+    workspaceBadge: "...",
     workspaceTone: "default",
-    channelsBadge: "…",
+    channelsBadge: "...",
     channelsTone: "default",
   });
 
@@ -159,6 +180,11 @@ export default function AppShell({
     const syncLayout = () => {
       const mobile = window.innerWidth < 980;
       setIsMobile(mobile);
+
+      if (isPublicShell) {
+        setSidebarOpen(false);
+        return;
+      }
 
       if (mobile) {
         setSidebarOpen(false);
@@ -170,15 +196,26 @@ export default function AppShell({
     syncLayout();
     window.addEventListener("resize", syncLayout);
     return () => window.removeEventListener("resize", syncLayout);
-  }, [userCollapsedDesktop]);
+  }, [isPublicShell, userCollapsedDesktop]);
 
   useEffect(() => {
+    if (isPublicShell) return;
     if (isMobile) {
       setSidebarOpen(false);
     }
-  }, [pathname, isMobile]);
+  }, [pathname, isMobile, isPublicShell]);
 
   useEffect(() => {
+    if (isPublicShell) {
+      setSidebarStatus({
+        workspaceBadge: "...",
+        workspaceTone: "default",
+        channelsBadge: "...",
+        channelsTone: "default",
+      });
+      return;
+    }
+
     let cancelled = false;
 
     async function loadSidebarStatus() {
@@ -247,9 +284,9 @@ export default function AppShell({
 
         const isExpected = isApiError(error);
         setSidebarStatus({
-          workspaceBadge: isExpected ? "Check" : "—",
+          workspaceBadge: isExpected ? "Check" : "-",
           workspaceTone: "default",
-          channelsBadge: isExpected ? "Check" : "—",
+          channelsBadge: isExpected ? "Check" : "-",
           channelsTone: "default",
         });
       }
@@ -259,14 +296,16 @@ export default function AppShell({
     return () => {
       cancelled = true;
     };
-  }, [pathname]);
+  }, [pathname, isPublicShell]);
 
   const sidebarWidth = useMemo(() => {
-    if (isMobile) return 0;
+    if (isPublicShell || isMobile) return 0;
     return sidebarOpen ? 320 : 96;
-  }, [isMobile, sidebarOpen]);
+  }, [isPublicShell, isMobile, sidebarOpen]);
 
   function toggleSidebar() {
+    if (isPublicShell) return;
+
     if (isMobile) {
       setSidebarOpen((prev) => !prev);
       return;
@@ -336,139 +375,154 @@ export default function AppShell({
     ...styles.pageFooterLinks,
     justifyContent: isMobile ? "flex-start" : "flex-end",
   };
+  const publicTopbarActions = (
+    <div style={styles.publicNav}>
+      <Link href="/" style={shellButtonSecondary()}>
+        Home
+      </Link>
+      <Link href="/pricing" style={shellButtonSecondary()}>
+        Pricing
+      </Link>
+      <Link href="/login" style={shellButtonPrimary()}>
+        Login
+      </Link>
+    </div>
+  );
 
   return (
     <div style={styles.root}>
-      {isMobile && sidebarOpen ? (
+      {!isPublicShell && isMobile && sidebarOpen ? (
         <div style={styles.mobileOverlay} onClick={closeSidebarOnMobile} />
       ) : null}
 
-      <aside
-        style={{
-          ...styles.sidebar,
-          width: isMobile ? mobileSidebarWidth : sidebarWidth,
-          padding: isMobile ? 14 : 18,
-          transform: isMobile
-            ? sidebarOpen
-              ? "translateX(0)"
-              : "translateX(-100%)"
-            : "none",
-          zIndex: isMobile ? 40 : 20,
-          boxShadow: isMobile ? "0 18px 50px rgba(0,0,0,0.28)" : "none",
-        }}
-      >
-        <button onClick={toggleSidebar} style={styles.collapseBtn} type="button">
-          {isMobile
-            ? sidebarOpen
-              ? "Close Menu"
-              : "Open Menu"
-            : sidebarOpen
-            ? "Collapse"
-            : "Menu"}
-        </button>
-
-        <div
+      {!isPublicShell ? (
+        <aside
           style={{
-            ...styles.brand,
-            justifyContent: sidebarOpen ? "flex-start" : "center",
+            ...styles.sidebar,
+            width: isMobile ? mobileSidebarWidth : sidebarWidth,
+            padding: isMobile ? 14 : 18,
+            transform: isMobile
+              ? sidebarOpen
+                ? "translateX(0)"
+                : "translateX(-100%)"
+              : "none",
+            zIndex: isMobile ? 40 : 20,
+            boxShadow: isMobile ? "0 18px 50px rgba(0,0,0,0.28)" : "none",
           }}
         >
-          <div style={styles.logoWrap}>
-            <img
-              src="/bms-logo.jpg"
-              alt={`${SITE.companyName} logo`}
-              style={styles.logoImage}
-            />
+          <button onClick={toggleSidebar} style={styles.collapseBtn} type="button">
+            {isMobile
+              ? sidebarOpen
+                ? "Close Menu"
+                : "Open Menu"
+              : sidebarOpen
+                ? "Collapse"
+                : "Menu"}
+          </button>
+
+          <div
+            style={{
+              ...styles.brand,
+              justifyContent: sidebarOpen ? "flex-start" : "center",
+            }}
+          >
+            <div style={styles.logoWrap}>
+              <img
+                src="/bms-logo.jpg"
+                alt={`${SITE.companyName} logo`}
+                style={styles.logoImage}
+              />
+            </div>
+
+            {sidebarOpen ? (
+              <div style={{ minWidth: 0 }}>
+                <div style={styles.brandTitle}>{SITE.name}</div>
+                <div style={styles.brandSub}>{SITE.companyName}</div>
+                <div style={styles.brandTagline}>{SITE.slogan}</div>
+              </div>
+            ) : null}
+          </div>
+
+          <div style={styles.navScroll}>
+            {navSections.map((section) => (
+              <div key={section.title} style={styles.sectionBlock}>
+                {sidebarOpen ? <div style={styles.sectionTitle}>{section.title}</div> : null}
+
+                <nav style={styles.nav}>
+                  {section.items.map((item) => {
+                    const active =
+                      pathname === item.href ||
+                      (item.href !== "/" && pathname?.startsWith(item.href + "/"));
+
+                    const badge = getBadgeForHref(item.href);
+
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        style={{
+                          ...styles.link,
+                          ...(active ? styles.linkActive : {}),
+                          justifyContent: sidebarOpen ? "space-between" : "center",
+                          padding: sidebarOpen ? "13px 16px" : "13px 8px",
+                        }}
+                        title={item.label}
+                      >
+                        {sidebarOpen ? (
+                          <>
+                            <span>{item.label}</span>
+                            {badge ? (
+                              <span
+                                style={{
+                                  ...styles.statusBadge,
+                                  ...toneStyle(badge.tone),
+                                }}
+                              >
+                                {badge.label}
+                              </span>
+                            ) : null}
+                          </>
+                        ) : (
+                          item.label.charAt(0)
+                        )}
+                      </Link>
+                    );
+                  })}
+                </nav>
+              </div>
+            ))}
           </div>
 
           {sidebarOpen ? (
-            <div style={{ minWidth: 0 }}>
-              <div style={styles.brandTitle}>{SITE.name}</div>
-              <div style={styles.brandSub}>{SITE.companyName}</div>
-              <div style={styles.brandTagline}>{SITE.slogan}</div>
+            <div style={styles.sidebarFooter}>
+              <div style={styles.footerTitle}>Company Contact</div>
+              <div style={styles.footerLine}>{SITE.companyName}</div>
+              <div style={styles.footerLine}>{SITE.supportEmail}</div>
+              <div style={styles.footerLinks}>
+                <Link href="/contact" style={styles.footerLink}>
+                  Contact
+                </Link>
+                <Link href="/support" style={styles.footerLink}>
+                  Support
+                </Link>
+                <Link href="/privacy" style={styles.footerLink}>
+                  Privacy
+                </Link>
+              </div>
             </div>
           ) : null}
-        </div>
-
-        <div style={styles.navScroll}>
-          {navSections.map((section) => (
-            <div key={section.title} style={styles.sectionBlock}>
-              {sidebarOpen ? <div style={styles.sectionTitle}>{section.title}</div> : null}
-
-              <nav style={styles.nav}>
-                {section.items.map((item) => {
-                  const active =
-                    pathname === item.href ||
-                    (item.href !== "/" && pathname?.startsWith(item.href + "/"));
-
-                  const badge = getBadgeForHref(item.href);
-
-                  return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      style={{
-                        ...styles.link,
-                        ...(active ? styles.linkActive : {}),
-                        justifyContent: sidebarOpen ? "space-between" : "center",
-                        padding: sidebarOpen ? "13px 16px" : "13px 8px",
-                      }}
-                      title={item.label}
-                    >
-                      {sidebarOpen ? (
-                        <>
-                          <span>{item.label}</span>
-                          {badge ? (
-                            <span
-                              style={{
-                                ...styles.statusBadge,
-                                ...toneStyle(badge.tone),
-                              }}
-                            >
-                              {badge.label}
-                            </span>
-                          ) : null}
-                        </>
-                      ) : (
-                        item.label.charAt(0)
-                      )}
-                    </Link>
-                  );
-                })}
-              </nav>
-            </div>
-          ))}
-        </div>
-
-        {sidebarOpen ? (
-          <div style={styles.sidebarFooter}>
-            <div style={styles.footerTitle}>Company Contact</div>
-            <div style={styles.footerLine}>{SITE.companyName}</div>
-            <div style={styles.footerLine}>{SITE.supportEmail}</div>
-            <div style={styles.footerLinks}>
-              <Link href="/contact" style={styles.footerLink}>
-                Contact
-              </Link>
-              <Link href="/support" style={styles.footerLink}>
-                Support
-              </Link>
-              <Link href="/privacy" style={styles.footerLink}>
-                Privacy
-              </Link>
-            </div>
-          </div>
-        ) : null}
-      </aside>
+        </aside>
+      ) : null}
 
       <main
         style={{
           ...styles.main,
-          marginLeft: isMobile ? 0 : sidebarWidth,
+          marginLeft: sidebarWidth,
         }}
       >
         <header style={topbarStyle}>
           <div style={topbarLeftStyle}>
-            {isMobile ? (
+            {!isPublicShell && isMobile ? (
               <button onClick={toggleSidebar} style={styles.mobileMenuBtn} type="button">
                 Menu
               </button>
@@ -487,8 +541,14 @@ export default function AppShell({
           </div>
 
           <div style={topbarRightStyle}>
-            {rightSlot ? <div style={styles.topbarSlotWrap}>{rightSlot}</div> : null}
-            {actions ? <div style={styles.topbarSlotWrap}>{actions}</div> : null}
+            {isPublicShell ? (
+              publicTopbarActions
+            ) : (
+              <>
+                {rightSlot ? <div style={styles.topbarSlotWrap}>{rightSlot}</div> : null}
+                {actions ? <div style={styles.topbarSlotWrap}>{actions}</div> : null}
+              </>
+            )}
           </div>
         </header>
 
@@ -504,6 +564,9 @@ export default function AppShell({
 
             <div style={pageFooterRightStyle}>
               <div style={pageFooterLinksStyle}>
+                <Link href="/pricing" style={styles.pageFooterLink}>
+                  Pricing
+                </Link>
                 <Link href="/contact" style={styles.pageFooterLink}>
                   Contact
                 </Link>
@@ -813,6 +876,14 @@ const styles: Record<string, React.CSSProperties> = {
   },
 
   topbarSlotWrap: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    flexWrap: "wrap",
+    maxWidth: "100%",
+  },
+
+  publicNav: {
     display: "flex",
     alignItems: "center",
     gap: 10,
