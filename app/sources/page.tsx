@@ -36,6 +36,13 @@ const highRiskClaims = [
   "state-specific processes",
 ];
 
+const updateLogItems = [
+  "Record when answer policy, reviewed content, source discipline, or safety wording changes.",
+  "Record expert-review outcomes before claiming that answers are professionally reviewed.",
+  "Record corrections after user complaints, expert feedback, or changes in official guidance.",
+  "Record follow-up tasks when a source-sensitive answer still needs structured citation metadata.",
+];
+
 function body(): React.CSSProperties {
   return {
     margin: 0,
@@ -78,7 +85,7 @@ export default function SourcesPage() {
   return (
     <AppShell
       title="Source Transparency"
-      subtitle="How Naija Tax Guide should handle tax sources, freshness, uncertainty, and reviewed knowledge."
+      subtitle="How Naija Tax Guide should handle tax sources, freshness, uncertainty, reviewed knowledge, and content updates."
       actions={
         <>
           <button onClick={() => router.push("/safety")} style={shellButtonPrimary()}>
@@ -112,6 +119,15 @@ export default function SourcesPage() {
 
         <WorkspaceSectionCard title="Claims that need extra caution" subtitle="These are the claims most likely to harm users if stale or wrong.">
           {list(highRiskClaims)}
+        </WorkspaceSectionCard>
+
+        <WorkspaceSectionCard title="Update-log discipline" subtitle="A product that gives tax guidance should keep an internal record of important tax-content and safety changes.">
+          <div style={{ display: "grid", gap: 14 }}>
+            <p style={body()}>
+              Naija Tax Guide now maintains an internal tax-content update log in the API repository. This helps separate product-control evidence from marketing claims and gives reviewers a clearer path for checking what changed, when it changed, and what still needs expert validation.
+            </p>
+            {list(updateLogItems)}
+          </div>
         </WorkspaceSectionCard>
 
         <WorkspaceSectionCard title="Product direction" subtitle="What the product should continue moving toward.">
