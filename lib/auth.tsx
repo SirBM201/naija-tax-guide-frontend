@@ -57,17 +57,21 @@ const LS_WELCOME_SEEN_KEY = "ntg-welcome-seen";
 
 const PUBLIC_PATHS = new Set([
   "/",
+  "/about",
+  "/contact",
+  "/data-deletion",
+  "/faq",
   "/login",
-  "/signup",
   "/pricing",
   "/privacy",
-  "/terms",
   "/refund",
-  "/data-deletion",
-  "/support",
-  "/contact",
-  "/faq",
   "/review",
+  "/safety",
+  "/signup",
+  "/sources",
+  "/startup-readiness",
+  "/support",
+  "/terms",
 ]);
 
 type WebMeResp = {
