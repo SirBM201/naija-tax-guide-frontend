@@ -119,7 +119,7 @@ export default function ContactPage() {
   return (
     <AppShell
       title="Contact"
-      subtitle="Use this page for general enquiries, partnerships, privacy-related communication, and non-ticket company contact."
+      subtitle="Use this page for general enquiries, partnerships, privacy-related communication, professional-review enquiries, and non-ticket company contact."
       actions={
         <>
           <button onClick={() => router.push("/support")} style={shellButtonPrimary()}>
@@ -135,7 +135,7 @@ export default function ContactPage() {
         <Banner
           tone="default"
           title="Use the right contact route"
-          subtitle="If you already have an account and need help with billing, login, credits, linked channels, or technical issues, please use the Support page so your request can be tracked properly."
+          subtitle="General enquiries can use this page. Logged-in users who need billing, credits, login, linked-channel, or technical issue tracking should use the Support page so the request can carry account context and a ticket ID."
         />
 
         <WorkspaceSectionCard
@@ -156,6 +156,14 @@ export default function ContactPage() {
               <p style={valueStyle()}>In-app Support Page</p>
               <p style={helperStyle()}>
                 Best for logged-in users who need ticket tracking, support replies, billing issue follow-up, or technical help.
+              </p>
+            </div>
+
+            <div style={infoCardStyle()}>
+              <p style={labelStyle()}>Professional-review route</p>
+              <p style={valueStyle()}>Request human review</p>
+              <p style={helperStyle()}>
+                Best for audits, disputes, penalties, formal filings, official notices, or high-value decisions that should not rely on AI guidance alone.
               </p>
             </div>
 
@@ -190,7 +198,28 @@ export default function ContactPage() {
         </WorkspaceSectionCard>
 
         <WorkspaceSectionCard
-          title="2. When to use Support instead"
+          title="2. Professional review and escalation"
+          subtitle="Some tax matters should be reviewed by a qualified person before the user acts."
+        >
+          <div style={sectionBodyStyle()}>
+            <p style={paragraphStyle()}>
+              {SITE.name} provides general tax information and guided support. It
+              does not replace a licensed accountant, tax consultant, lawyer,
+              government authority, or formal representative. Where a user needs
+              professional review, the correct step is to request a human review
+              route or consult an independent qualified tax professional.
+            </p>
+            <ul style={bulletListStyle()}>
+              <li>Tax audit letters, official notices, assessments, objections, appeals, and penalties.</li>
+              <li>Formal filing decisions, back-duty exposure, restructuring, or cross-border tax questions.</li>
+              <li>High-value business decisions where wrong guidance could create financial or legal exposure.</li>
+              <li>Cases where the user needs signed professional advice or representation before a tax authority.</li>
+            </ul>
+          </div>
+        </WorkspaceSectionCard>
+
+        <WorkspaceSectionCard
+          title="3. When to use Support instead"
           subtitle="Support remains the official help center for operational user issues."
         >
           <div style={sectionBodyStyle()}>
@@ -205,7 +234,7 @@ export default function ContactPage() {
         </WorkspaceSectionCard>
 
         <WorkspaceSectionCard
-          title="3. Suitable use cases for this Contact page"
+          title="4. Suitable use cases for this Contact page"
           subtitle="This page is better for broader communication that does not need the support ticket workflow."
         >
           <div style={sectionBodyStyle()}>
@@ -220,7 +249,7 @@ export default function ContactPage() {
         </WorkspaceSectionCard>
 
         <WorkspaceSectionCard
-          title="4. Response expectations"
+          title="5. Response expectations"
           subtitle="Different contact routes may be handled differently depending on the nature of the request."
         >
           <div style={sectionBodyStyle()}>
@@ -239,7 +268,7 @@ export default function ContactPage() {
         </WorkspaceSectionCard>
 
         <WorkspaceSectionCard
-          title="5. Official contact note"
+          title="6. Official contact note"
           subtitle={`Use direct company contact with ${SITE.companyName} responsibly and keep messages relevant to the communication route.`}
         >
           <div style={sectionBodyStyle()}>
@@ -253,8 +282,8 @@ export default function ContactPage() {
 
             <p style={paragraphStyle()}>
               Where a request is more suitable for a privacy, deletion, billing,
-              or support workflow, the platform may redirect the user to the
-              appropriate page so the matter can be handled correctly.
+              professional-review, or support workflow, the platform may redirect
+              the user to the appropriate page so the matter can be handled correctly.
             </p>
           </div>
         </WorkspaceSectionCard>
