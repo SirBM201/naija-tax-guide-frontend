@@ -1,140 +1,72 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useAuth } from "@/lib/auth";
-import AppShell, {
-  shellButtonPrimary,
-  shellButtonSecondary,
-} from "@/components/app-shell";
+import AppShell, { shellButtonPrimary, shellButtonSecondary } from "@/components/app-shell";
 import WorkspaceSectionCard from "@/components/workspace-section-card";
-import {
-  Banner,
-  MetricCard,
-  appInputStyle,
-  appSelectStyle,
-  appTextareaStyle,
-  formatDate,
-} from "@/components/ui";
-import { CardsGrid, SectionStack } from "@/components/page-layout";
-import { useWorkspaceState } from "@/hooks/useWorkspaceState";
-import { buildWorkspaceAlerts } from "@/lib/workspace-alerts";
-
-type SupportFormState = {
-  category: string;
-  priority: string;
-  subject: string;
-  message: string;
-};
+import { Banner, appInputStyle, appSelectStyle, appTextareaStyle, formatDate } from "@/components/ui";
+import { SectionStack } from "@/components/page-layout";
 
 type SupportTicket = {
   id?: number;
   ticket_id: string;
-  status: string;
-  category: string;
-  priority: string;
-  subject: string;
+  status?: string;
+  category?: string;
+  priority?: string;
+  subject?: string;
   message?: string;
   created_at?: string;
   updated_at?: string;
-  last_reply_at?: string | null;
-  last_reply_by?: string | null;
   last_message_preview?: string | null;
 };
 
 type SupportMessage = {
-  id: number;
-  support_ticket_id: number;
-  ticket_id: string;
-  account_id: string;
-  sender_type: "user" | "admin";
+  id?: number;
+  ticket_id?: string;
+  sender_type?: "user" | "admin";
   sender_name?: string | null;
-  message: string;
-  is_internal_note?: boolean;
+  message?: string;
   created_at?: string;
 };
 
-function safeText(value: unknown, fallback = "—"): string {
-  const text =
-    typeof value === "string"
-      ? value.trim()
-      : value == null
-      ? ""
-      : String(value).trim();
-  return text || fallback;
+type FormState = {
+  category: string;
+  priority: string;
+  subject: string;
+  message: string;
+};
+
+function apiUrl(path: string): string {
+  const cleanPath = path.startsWith("/") ? path : `/${path}`;
+  return cleanPath.startsWith("/api/") ? cleanPath : `/api${cleanPath}`;
 }
 
-function truthyValue(value: unknown): boolean {
-  if (typeof value === "boolean") return value;
-  if (typeof value === "number") return value > 0;
-  if (typeof value === "string") {
-    const raw = value.trim().toLowerCase();
-    return ["1", "true", "yes", "active", "paid", "enabled", "linked"].includes(raw);
-  }
-  return false;
+function text(value: unknown, fallback = "Not shown"): string {
+  const raw = value == null ? "" : String(value).trim();
+  return raw || fallback;
 }
 
-function infoBoxStyle(): React.CSSProperties {
+function panelStyle(): React.CSSProperties {
   return {
     border: "1px solid var(--border)",
-    borderRadius: 18,
+    borderRadius: 16,
     background: "var(--surface)",
-    padding: "clamp(14px, 3.5vw, 16px)",
+    padding: "clamp(12px, 3vw, 16px)",
     display: "grid",
-    gap: 6,
+    gap: 10,
     minWidth: 0,
   };
 }
 
-function pageGridStyle(): React.CSSProperties {
+function rowStyle(active: boolean): React.CSSProperties {
   return {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))",
-    gap: 18,
-    alignItems: "start",
-  };
-}
-
-function ticketRowStyle(active: boolean): React.CSSProperties {
-  return {
-    border: "1px solid var(--border)",
-    borderRadius: 16,
-    background: active ? "rgba(78, 110, 255, 0.14)" : "var(--surface)",
-    padding: "clamp(12px, 3vw, 14px)",
-    display: "grid",
-    gap: 8,
+    ...panelStyle(),
     cursor: "pointer",
-    minWidth: 0,
+    background: active ? "rgba(78, 110, 255, 0.14)" : "var(--surface)",
   };
 }
 
-function messageBubbleStyle(senderType: "user" | "admin"): React.CSSProperties {
-  const isUser = senderType === "user";
-  return {
-    maxWidth: "min(100%, 820px)",
-    width: "fit-content",
-    justifySelf: isUser ? "end" : "start",
-    border: "1px solid var(--border)",
-    borderRadius: 16,
-    background: isUser ? "rgba(78, 110, 255, 0.16)" : "var(--surface)",
-    padding: "clamp(12px, 3vw, 14px)",
-    display: "grid",
-    gap: 6,
-    minWidth: 0,
-  };
-}
-
-function fluidActionGrid(columns = 2): React.CSSProperties {
-  return {
-    display: "grid",
-    gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, ${columns === 1 ? 220 : 180}px), 1fr))`,
-    gap: 12,
-    width: "100%",
-    minWidth: 0,
-  };
-}
-
-function wrapTextStyle(): React.CSSProperties {
+function wrapStyle(): React.CSSProperties {
   return {
     minWidth: 0,
     overflowWrap: "anywhere",
@@ -142,328 +74,89 @@ function wrapTextStyle(): React.CSSProperties {
   };
 }
 
-function statusTone(status: string): "default" | "good" | "warn" | "danger" {
-  const s = (status || "").toLowerCase();
-  if (s === "resolved") return "good";
-  if (s === "awaiting_user") return "warn";
-  if (s === "in_review") return "default";
-  return "warn";
-}
-
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/+$/, "") ||
-  "https://incredible-nonie-bmsconcept-37359733.koyeb.app";
-
-function apiUrl(path: string): string {
-  const cleanPath = path.startsWith("/") ? path : `/${path}`;
-  return `${API_BASE}${cleanPath}`;
+function actionGrid(): React.CSSProperties {
+  return {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 220px), 1fr))",
+    gap: 12,
+  };
 }
 
 export default function SupportPage() {
   const router = useRouter();
-  const { user, token } = useAuth();
-
-  const { profile, usage, subscription, channelLinks, billing, credits } =
-    useWorkspaceState();
-
-  const alerts = useMemo(
-    () =>
-      buildWorkspaceAlerts({
-        profile,
-        usage,
-        subscription,
-        channelLinks,
-        billing,
-        credits,
-      }),
-    [profile, usage, subscription, channelLinks, billing, credits]
-  );
-
-  const primaryAlert =
-    alerts.find(
-      (alert) =>
-        /billing|subscription|credit|channel|support|login/i.test(alert.title) ||
-        /billing|subscription|credit|channel|support|login/i.test(alert.subtitle)
-    ) || null;
-
-  const accountEmail = safeText(
-    profile?.email || user?.email || billing?.checkout_email || "Not visible"
-  );
-  const accountName = safeText(
-    profile?.full_name || profile?.first_name || user?.email || "Workspace user"
-  );
-  const planName = safeText(
-    subscription?.plan_name ||
-      billing?.plan_name ||
-      subscription?.plan_code ||
-      billing?.plan_code ||
-      "No active plan"
-  );
-  const planStatus = safeText(subscription?.status || billing?.status || "Unknown");
-  const activeNow = truthyValue(
-    subscription?.active ||
-      billing?.active ||
-      planStatus.toLowerCase() === "active"
-  );
-
-  const billingView = (billing ?? {}) as Record<string, unknown>;
-  const latestPaymentReference = safeText(
-    billingView["payment_reference"] || billingView["last_payment_reference"] || "Not visible"
-  );
-  const latestPaymentDate = safeText(
-    billingView["payment_date"] ||
-      billingView["last_payment_date"] ||
-      billingView["paid_at"] ||
-      "Not visible"
-  );
-  const expiresAt = safeText(
-    billingView["expires_at"] ||
-      billingView["expiry_date"] ||
-      subscription?.expires_at ||
-      "Not visible"
-  );
-
-  const creditBalance = Number(credits?.balance ?? 0);
-
-  const whatsappLinked = truthyValue(
-    channelLinks?.whatsapp_linked || channelLinks?.whatsapp?.linked
-  );
-  const telegramLinked = truthyValue(
-    channelLinks?.telegram_linked || channelLinks?.telegram?.linked
-  );
-
-  const channelState =
-    whatsappLinked && telegramLinked
-      ? "WhatsApp + Telegram linked"
-      : whatsappLinked
-      ? "WhatsApp linked"
-      : telegramLinked
-      ? "Telegram linked"
-      : "No linked channel";
-
-  const [form, setForm] = useState<SupportFormState>({
+  const [tickets, setTickets] = useState<SupportTicket[]>([]);
+  const [selectedTicketId, setSelectedTicketId] = useState("");
+  const [selectedTicket, setSelectedTicket] = useState<SupportTicket | null>(null);
+  const [messages, setMessages] = useState<SupportMessage[]>([]);
+  const [replyMessage, setReplyMessage] = useState("");
+  const [form, setForm] = useState<FormState>({
     category: "general",
     priority: "normal",
     subject: "",
     message: "",
   });
-
-  const [replyMessage, setReplyMessage] = useState("");
+  const [loadingTickets, setLoadingTickets] = useState(false);
+  const [loadingThread, setLoadingThread] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [replying, setReplying] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
 
-  const [submitting, setSubmitting] = useState(false);
-  const [loadingTickets, setLoadingTickets] = useState(false);
-  const [loadingThread, setLoadingThread] = useState(false);
-  const [replying, setReplying] = useState(false);
-
-  const [tickets, setTickets] = useState<SupportTicket[]>([]);
-  const [selectedTicketId, setSelectedTicketId] = useState<string>("");
-  const [selectedTicket, setSelectedTicket] = useState<SupportTicket | null>(null);
-  const [threadMessages, setThreadMessages] = useState<SupportMessage[]>([]);
-  const [supportIntent, setSupportIntent] = useState("");
-  const [supportReference, setSupportReference] = useState("");
-  const [latestCreatedTicketId, setLatestCreatedTicketId] = useState("");
-  const [showBillingOnly, setShowBillingOnly] = useState(false);
-
-  const intentPreset = useMemo(() => {
-    const intent = supportIntent.trim().toLowerCase();
-    const selectedReference = (supportReference || latestPaymentReference || "").trim();
-
-    const contextLines = [
-      `Current plan: ${planName}`,
-      `Plan status: ${planStatus}`,
-      `Latest payment reference: ${supportReference || latestPaymentReference}`,
-      `Latest payment date: ${latestPaymentDate}`,
-      `Visible credits: ${creditBalance}`,
-      `Channel state: ${channelState}`,
-      `Subscription expiry: ${expiresAt}`,
-    ];
-
-    if (intent === "duplicate_charge") {
-      return {
-        category: "billing",
-        priority: "high",
-        subject: selectedReference ? `Duplicate charge review request — ${selectedReference}` : "Duplicate charge review request",
-        message:
-          "I want to report a possible duplicate charge. Please review whether more than one payment was captured for the same intended purchase.\n\n" +
-          contextLines.join("\n"),
-      };
-    }
-
-    if (intent === "wrong_plan") {
-      return {
-        category: "billing",
-        priority: "high",
-        subject: selectedReference ? `Wrong plan activated after payment — ${selectedReference}` : "Wrong plan activated after payment",
-        message:
-          "Payment appears successful, but the visible plan does not match what I intended to buy. Please review the activation result against the payment record.\n\n" +
-          contextLines.join("\n"),
-      };
-    }
-
-    if (intent === "activation_issue") {
-      return {
-        category: "credits",
-        priority: "high",
-        subject: selectedReference ? `Payment successful but activation or access failed — ${selectedReference}` : "Payment successful but activation or access failed",
-        message:
-          "Payment appears successful, but activation, credits, or access did not update as expected. Please review the billing result and activation state.\n\n" +
-          contextLines.join("\n"),
-      };
-    }
-
-    if (intent === "refund_review") {
-      return {
-        category: "billing",
-        priority: "high",
-        subject: selectedReference ? `Refund review request — ${selectedReference}` : "Refund review request",
-        message:
-          "I want this payment reviewed under the refund policy. Please check whether the transaction qualifies for refund review based on payment evidence and activation outcome.\n\n" +
-          contextLines.join("\n"),
-      };
-    }
-
-    return null;
-  }, [
-    supportIntent,
-    planName,
-    planStatus,
-    latestPaymentReference,
-    latestPaymentDate,
-    creditBalance,
-    channelState,
-    expiresAt,
-    supportReference,
-  ]);
-
-  function setField<K extends keyof SupportFormState>(key: K, value: SupportFormState[K]) {
+  function setField<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
     setNotice("");
     setError("");
   }
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const applyFromLocation = () => {
-      const params = new URLSearchParams(window.location.search);
-      setSupportIntent(
-        params.get("intent") ||
-          params.get("issue") ||
-          ""
-      );
-      setSupportReference(params.get("reference") || "");
-    };
-
-    applyFromLocation();
-    window.addEventListener("popstate", applyFromLocation);
-    return () => window.removeEventListener("popstate", applyFromLocation);
-  }, []);
-
-  useEffect(() => {
-    if (supportIntent) {
-      setShowBillingOnly(true);
-    }
-  }, [supportIntent]);
-
-  function buildLiveContextMessage(rawMessage: string): string {
-    const messageText = (rawMessage || "").trim();
-    if (!supportIntent) return messageText;
-
-    const parts = messageText.split(/\n\s*\n/);
-    const issueIntro = (parts[0] || "").trim();
-
-    const liveContext = [
-      `Current plan: ${planName}`,
-      `Plan status: ${planStatus}`,
-      `Latest payment reference: ${supportReference || latestPaymentReference}`,
-      `Latest payment date: ${latestPaymentDate}`,
-      `Visible credits: ${creditBalance}`,
-      `Channel state: ${channelState}`,
-      `Subscription expiry: ${expiresAt}`,
-    ].join("\n");
-
-    return [issueIntro, liveContext].filter(Boolean).join("\n\n").trim();
-  }
-
-  function normalizeTicketType(value: string): string {
-    const raw = (value || "").trim().toLowerCase();
-    if (!raw) return "General";
-    if (raw === "billing") return "Billing";
-    if (raw === "credits") return "Credits";
-    if (raw === "channels") return "Channels";
-    if (raw === "login") return "Login";
-    if (raw === "technical") return "Technical";
-    return raw.charAt(0).toUpperCase() + raw.slice(1);
-  }
-
-  function isBillingRelatedTicket(ticket: SupportTicket): boolean {
-    const haystack = [
-      ticket.category,
-      ticket.subject,
-      ticket.message,
-      ticket.last_message_preview,
-    ]
-      .filter(Boolean)
-      .join(" ")
-      .toLowerCase();
-
-    return /billing|refund|duplicate charge|wrong plan|activation|payment|subscription|credit/.test(
-      haystack
-    );
-  }
-
-  function previewText(ticket: SupportTicket): string {
-    const raw = safeText(
-      ticket.last_message_preview || ticket.message || "No message preview available.",
-      "No message preview available."
-    ).replace(/\s+/g, " ");
-
-    return raw.length > 180 ? `${raw.slice(0, 177)}…` : raw;
-  }
-
-  async function loadTickets(selectLatest = false) {
-    setLoadingTickets(true);
+  async function loadTicketDetail(ticketId: string) {
+    if (!ticketId) return;
+    setLoadingThread(true);
     try {
-      const response = await fetch(apiUrl("/api/support/tickets?limit=20"), {
+      const response = await fetch(apiUrl(`/support/tickets/${encodeURIComponent(ticketId)}`), {
         method: "GET",
         credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
         cache: "no-store",
       });
-
       const data = await response.json().catch(() => ({}));
-
       if (!response.ok || !data?.ok) {
-        throw new Error(
-          data?.message ||
-            data?.error ||
-            `Could not load support tickets. Status: ${response.status}`
-        );
+        throw new Error(data?.message || data?.error || `Could not load ticket. Status: ${response.status}`);
       }
+      setSelectedTicket((data.ticket || null) as SupportTicket | null);
+      setMessages(Array.isArray(data.messages) ? data.messages : []);
+      setSelectedTicketId(ticketId);
+      setError("");
+    } catch (err: any) {
+      setError(err?.message || "Could not load support ticket.");
+    } finally {
+      setLoadingThread(false);
+    }
+  }
 
-      const rows = Array.isArray(data?.tickets) ? (data.tickets as SupportTicket[]) : [];
+  async function loadTickets(selectFirst = false) {
+    setLoadingTickets(true);
+    try {
+      const response = await fetch(apiUrl("/support/tickets?limit=50"), {
+        method: "GET",
+        credentials: "include",
+        cache: "no-store",
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data?.ok) {
+        throw new Error(data?.message || data?.error || `Could not load support tickets. Status: ${response.status}`);
+      }
+      const rows = Array.isArray(data.tickets) ? (data.tickets as SupportTicket[]) : [];
       setTickets(rows);
-
-      const currentSelectedStillExists =
-        selectedTicketId && rows.some((ticket) => ticket.ticket_id === selectedTicketId);
-
       if (rows.length === 0) {
         setSelectedTicketId("");
         setSelectedTicket(null);
-        setThreadMessages([]);
+        setMessages([]);
         return;
       }
-
-      if (selectLatest || !currentSelectedStillExists) {
-        const firstTicketId = rows[0]?.ticket_id || "";
-        setSelectedTicketId(firstTicketId);
-        await loadTicketDetail(firstTicketId);
+      const stillExists = selectedTicketId && rows.some((ticket) => ticket.ticket_id === selectedTicketId);
+      if (selectFirst || !stillExists) {
+        await loadTicketDetail(rows[0].ticket_id);
       }
+      setError("");
     } catch (err: any) {
       setError(err?.message || "Could not load support tickets.");
     } finally {
@@ -471,128 +164,50 @@ export default function SupportPage() {
     }
   }
 
-  async function loadTicketDetail(ticketId: string) {
-    if (!ticketId) {
-      setSelectedTicket(null);
-      setThreadMessages([]);
-      return;
-    }
-
-    setLoadingThread(true);
-    try {
-      const response = await fetch(apiUrl(`/api/support/tickets/${ticketId}`), {
-        method: "GET",
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        cache: "no-store",
-      });
-
-      const data = await response.json().catch(() => ({}));
-
-      if (!response.ok || !data?.ok) {
-        throw new Error(
-          data?.message ||
-            data?.error ||
-            `Could not load support thread. Status: ${response.status}`
-        );
-      }
-
-      setSelectedTicket((data?.ticket || null) as SupportTicket | null);
-      setThreadMessages(
-        Array.isArray(data?.messages) ? (data.messages as SupportMessage[]) : []
-      );
-      setSelectedTicketId(ticketId);
-      setError("");
-    } catch (err: any) {
-      setError(err?.message || "Could not load support thread.");
-    } finally {
-      setLoadingThread(false);
-    }
-  }
-
   useEffect(() => {
-    loadTickets(true);
+    void loadTickets(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token]);
+  }, []);
 
-  async function handleSubmit() {
-    if (!effectiveSubject.trim() || !form.message.trim()) {
-      setError("Please provide both a support subject and a clear description of the issue.");
+  async function submitSupport() {
+    if (!form.subject.trim() || !form.message.trim()) {
+      setError("Please provide a subject and message.");
       setNotice("");
       return;
     }
-
     if (form.message.trim().length < 10) {
-      setError("Support message must be at least 10 characters long.");
+      setError("Support message must be at least 10 characters.");
       setNotice("");
       return;
     }
 
     setSubmitting(true);
-    setNotice("");
     setError("");
-
+    setNotice("");
     try {
-      const finalMessage = buildLiveContextMessage(form.message);
-
-      const response = await fetch(apiUrl("/api/support"), {
+      const response = await fetch(apiUrl("/support"), {
         method: "POST",
         credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          fullName: accountName,
-          contactEmail: accountEmail === "Not visible" ? "" : accountEmail,
-          issueType: effectiveCategory,
-          priority: effectivePriority,
+          issueType: form.category,
+          priority: form.priority,
           channel: "web",
-          subject: effectiveSubject.trim(),
-          message: finalMessage,
-          planName,
-          planStatus,
-          latestPaymentReference: supportReference || latestPaymentReference,
-          latestPaymentDate,
-          expiresAt,
-          creditBalance,
-          channelState,
+          subject: form.subject.trim(),
+          message: form.message.trim(),
         }),
       });
-
       const data = await response.json().catch(() => ({}));
-
       if (!response.ok || !data?.ok) {
-        throw new Error(
-          data?.message ||
-            data?.error ||
-            `Support request could not be submitted. Status: ${response.status}`
-        );
+        throw new Error(data?.message || data?.error || `Support request failed. Status: ${response.status}`);
       }
-
-      const savedTicketId = data?.ticket?.ticket_id || "Not shown";
-      setLatestCreatedTicketId(data?.ticket?.ticket_id || "");
-
-      setNotice(
-        `Your support request was sent successfully. Ticket ID: ${savedTicketId}. You can now track replies inside the in-app support inbox below.`
-      );
-
-      resetFormForCurrentFlow();
-      setShowBillingOnly(Boolean(intentPreset) || true);
-
+      const ticketId = data?.ticket?.ticket_id || data?.ticket_id || "not shown";
+      setNotice(`Support request created. Ticket ID: ${ticketId}.`);
+      setForm({ category: "general", priority: "normal", subject: "", message: "" });
       await loadTickets(true);
-
-      if (data?.ticket?.ticket_id) {
-        await loadTicketDetail(data.ticket.ticket_id);
+      if (ticketId && ticketId !== "not shown") {
+        await loadTicketDetail(ticketId);
       }
-
-      window.scrollTo({
-        top: 0,
-        behavior: "smooth",
-      });
     } catch (err: any) {
       setError(err?.message || "Support request could not be submitted.");
     } finally {
@@ -600,58 +215,32 @@ export default function SupportPage() {
     }
   }
 
-  async function handleReplySubmit() {
+  async function submitReply() {
     if (!selectedTicketId) {
-      setError("Select a support ticket before sending a reply.");
+      setError("Select a ticket before replying.");
       return;
     }
-
     if (!replyMessage.trim()) {
-      setError("Please write your reply before sending.");
-      return;
-    }
-
-    if (replyMessage.trim().length < 2) {
-      setError("Reply message is too short.");
+      setError("Please write a reply first.");
       return;
     }
 
     setReplying(true);
-    setNotice("");
     setError("");
-
+    setNotice("");
     try {
-      const response = await fetch(
-        apiUrl(`/api/support/tickets/${selectedTicketId}/reply`),
-        {
-          method: "POST",
-          credentials: "include",
-          headers: {
-            "Content-Type": "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          body: JSON.stringify({
-            senderName: accountName,
-            message: replyMessage.trim(),
-          }),
-        }
-      );
-
+      const response = await fetch(apiUrl(`/support/tickets/${encodeURIComponent(selectedTicketId)}/reply`), {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: replyMessage.trim() }),
+      });
       const data = await response.json().catch(() => ({}));
-
       if (!response.ok || !data?.ok) {
-        throw new Error(
-          data?.message ||
-            data?.error ||
-            `Reply could not be submitted. Status: ${response.status}`
-        );
+        throw new Error(data?.message || data?.error || `Reply failed. Status: ${response.status}`);
       }
-
-      setNotice(
-        `Your reply was sent successfully for ticket ${selectedTicketId}.`
-      );
+      setNotice(`Reply sent for ticket ${selectedTicketId}.`);
       setReplyMessage("");
-
       await loadTickets(false);
       await loadTicketDetail(selectedTicketId);
     } catch (err: any) {
@@ -661,579 +250,146 @@ export default function SupportPage() {
     }
   }
 
-  const visibleTickets = useMemo(() => {
-    return showBillingOnly ? tickets.filter(isBillingRelatedTicket) : tickets;
-  }, [showBillingOnly, tickets]);
-
-  const effectiveCategory = intentPreset?.category || form.category;
-  const effectivePriority = intentPreset?.priority || form.priority;
-  const effectiveSubject = intentPreset?.subject || form.subject;
-  const isIntentLocked = Boolean(intentPreset);
-
-  function resetFormForCurrentFlow() {
-    setForm(
-      intentPreset
-        ? {
-            category: intentPreset.category,
-            priority: intentPreset.priority,
-            subject: intentPreset.subject,
-            message: intentPreset.message,
-          }
-        : {
-            category: "general",
-            priority: "normal",
-            subject: "",
-            message: "",
-          }
-    );
-  }
-
-
-  function handleClear() {
-    resetFormForCurrentFlow();
-    setNotice("");
-    setError("");
-  }
-
   return (
     <AppShell
       title="Support"
-      subtitle="Report billing, credits, linking, login, or technical issues from one clear support center."
+      subtitle="Submit and track support requests from one inbox."
       actions={
         <>
-          <button onClick={() => router.push("/help")} style={shellButtonPrimary()}>
-            Open Help
+          <button type="button" onClick={() => router.push("/help")} style={shellButtonSecondary()}>
+            Help
           </button>
-          <button onClick={() => router.push("/dashboard")} style={shellButtonSecondary()}>
-            Back to Dashboard
+          <button type="button" onClick={() => router.push("/dashboard")} style={shellButtonPrimary()}>
+            Dashboard
           </button>
         </>
       }
     >
       <SectionStack>
-        {primaryAlert ? (
-          <Banner
-            tone={primaryAlert.tone}
-            title={primaryAlert.title}
-            subtitle={primaryAlert.subtitle}
-          />
-        ) : null}
+        {notice ? <Banner tone="good" title="Support update" subtitle={notice} /> : null}
+        {error ? <Banner tone="danger" title="Support issue" subtitle={error} /> : null}
 
-        {intentPreset ? (
-          <Banner
-            tone="default"
-            title={`Support flow ready: ${safeText(intentPreset.subject, "Support request")}`}
-            subtitle={`This form was prefilled from your Refund page action${supportReference ? ` for reference ${supportReference}` : ""}. Review the details, add any extra evidence, and submit when ready.`}
-          />
-        ) : null}
-
-        {notice ? (
-          <Banner
-            tone="good"
-            title="Support request sent successfully"
-            subtitle={notice}
-          />
-        ) : null}
-
-        {error ? (
-          <Banner tone="danger" title="Support request issue" subtitle={error} />
-        ) : null}
-
-        <WorkspaceSectionCard
-          title="How you’ll receive updates"
-          subtitle="Support replies are now available directly inside the app."
-        >
-          <div style={infoBoxStyle()}>
-            <div style={{ color: "var(--text)", lineHeight: 1.8, ...wrapTextStyle() }}>
-              Your support updates will appear in the <strong>In-app support inbox</strong> on
-              this page. Important updates may also be sent to your account email when available.
-              Keep your ticket ID for easy reference.
-            </div>
-          </div>
-        </WorkspaceSectionCard>
-
-        <WorkspaceSectionCard
-          title="Support center"
-          subtitle="Use this page to submit a clear support request together with the visible account context that may help review it faster."
-        >
-          <div style={pageGridStyle()}>
-            <div style={{ display: "grid", gap: 18, minWidth: 0 }}>
-              <div style={infoBoxStyle()}>
-                <div style={{ fontSize: 18, fontWeight: 900, color: "var(--text)", ...wrapTextStyle() }}>
-                  Open a support request
-                </div>
-                <div style={{ color: "var(--text-muted)", lineHeight: 1.7, ...wrapTextStyle() }}>
-                  Choose the issue type, set the priority, and explain clearly what happened.
-                </div>
-                {isIntentLocked ? (
-                  <div style={{ color: "var(--text-muted)", lineHeight: 1.7, marginTop: 8 }}>
-                    Billing handoff is active, so issue type, priority, and subject stay aligned to this refund flow. Add your extra evidence in the description box below.
-                  </div>
-                ) : null}
-              </div>
-
-              <div style={{ display: "grid", gap: 14, minWidth: 0 }}>
-                <select
-                  value={effectiveCategory}
-                  onChange={(event) => setField("category", event.target.value)}
-                  disabled={isIntentLocked}
-                  style={{
-                    ...appSelectStyle(),
-                    opacity: isIntentLocked ? 0.75 : 1,
-                    cursor: isIntentLocked ? "not-allowed" : "pointer",
-                  }}
-                >
-                  <option value="general">Issue type: General support</option>
-                  <option value="billing">Issue type: Billing or subscription</option>
-                  <option value="credits">Issue type: Credits or access</option>
-                  <option value="channels">Issue type: WhatsApp or Telegram linking</option>
-                  <option value="login">Issue type: Login or authentication</option>
-                  <option value="technical">Issue type: Technical issue</option>
-                </select>
-
-                <select
-                  value={effectivePriority}
-                  onChange={(event) => setField("priority", event.target.value)}
-                  disabled={isIntentLocked}
-                  style={{
-                    ...appSelectStyle(),
-                    opacity: isIntentLocked ? 0.75 : 1,
-                    cursor: isIntentLocked ? "not-allowed" : "pointer",
-                  }}
-                >
-                  <option value="normal">Priority: Normal</option>
-                  <option value="high">Priority: High</option>
-                  <option value="urgent">Priority: Urgent</option>
-                </select>
-
-                <input
-                  value={effectiveSubject}
-                  onChange={(event) => setField("subject", event.target.value)}
-                  placeholder="Support subject"
-                  disabled={isIntentLocked}
-                  style={{
-                    ...appInputStyle(),
-                    opacity: isIntentLocked ? 0.85 : 1,
-                    cursor: isIntentLocked ? "not-allowed" : "text",
-                  }}
-                />
-
-                <textarea
-                  value={form.message}
-                  onChange={(event) => setField("message", event.target.value)}
-                  placeholder="Describe the issue clearly. Include what happened, what you expected, and what you already checked."
-                  rows={9}
-                  style={appTextareaStyle()}
-                />
-
-                <div style={fluidActionGrid()}>
-                  <button
-                    onClick={handleSubmit}
-                    disabled={submitting}
-                    style={{
-                      ...shellButtonPrimary(),
-                      opacity: submitting ? 0.7 : 1,
-                      cursor: submitting ? "not-allowed" : "pointer",
-                    }}
-                  >
-                    {submitting ? "Submitting..." : "Submit Support Request"}
-                  </button>
-
-                  <button onClick={handleClear} style={shellButtonSecondary()}>
-                    Clear Form
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div style={{ display: "grid", gap: 18, minWidth: 0 }}>
-              <div style={infoBoxStyle()}>
-                <div style={{ fontSize: 18, fontWeight: 900, color: "var(--text)", ...wrapTextStyle() }}>
-                  Visible account context
-                </div>
-                <div style={{ color: "var(--text-muted)", lineHeight: 1.7, ...wrapTextStyle() }}>
-                  This summary helps support understand the likely source of the issue without
-                  needing unrelated dashboard details.
-                </div>
-              </div>
-
-              <CardsGrid min={190}>
-                <MetricCard
-                  label="Account Email"
-                  value={accountEmail}
-                  helper="Visible email currently associated with the workspace."
-                />
-                <MetricCard
-                  label="Current Plan"
-                  value={planName}
-                  tone={activeNow ? "good" : "warn"}
-                  helper={`Status: ${planStatus}`}
-                />
-                <MetricCard
-                  label="Credits"
-                  value={String(creditBalance)}
-                  tone={creditBalance > 0 ? "good" : "warn"}
-                  helper="Visible AI credit balance at the time of review."
-                />
-                <MetricCard
-                  label="Channel State"
-                  value={channelState}
-                  helper="Visible WhatsApp and Telegram linking state."
-                />
-              </CardsGrid>
-            </div>
-          </div>
-        </WorkspaceSectionCard>
-
-        <WorkspaceSectionCard
-          title="My support requests"
-          subtitle="Track your ticket status, focus on billing-related requests when needed, and open any ticket to see the full in-app conversation."
-        >
-          <div style={{ ...fluidActionGrid(), marginBottom: 14 }}>
-            <button
-              onClick={() => setShowBillingOnly(false)}
-              style={showBillingOnly ? shellButtonSecondary() : shellButtonPrimary()}
-            >
-              All Tickets
+        <WorkspaceSectionCard title="My support requests" subtitle="All support and professional review tickets are shown here.">
+          <div style={actionGrid()}>
+            <button type="button" onClick={() => loadTickets(true)} style={shellButtonPrimary()}>
+              {loadingTickets ? "Refreshing..." : "Refresh Tickets"}
             </button>
-            <button
-              onClick={() => setShowBillingOnly(true)}
-              style={showBillingOnly ? shellButtonPrimary() : shellButtonSecondary()}
-            >
-              Billing Tickets Only
+            <button type="button" onClick={() => router.push("/expert-review")} style={shellButtonSecondary()}>
+              Professional Review
             </button>
           </div>
 
           {loadingTickets ? (
-            <Banner tone="default" title="Loading support requests" subtitle="Please wait..." />
-          ) : visibleTickets.length === 0 ? (
-            <Banner
-              tone="default"
-              title={tickets.length === 0 ? "No support requests yet" : "No tickets in this view"}
-              subtitle={
-                tickets.length === 0
-                  ? "Your submitted tickets will appear here."
-                  : "Switch back to All Tickets to see non-billing support requests."
-              }
-            />
+            <Banner tone="default" title="Loading tickets" subtitle="Please wait..." />
+          ) : tickets.length === 0 ? (
+            <Banner tone="default" title="No support requests yet" subtitle="Your submitted tickets will appear here." />
           ) : (
             <div style={{ display: "grid", gap: 12 }}>
-              {visibleTickets.map((ticket) => {
+              {tickets.map((ticket) => {
                 const active = ticket.ticket_id === selectedTicketId;
-                const billingRelated = isBillingRelatedTicket(ticket);
-                const latestCreated = latestCreatedTicketId && ticket.ticket_id === latestCreatedTicketId;
-
                 return (
-                  <div
+                  <button
                     key={ticket.ticket_id}
-                    style={{
-                      ...ticketRowStyle(active),
-                      borderColor: latestCreated ? "rgba(78, 110, 255, 0.55)" : "var(--border)",
-                    }}
+                    type="button"
                     onClick={() => loadTicketDetail(ticket.ticket_id)}
+                    style={{ ...rowStyle(active), textAlign: "left" }}
                   >
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        gap: 12,
-                        flexWrap: "wrap",
-                        alignItems: "center",
-                      }}
-                    >
-                      <div style={{ display: "grid", gap: 8 }}>
-                        <div style={{ fontSize: 16, fontWeight: 800, color: "var(--text)", ...wrapTextStyle() }}>
-                          {ticket.subject || "Untitled support request"}
-                        </div>
-
-                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                          {billingRelated ? (
-                            <span
-                              style={{
-                                fontSize: 12,
-                                fontWeight: 800,
-                                borderRadius: 999,
-                                padding: "4px 10px",
-                                border: "1px solid rgba(78, 110, 255, 0.35)",
-                                background: "rgba(78, 110, 255, 0.12)",
-                                color: "var(--text)",
-                              }}
-                            >
-                              Billing-related
-                            </span>
-                          ) : null}
-
-                          {latestCreated ? (
-                            <span
-                              style={{
-                                fontSize: 12,
-                                fontWeight: 800,
-                                borderRadius: 999,
-                                padding: "4px 10px",
-                                border: "1px solid rgba(34, 197, 94, 0.35)",
-                                background: "rgba(34, 197, 94, 0.12)",
-                                color: "var(--text)",
-                              }}
-                            >
-                              Latest created
-                            </span>
-                          ) : null}
-                        </div>
-                      </div>
-
-                      <div
-                        style={{
-                          fontSize: 13,
-                          fontWeight: 700,
-                          color: "var(--text)",
-                          opacity: 0.9,
-                          ...wrapTextStyle(),
-                        }}
-                      >
-                        {ticket.ticket_id}
-                      </div>
+                    <strong style={{ color: "var(--text)", fontSize: 16, ...wrapStyle() }}>
+                      {text(ticket.ticket_id)} - {text(ticket.subject, "Support request")}
+                    </strong>
+                    <div style={{ color: "var(--text-muted)", lineHeight: 1.7, ...wrapStyle() }}>
+                      Status: {text(ticket.status, "open")} | Priority: {text(ticket.priority, "normal")} | Type: {text(ticket.category, "general")}
                     </div>
-
-                    <div
-                      style={{
-                        display: "flex",
-                        gap: 12,
-                        flexWrap: "wrap",
-                        color: "var(--text-muted)",
-                        fontSize: 14,
-                        minWidth: 0,
-                      }}
-                    >
-                      <span>Status: {ticket.status}</span>
-                      <span>Priority: {ticket.priority}</span>
-                      <span>Type: {normalizeTicketType(ticket.category)}</span>
-                      <span>
-                        Updated: {ticket.updated_at ? formatDate(ticket.updated_at) : "Not shown"}
-                      </span>
+                    <div style={{ color: "var(--text-muted)", lineHeight: 1.7, ...wrapStyle() }}>
+                      Updated: {ticket.updated_at ? formatDate(ticket.updated_at) : "Not shown"}
                     </div>
-
-                    <div
-                      style={{
-                        color: "var(--text-muted)",
-                        lineHeight: 1.7,
-                        display: "-webkit-box",
-                        WebkitLineClamp: 2,
-                        WebkitBoxOrient: "vertical",
-                        overflow: "hidden",
-                        overflowWrap: "anywhere",
-                        wordBreak: "break-word",
-                      }}
-                    >
-                      {previewText(ticket)}
+                    <div style={{ color: "var(--text-muted)", lineHeight: 1.7, ...wrapStyle() }}>
+                      {text(ticket.last_message_preview || ticket.message, "No message preview available.")}
                     </div>
-                  </div>
+                  </button>
                 );
               })}
             </div>
           )}
         </WorkspaceSectionCard>
 
-        <WorkspaceSectionCard
-          title="In-app support inbox"
-          subtitle="Open your selected ticket thread, view support replies, and continue the conversation inside the app."
-        >
+        <WorkspaceSectionCard title="Ticket conversation" subtitle="Open a ticket above to view and reply.">
           {!selectedTicketId ? (
-            <Banner
-              tone="default"
-              title="No ticket selected"
-              subtitle="Select a support request above to view its conversation."
-            />
+            <Banner tone="default" title="No ticket selected" subtitle="Select a ticket to view the thread." />
           ) : loadingThread ? (
-            <Banner tone="default" title="Loading support thread" subtitle="Please wait..." />
+            <Banner tone="default" title="Loading thread" subtitle="Please wait..." />
           ) : selectedTicket ? (
-            <div style={{ display: "grid", gap: 18, minWidth: 0 }}>
-              <div style={infoBoxStyle()}>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 220px), 1fr))",
-                    gap: 12,
-                    alignItems: "center",
-                    minWidth: 0,
-                  }}
-                >
-                  <div style={{ fontSize: 18, fontWeight: 900, color: "var(--text)", ...wrapTextStyle() }}>
-                    {selectedTicket.subject}
-                  </div>
-                  <div style={{ color: "var(--text-muted)", fontSize: 14, ...wrapTextStyle() }}>
-                    Ticket ID: {selectedTicket.ticket_id}
-                  </div>
+            <div style={{ display: "grid", gap: 14 }}>
+              <div style={panelStyle()}>
+                <strong style={{ color: "var(--text)", fontSize: 18, ...wrapStyle() }}>
+                  {text(selectedTicket.ticket_id)} - {text(selectedTicket.subject, "Support request")}
+                </strong>
+                <div style={{ color: "var(--text-muted)", lineHeight: 1.7 }}>
+                  Status: {text(selectedTicket.status, "open")} | Priority: {text(selectedTicket.priority, "normal")}
                 </div>
-
-                <div
-                  style={{
-                    display: "flex",
-                    gap: 12,
-                    flexWrap: "wrap",
-                    color: "var(--text-muted)",
-                    fontSize: 14,
-                  }}
-                >
-                  <span>Status: {selectedTicket.status}</span>
-                  <span>Priority: {selectedTicket.priority}</span>
-                  <span>Type: {selectedTicket.category}</span>
-                  <span>
-                    Last updated:{" "}
-                    {selectedTicket.updated_at
-                      ? formatDate(selectedTicket.updated_at)
-                      : "Not shown"}
-                  </span>
-                </div>
-
-                <Banner
-                  tone={statusTone(selectedTicket.status)}
-                  title={`Current status: ${selectedTicket.status}`}
-                  subtitle={
-                    selectedTicket.status === "awaiting_user"
-                      ? "Support is waiting for your reply."
-                      : selectedTicket.status === "resolved"
-                      ? "This ticket has been marked as resolved."
-                      : selectedTicket.status === "in_review"
-                      ? "Your request is currently under review."
-                      : "Your support request is open and active."
-                  }
-                />
               </div>
 
-              <div
-                style={{
-                  display: "grid",
-                  gap: 12,
-                  border: "1px solid var(--border)",
-                  borderRadius: 18,
-                  background: "var(--surface)",
-                  padding: "clamp(12px, 3.5vw, 16px)",
-                  minHeight: 220,
-                  minWidth: 0,
-                }}
-              >
-                {threadMessages.length === 0 ? (
-                  <Banner
-                    tone="default"
-                    title="No thread messages yet"
-                    subtitle="The original request or future support replies will appear here."
-                  />
+              <div style={{ display: "grid", gap: 10 }}>
+                {messages.length === 0 ? (
+                  <Banner tone="default" title="No messages yet" subtitle="The original request or future replies will appear here." />
                 ) : (
-                  threadMessages.map((msg) => (
-                    <div key={msg.id} style={messageBubbleStyle(msg.sender_type)}>
-                      <div
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          gap: 12,
-                          flexWrap: "wrap",
-                          alignItems: "center",
-                        }}
-                      >
-                        <div style={{ fontWeight: 800, color: "var(--text)", ...wrapTextStyle() }}>
-                          {msg.sender_type === "admin"
-                            ? msg.sender_name || "Support Team"
-                            : msg.sender_name || "You"}
-                        </div>
-                        <div style={{ color: "var(--text-muted)", fontSize: 12 }}>
-                          {msg.created_at ? formatDate(msg.created_at) : "Not shown"}
-                        </div>
+                  messages.map((msg, index) => (
+                    <div key={`${msg.id || index}-${msg.created_at || "message"}`} style={panelStyle()}>
+                      <strong style={{ color: "var(--text)" }}>
+                        {msg.sender_type === "admin" ? msg.sender_name || "Support Team" : msg.sender_name || "You"}
+                      </strong>
+                      <div style={{ color: "var(--text-muted)", fontSize: 13 }}>
+                        {msg.created_at ? formatDate(msg.created_at) : "Not shown"}
                       </div>
-                      <div
-                        style={{
-                          color: "var(--text)",
-                          lineHeight: 1.8,
-                          whiteSpace: "pre-wrap",
-                          wordBreak: "break-word",
-                        }}
-                      >
-                        {msg.message}
+                      <div style={{ color: "var(--text)", lineHeight: 1.8, whiteSpace: "pre-wrap", ...wrapStyle() }}>
+                        {text(msg.message, "")}
                       </div>
                     </div>
                   ))
                 )}
               </div>
 
-              <div style={infoBoxStyle()}>
-                <div style={{ fontSize: 17, fontWeight: 900, color: "var(--text)", ...wrapTextStyle() }}>
-                  Reply in-app
-                </div>
-                <div style={{ color: "var(--text-muted)", lineHeight: 1.7, ...wrapTextStyle() }}>
-                  Send your follow-up directly from this page. Your message will become part of the
-                  ticket conversation.
-                </div>
-
-                <textarea
-                  value={replyMessage}
-                  onChange={(event) => {
-                    setReplyMessage(event.target.value);
-                    setNotice("");
-                    setError("");
-                  }}
-                  placeholder="Write your reply to support here..."
-                  rows={5}
-                  style={appTextareaStyle()}
-                />
-
-                <div style={fluidActionGrid()}>
-                  <button
-                    onClick={handleReplySubmit}
-                    disabled={replying}
-                    style={{
-                      ...shellButtonPrimary(),
-                      opacity: replying ? 0.7 : 1,
-                      cursor: replying ? "not-allowed" : "pointer",
-                    }}
-                  >
-                    {replying ? "Sending reply..." : "Send Reply"}
-                  </button>
-
-                  <button
-                    onClick={() => setReplyMessage("")}
-                    style={shellButtonSecondary()}
-                  >
-                    Clear Reply
-                  </button>
-                </div>
+              <textarea
+                value={replyMessage}
+                onChange={(event) => setReplyMessage(event.target.value)}
+                placeholder="Write your reply to support here..."
+                rows={5}
+                style={appTextareaStyle()}
+              />
+              <div style={actionGrid()}>
+                <button type="button" onClick={submitReply} disabled={replying} style={shellButtonPrimary()}>
+                  {replying ? "Sending..." : "Send Reply"}
+                </button>
+                <button type="button" onClick={() => setReplyMessage("")} style={shellButtonSecondary()}>
+                  Clear Reply
+                </button>
               </div>
             </div>
           ) : (
-            <Banner
-              tone="default"
-              title="Support thread not available"
-              subtitle="Select a valid ticket to view its thread."
-            />
+            <Banner tone="default" title="Ticket not available" subtitle="Select another ticket or refresh the list." />
           )}
         </WorkspaceSectionCard>
 
-        <WorkspaceSectionCard
-          title="Before submitting"
-          subtitle="Only the most relevant checks before you open a support request."
-        >
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 220px), 1fr))",
-              gap: 12,
-              color: "var(--text)",
-              fontSize: 15,
-              lineHeight: 1.8,
-              minWidth: 0,
-            }}
-          >
-            <div style={infoBoxStyle()}>
-              Check Billing if the issue is about subscription status, renewal, or plan access.
-            </div>
-            <div style={infoBoxStyle()}>
-              Check Credits if the assistant stops answering or access feels unexpectedly limited.
-            </div>
-            <div style={infoBoxStyle()}>
-              Check Channels if the issue involves WhatsApp or Telegram linking behavior.
-            </div>
-            <div style={infoBoxStyle()}>
-              Use Help first if you are unsure whether the issue is billing, credits, channels, or
-              normal app behavior.
-            </div>
+        <WorkspaceSectionCard title="Open a new support request" subtitle="Use this for billing, credits, channels, login, or technical issues.">
+          <div style={{ display: "grid", gap: 12 }}>
+            <select value={form.category} onChange={(event) => setField("category", event.target.value)} style={appSelectStyle()}>
+              <option value="general">Issue type: General support</option>
+              <option value="billing">Issue type: Billing or subscription</option>
+              <option value="credits">Issue type: Credits or access</option>
+              <option value="channels">Issue type: WhatsApp or Telegram linking</option>
+              <option value="login">Issue type: Login or authentication</option>
+              <option value="technical">Issue type: Technical issue</option>
+            </select>
+            <select value={form.priority} onChange={(event) => setField("priority", event.target.value)} style={appSelectStyle()}>
+              <option value="normal">Priority: Normal</option>
+              <option value="high">Priority: High</option>
+              <option value="urgent">Priority: Urgent</option>
+            </select>
+            <input value={form.subject} onChange={(event) => setField("subject", event.target.value)} placeholder="Support subject" style={appInputStyle()} />
+            <textarea value={form.message} onChange={(event) => setField("message", event.target.value)} placeholder="Describe the issue clearly." rows={7} style={appTextareaStyle()} />
+            <button type="button" onClick={submitSupport} disabled={submitting} style={shellButtonPrimary()}>
+              {submitting ? "Submitting..." : "Submit Support Request"}
+            </button>
           </div>
         </WorkspaceSectionCard>
       </SectionStack>
