@@ -103,24 +103,41 @@ export default function PrivacyPage() {
         >
           <div style={sectionBodyStyle()}>
             <p style={paragraphStyle()}>
-              This Privacy Policy is intended to describe how Naija Tax Guide may
-              collect, use, store, protect, and operationally process user and
-              workspace information when people access the web portal, billing
-              tools, AI guidance features, linked communication channels, and
-              support functions.
+              This Privacy Policy describes how Naija Tax Guide may collect, use,
+              store, protect, and operationally process user and workspace
+              information when people access the web portal, billing tools, AI
+              guidance features, linked communication channels, and support
+              functions.
             </p>
-
             <p style={paragraphStyle()}>
-              The policy is written to help users understand the practical
-              privacy position of the platform in a clear way. It should be read
-              together with other visible platform pages such as billing,
-              refund, support, and data deletion where relevant.
+              The policy should be read together with the Terms, Refund Policy,
+              Support page, and Data Deletion Instructions where relevant.
             </p>
           </div>
         </WorkspaceSectionCard>
 
         <WorkspaceSectionCard
-          title="2. Information we may collect"
+          title="2. Nigeria data protection posture"
+          subtitle="The platform is intended to respect practical rights and safeguards associated with the Nigeria Data Protection Act and related privacy expectations."
+        >
+          <div style={sectionBodyStyle()}>
+            <p style={paragraphStyle()}>
+              Tax questions can contain sensitive personal, business, billing,
+              employment, or identity-related context. Naija Tax Guide should
+              process this information only for legitimate platform purposes such
+              as account access, support, billing confirmation, security,
+              service delivery, and lawful compliance.
+            </p>
+            <ul style={bulletListStyle()}>
+              <li>Users may request access, correction, support review, or deletion through the published support and data deletion routes.</li>
+              <li>Users should avoid submitting unnecessary sensitive records unless a professional or support agent specifically requests them through an appropriate route.</li>
+              <li>Where data must be retained for billing, fraud prevention, dispute handling, security logging, or legal compliance, retention should be limited to what is reasonably necessary.</li>
+            </ul>
+          </div>
+        </WorkspaceSectionCard>
+
+        <WorkspaceSectionCard
+          title="3. Information we may collect"
           subtitle="The platform may collect different categories of data depending on the feature being used."
         >
           <div style={sectionBodyStyle()}>
@@ -149,17 +166,17 @@ export default function PrivacyPage() {
               <p style={paragraphStyle()}>
                 We may collect billing-related identifiers such as subscription
                 plan, payment reference, transaction status, renewal status, and
-                credit activity. Sensitive payment card details are generally
-                handled by approved payment processors rather than stored
-                directly by the platform.
+                credit activity. Sensitive payment card details are handled by
+                approved payment processors and are not stored directly by Naija
+                Tax Guide.
               </p>
             </div>
           </div>
         </WorkspaceSectionCard>
 
         <WorkspaceSectionCard
-          title="3. How information may be used"
-          subtitle="The platform may use collected information for operational, support, and security purposes."
+          title="4. How information may be used"
+          subtitle="The platform may use collected information for operational, support, billing, and security purposes."
         >
           <div style={sectionBodyStyle()}>
             <ul style={bulletListStyle()}>
@@ -168,23 +185,22 @@ export default function PrivacyPage() {
               <li>To manage subscriptions, credits, renewals, and payment verification.</li>
               <li>To link supported channels such as WhatsApp and Telegram to the same user workspace.</li>
               <li>To detect abuse, fraud, policy violations, technical failure, or billing anomalies.</li>
-              <li>To respond to support requests, account issues, and lawful compliance obligations.</li>
+              <li>To respond to support requests, expert review requests, account issues, and lawful compliance obligations.</li>
             </ul>
           </div>
         </WorkspaceSectionCard>
 
         <WorkspaceSectionCard
-          title="4. Third-party service providers"
+          title="5. Third-party service providers"
           subtitle="Some platform functions may rely on carefully selected third-party infrastructure."
         >
           <div style={sectionBodyStyle()}>
             <p style={paragraphStyle()}>
-              These providers may include payment processors, hosting providers,
-              communication APIs, email delivery tools, analytics or monitoring
-              tools, and channel integrations such as WhatsApp or Telegram
-              infrastructure where applicable.
+              These providers may include payment processors such as Paystack,
+              hosting providers, communication APIs, email delivery tools,
+              analytics or monitoring tools, and channel integrations such as
+              WhatsApp or Telegram infrastructure where applicable.
             </p>
-
             <p style={paragraphStyle()}>
               Where third-party providers are involved, data sharing should
               remain limited to what is reasonably necessary for the relevant
@@ -195,7 +211,7 @@ export default function PrivacyPage() {
         </WorkspaceSectionCard>
 
         <WorkspaceSectionCard
-          title="5. Channel linking and workspace continuity"
+          title="6. Channel linking and workspace continuity"
           subtitle="Linked channels may be associated with the same workspace for continuity and account protection."
         >
           <div style={sectionBodyStyle()}>
@@ -206,59 +222,32 @@ export default function PrivacyPage() {
               that service continuity and account protection can be maintained
               across touchpoints.
             </p>
-
-            <p style={paragraphStyle()}>
-              Users should avoid submitting highly sensitive information beyond
-              what is necessary for practical tax support, especially where a
-              matter may require licensed professional escalation.
-            </p>
           </div>
         </WorkspaceSectionCard>
 
         <WorkspaceSectionCard
-          title="6. Support and in-app communication"
-          subtitle="Support requests may be stored and managed through the platform’s support system."
+          title="7. Data retention, encryption, and protection"
+          subtitle="Operational data should be protected with reasonable safeguards and kept only as long as reasonably necessary."
         >
           <div style={sectionBodyStyle()}>
             <p style={paragraphStyle()}>
-              When a user submits a support request, the platform may store the
-              ticket subject, message content, account reference, visible plan
-              context, visible credits, linked channel state, ticket status, and
-              support thread messages needed to manage the request.
+              The platform should use reasonable technical and organizational
+              safeguards to reduce unauthorized access, misuse, or accidental
+              exposure of user information. This includes HTTPS for data in
+              transit and appropriate database, hosting, access-control, and
+              monitoring safeguards for stored operational data.
             </p>
-
-            <p style={paragraphStyle()}>
-              Support feedback may appear inside the in-app support inbox and,
-              where appropriate, may also be sent to the email address
-              associated with the relevant workspace or support submission.
-            </p>
-          </div>
-        </WorkspaceSectionCard>
-
-        <WorkspaceSectionCard
-          title="7. Data retention and protection"
-          subtitle="The platform should keep operational data only as long as reasonably necessary for service delivery, support continuity, compliance, and dispute handling."
-        >
-          <div style={sectionBodyStyle()}>
-            <p style={paragraphStyle()}>
-              Reasonable technical and organizational safeguards should be used
-              to reduce unauthorized access, misuse, or accidental exposure of
-              user information. No internet-based service can promise absolute
-              security, but the platform should still apply practical safeguards
-              appropriate to its stage and operational model.
-            </p>
-
             <div style={mutedNoteStyle()}>
-              Users should also play their own part by protecting login
-              credentials, avoiding unnecessary sharing of highly sensitive
-              information, and contacting support quickly if suspicious account
-              activity is noticed.
+              No internet-based service can promise absolute security. Users
+              should also protect login credentials, avoid unnecessary sharing of
+              highly sensitive information, and contact support quickly if
+              suspicious account activity is noticed.
             </div>
           </div>
         </WorkspaceSectionCard>
 
         <WorkspaceSectionCard
-          title="8. User choices and requests"
+          title="8. User choices and deletion requests"
           subtitle="Users may request assistance regarding support, account corrections, or deletion-related needs through the platform’s published routes."
         >
           <div style={sectionBodyStyle()}>
@@ -268,11 +257,10 @@ export default function PrivacyPage() {
               requests, support follow-up, or data deletion requests through the
               visible support and data deletion routes provided within the app.
             </p>
-
             <p style={paragraphStyle()}>
-              Some operational or legally necessary records may still need to be
-              retained for billing reconciliation, fraud prevention, audit trail,
-              or lawful compliance reasons where applicable.
+              Privacy and deletion-related requests may be sent to
+              <strong> privacy@naijataxguides.com</strong> or raised through the
+              official support route where appropriate.
             </p>
           </div>
         </WorkspaceSectionCard>
@@ -286,12 +274,6 @@ export default function PrivacyPage() {
               Continued use of the platform after material updates may indicate
               acceptance of the revised privacy framework to the extent
               permitted by law and platform policy.
-            </p>
-
-            <p style={paragraphStyle()}>
-              For privacy or compliance-related questions, users should contact
-              the support route provided within the product or the official
-              support contact published by Naija Tax Guide.
             </p>
           </div>
         </WorkspaceSectionCard>
