@@ -590,11 +590,11 @@ export default function DashboardPage() {
 
         <div style={summaryGridStyle()}>
           <div style={summaryCardStyle()}>
-            <div style={summaryLabelStyle()}>Workspace Status</div>
+            <div style={summaryLabelStyle()}>Team Members</div>
             <div style={summaryValueStyle()}>
               {workspaceUsed} / {workspaceMaxUsers || 0}
             </div>
-            <div style={summarySubStyle()}>Available slots: {workspaceAvailable}</div>
+            <div style={summarySubStyle()}>Available team member slots: {workspaceAvailable}</div>
             <div style={buttonRowStyle()}>
               <button
                 onClick={() => router.push("/workspace")}
@@ -674,7 +674,7 @@ export default function DashboardPage() {
               />
               <ShortcutCard
                 title="Workspace"
-                subtitle="Check workspace slots, owner status, and member capacity."
+                subtitle="Check team member capacity, owner status, and workspace access."
                 tone={workspaceAvailable <= 0 ? "warn" : "default"}
                 onClick={() => router.push("/workspace")}
               />
@@ -738,22 +738,24 @@ export default function DashboardPage() {
               </div>
 
               <div style={snapshotItemStyle()}>
-                <div style={snapshotTitleStyle()}>Workspace</div>
+                <div style={snapshotTitleStyle()}>Team members</div>
                 <div style={snapshotValueStyle()}>
                   {workspaceUsed} / {workspaceMaxUsers || 0}
                 </div>
-                <div style={snapshotMetaStyle()}>Available slots: {workspaceAvailable}</div>
-              </div>
-
-              <div style={snapshotItemStyle()}>
-                <div style={snapshotTitleStyle()}>Pending Plan Change</div>
-                <div style={snapshotValueStyle()}>{pendingPlanCode || "None"}</div>
                 <div style={snapshotMetaStyle()}>
-                  {pendingPlanCode
-                    ? `Pending start: ${pendingStartsAt ? formatDate(pendingStartsAt) : "Not shown"}`
-                    : "No pending plan transition is currently visible."}
+                  Available team member slots: {workspaceAvailable}
                 </div>
               </div>
+
+              {pendingPlanCode ? (
+                <div style={snapshotItemStyle()}>
+                  <div style={snapshotTitleStyle()}>Pending Plan Change</div>
+                  <div style={snapshotValueStyle()}>{pendingPlanCode}</div>
+                  <div style={snapshotMetaStyle()}>
+                    Pending start: {pendingStartsAt ? formatDate(pendingStartsAt) : "Not shown"}
+                  </div>
+                </div>
+              ) : null}
             </div>
           </WorkspaceSectionCard>
         </ResponsiveColumns>
