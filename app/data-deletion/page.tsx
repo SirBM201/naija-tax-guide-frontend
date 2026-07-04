@@ -126,7 +126,7 @@ export default function DataDeletionPage() {
         >
           <div style={sectionBodyStyle()}>
             <p style={paragraphStyle()}>
-              You may send an email to <strong>privacy@naijataxguide.com</strong>{" "}
+              You may send an email to <strong>privacy@naijataxguides.com</strong>{" "}
               with a clear subject line such as{" "}
               <strong>“Data Deletion Request”</strong>.
             </p>
@@ -238,7 +238,7 @@ export default function DataDeletionPage() {
           <div style={sectionBodyStyle()}>
             <p style={paragraphStyle()}>
               For compliance or deletion-related inquiries, contact{" "}
-              <strong>privacy@naijataxguide.com</strong> or use the official
+              <strong>privacy@naijataxguides.com</strong> or use the official
               support route available within the platform where appropriate.
             </p>
           </div>
