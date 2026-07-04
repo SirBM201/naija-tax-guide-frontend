@@ -23,6 +23,25 @@ type SubmitResult = {
   error?: string;
 };
 
+const scopeItems = [
+  "Human review of the facts you provide and the tax issue you identify.",
+  "A written triage response or next-step guidance in the support thread.",
+  "A request for more facts or documents where the matter cannot be assessed safely from the first message.",
+  "Escalation guidance when a matter should be handled by a qualified tax practitioner, accountant, or lawyer outside the app.",
+];
+
+const excludedItems = [
+  "It is not instant AI advice and it is not a government filing service.",
+  "It is not a statutory audit, signed tax opinion, court/legal representation, or FIRS/state tax authority submission unless separately agreed in writing.",
+  "Do not paste full IDs, passwords, complete bank card details, or unnecessary sensitive documents into this form.",
+];
+
+const reviewerBoundaryItems = [
+  "Reviewer assignment depends on matter type and availability.",
+  "Where a licensed or specialist professional is required, support may ask you to proceed under a separate scope and fee arrangement.",
+  "Final pricing can depend on urgency, records involved, tax head, tax period, and whether a written opinion or filing support is needed.",
+];
+
 function bodyText(): React.CSSProperties {
   return {
     margin: 0,
@@ -155,17 +174,34 @@ export default function ExpertReviewPage() {
       <SectionStack>
         <Banner
           tone="warn"
-          title="Professional review is not instant AI advice"
-          subtitle="Use this route for audits, official notices, assessments, penalties, objections, formal filings, back-duty exposure, restructuring, cross-border questions, or high-value decisions. Final scope, pricing, and availability may depend on the facts and reviewer availability."
+          title="Professional review is human escalation, not instant AI advice"
+          subtitle="Use this route for audits, official notices, assessments, penalties, objections, formal filings, back-duty exposure, restructuring, cross-border questions, or high-value decisions. Final scope, pricing, and availability depend on the facts and reviewer availability."
         />
 
         {notice ? <Banner tone="good" title="Request created" subtitle={notice} /> : null}
         {error ? <Banner tone="danger" title="Request issue" subtitle={error} /> : null}
 
-        <WorkspaceSectionCard title="Review packages" subtitle="Choose the closest route. Support can reclassify the request during triage.">
+        <WorkspaceSectionCard title="What this review can include" subtitle="Professional review starts with triage and may move to a separate scope if the matter needs deeper work.">
+          <CardsGrid min={260}>
+            <div style={card()}>
+              <strong style={{ color: "var(--text)", fontSize: 18 }}>Included in review triage</strong>
+              {list(scopeItems)}
+            </div>
+            <div style={card()}>
+              <strong style={{ color: "var(--text)", fontSize: 18 }}>Not automatically included</strong>
+              {list(excludedItems)}
+            </div>
+            <div style={card()}>
+              <strong style={{ color: "var(--text)", fontSize: 18 }}>Pricing and reviewer boundary</strong>
+              {list(reviewerBoundaryItems)}
+            </div>
+          </CardsGrid>
+        </WorkspaceSectionCard>
+
+        <WorkspaceSectionCard title="Review packages" subtitle="Choose the closest route. The review team may reclassify the request during triage if another route is safer.">
           <CardsGrid min={260}>
             {(packages.length ? packages : [
-              { code: "triage", name: "Professional Review Triage", status: "available", price_note: "Initial routing and scope review.", sla_note: "Target first response: 1-2 business days after complete information is received.", best_for: ["Scope review", "Document preparation", "Escalation decision"] },
+              { code: "triage", name: "Professional Review Triage", status: "available", price_note: "Initial routing and scope review; further professional fees may be quoted after facts are reviewed.", sla_note: "Target first response: 1-2 business days after complete information is received.", best_for: ["Scope review", "Document preparation", "Escalation decision"] },
             ]).map((item) => (
               <button
                 key={item.code}
@@ -190,8 +226,8 @@ export default function ExpertReviewPage() {
         </WorkspaceSectionCard>
 
         <WorkspaceSectionCard
-          title="Create request"
-          subtitle={selectedPackage ? `Selected: ${selectedPackage.name}` : "Describe the issue clearly so support can triage it."}
+          title="Create professional review request"
+          subtitle={selectedPackage ? `Selected: ${selectedPackage.name}` : "Describe the matter clearly so it can be reviewed and routed safely."}
         >
           <div style={{ display: "grid", gap: 14 }}>
             <select value={packageCode} onChange={(event) => setPackageCode(event.target.value)} style={appSelectStyle()}>
