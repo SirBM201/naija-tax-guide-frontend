@@ -159,6 +159,14 @@ function buildPlanName(
   return "No active plan";
 }
 
+function formatPlanType(value?: string) {
+  const text = value?.trim();
+  if (!text) return "Standard";
+  return text
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
 function safeCount(value?: number) {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
@@ -739,6 +747,10 @@ export default function WorkspacePage() {
     maxTotalChannels
   );
 
+  const planType = formatPlanType(
+    limits?.entitlements?.plan_family || plan?.plan_family || membersData?.entitlements?.plan_family
+  );
+
   const hasWorkspacePlan =
     planName !== "No active plan" ||
     maxWorkspaceUsers > 0 ||
@@ -749,13 +761,6 @@ export default function WorkspacePage() {
   const addBlockedBecauseNoPlan = !hasWorkspacePlan || maxWorkspaceUsers <= 0;
   const addBlocked = addBlockedBecauseNoPlan || workspacePlanFull;
 
-  const ownerAccountId =
-    owner?.account_id ||
-    membersData?.account_id ||
-    limits?.account_id ||
-    limits?.entitlements?.account_id ||
-    "—";
-
   async function handleAddMember(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setAddMessage("");
@@ -765,14 +770,14 @@ export default function WorkspacePage() {
 
     if (addBlockedBecauseNoPlan) {
       setAddError(
-        "Workspace member access is not enabled on the current plan. Activate or upgrade to a plan that includes workspace slots first."
+        "Team member access is not enabled on the current plan. Activate or upgrade to a plan that includes team member capacity first."
       );
       return;
     }
 
     if (workspacePlanFull) {
       setAddError(
-        "Your current team-member slots are full. This only affects adding extra workspace members; it does not mean your WhatsApp or Telegram channel slots are full. Upgrade your plan or remove an existing member first."
+        "Your current team-member slots are full. This only affects adding extra workspace members; it does not mean your WhatsApp or Telegram channel capacity is full. Upgrade your plan or remove an existing member first."
       );
       return;
     }
@@ -847,7 +852,7 @@ export default function WorkspacePage() {
   return (
     <AppShell
       title="Workspace"
-      subtitle="Manage your owner account, workspace member slots, and current plan limits from one place."
+      subtitle="Manage your owner account, team member capacity, and current plan limits from one place."
       actions={
         <button
           type="button"
@@ -870,12 +875,12 @@ export default function WorkspacePage() {
             <div style={styles.heroInfo}>
               <div>
                 <h2 style={{ ...styles.heroTitle, color: "#1d4ed8" }}>
-                  Workspace member access is not enabled yet
+                  Team member access is not enabled yet
                 </h2>
                 <div style={{ ...styles.heroText, color: "#1e3a8a" }}>
-                  This account does not currently show an active plan with workspace
-                  member slots. You can still review limits and owner details below,
-                  but adding members will remain disabled until a workspace-enabled plan
+                  This account does not currently show an active plan with team member
+                  capacity. You can still review limits and owner details below,
+                  but adding members will remain disabled until an eligible plan
                   becomes active.
                 </div>
               </div>
@@ -898,8 +903,8 @@ export default function WorkspacePage() {
                   Team member slots are full
                 </h2>
                 <div style={{ ...styles.heroText, color: "#9a3412" }}>
-                  You are using {usedSlots} of {maxWorkspaceUsers} allowed workspace user slot
-                  {maxWorkspaceUsers === 1 ? "" : "s"} on the <strong>{planName}</strong>. This means you cannot add another team member on this plan. It does <strong>not</strong> mean your WhatsApp or Telegram channel slots are full.
+                  You are using {usedSlots} of {maxWorkspaceUsers} allowed team member slot
+                  {maxWorkspaceUsers === 1 ? "" : "s"} on the <strong>{planName}</strong>. This means you cannot add another team member on this plan. It does <strong>not</strong> mean your WhatsApp or Telegram channel capacity is full.
                 </div>
               </div>
 
@@ -922,21 +927,15 @@ export default function WorkspacePage() {
                 <div style={styles.summaryCard}>
                   <div style={styles.summaryLabel}>Plan</div>
                   <div style={styles.summaryValue}>{planName}</div>
-                  <div style={styles.summarySub}>
-                    Family:{" "}
-                    {plan?.plan_family ||
-                      limits?.entitlements?.plan_family ||
-                      membersData?.entitlements?.plan_family ||
-                      "—"}
-                  </div>
+                  <div style={styles.summarySub}>Plan type: {planType}</div>
                 </div>
 
                 <div style={styles.summaryCard}>
-                  <div style={styles.summaryLabel}>Workspace usage</div>
+                  <div style={styles.summaryLabel}>Team member usage</div>
                   <div style={styles.summaryValue}>
                     {usedSlots} / {maxWorkspaceUsers}
                   </div>
-                  <div style={styles.summarySub}>Owner included total usage</div>
+                  <div style={styles.summarySub}>Owner included in total usage</div>
                 </div>
 
                 <div style={styles.summaryCard}>
@@ -950,7 +949,7 @@ export default function WorkspacePage() {
                   <div style={styles.summaryValue}>
                     {maxWhatsappChannels} / {maxTelegramChannels}
                   </div>
-                  <div style={styles.summarySub}>Per-channel entitlement split</div>
+                  <div style={styles.summarySub}>Per-channel capacity split</div>
                 </div>
               </section>
 
@@ -959,26 +958,20 @@ export default function WorkspacePage() {
                   <div style={styles.label}>Current plan</div>
                   <h2 style={styles.bigTitle}>{planName}</h2>
                   <div style={styles.subText}>
-                    Family:{" "}
+                    Plan type:{" "}
                     <strong style={{ color: "#0f172a", textTransform: "capitalize" }}>
-                      {limits?.entitlements?.plan_family ||
-                        plan?.plan_family ||
-                        membersData?.entitlements?.plan_family ||
-                        "—"}
+                      {planType}
                     </strong>
-                  </div>
-                  <div style={styles.subText}>
-                    Code: <strong style={{ color: "#0f172a" }}>{limits?.entitlements?.plan_code || plan?.code || "—"}</strong>
                   </div>
                 </div>
 
                 <div style={styles.card}>
-                  <div style={styles.label}>Workspace slots used</div>
+                  <div style={styles.label}>Team members used</div>
                   <div style={styles.hugeValue}>
                     {usedSlots}
                     <span style={styles.hugeValueSub}> / {maxWorkspaceUsers}</span>
                   </div>
-                  <div style={styles.subText}>Owner included total</div>
+                  <div style={styles.subText}>Owner included in total</div>
                 </div>
 
                 <div style={styles.card}>
@@ -988,7 +981,7 @@ export default function WorkspacePage() {
                 </div>
 
                 <div style={styles.card}>
-                  <div style={styles.label}>Available slots</div>
+                  <div style={styles.label}>Available team member slots</div>
                   <div style={styles.hugeValue}>{availableSlots}</div>
                   <div style={styles.subText}>Remaining under this plan</div>
                 </div>
@@ -996,13 +989,13 @@ export default function WorkspacePage() {
 
               <section style={styles.grid3}>
                 <div style={styles.card}>
-                  <h3 style={styles.sectionTitle}>Workspace limits</h3>
+                  <h3 style={styles.sectionTitle}>Team member limits</h3>
                   <div style={styles.statRow}>
-                    <span>Max workspace users</span>
+                    <span>Max team members</span>
                     <span style={styles.statValue}>{maxWorkspaceUsers}</span>
                   </div>
                   <div style={styles.statRow}>
-                    <span>Max linked web accounts</span>
+                    <span>Linked web account capacity</span>
                     <span style={styles.statValue}>{maxLinkedWebAccounts}</span>
                   </div>
                 </div>
@@ -1010,7 +1003,7 @@ export default function WorkspacePage() {
                 <div style={styles.card}>
                   <h3 style={styles.sectionTitle}>Channel limits</h3>
                   <div style={styles.sectionText}>
-                    These limits are separate from workspace user/member slots. A generated link code does not count as a connected channel until WhatsApp or Telegram is actually verified.
+                    These limits are separate from team member capacity. A generated link code does not count as a connected channel until WhatsApp or Telegram is actually verified.
                   </div>
                   <div style={styles.statRow}>
                     <span>Total channels</span>
@@ -1041,11 +1034,6 @@ export default function WorkspacePage() {
 
                     <div style={styles.miniLabel}>Created</div>
                     <div style={styles.ownerMeta}>{formatDate(owner?.created_at)}</div>
-
-                    <div style={styles.miniLabel}>Owner account ID</div>
-                    <div style={{ ...styles.ownerMeta, wordBreak: "break-all" }}>
-                      {ownerAccountId}
-                    </div>
                   </div>
                 </div>
               </section>
@@ -1097,8 +1085,8 @@ export default function WorkspacePage() {
 
                     {addBlockedBecauseNoPlan ? (
                       <div style={styles.warningBox}>
-                        <strong>Workspace member access is not enabled.</strong> Activate
-                        a plan with workspace slots before adding members.
+                        <strong>Team member access is not enabled.</strong> Activate
+                        a plan with team member capacity before adding members.
                         <div style={styles.actionRow}>
                           <a href="/billing" style={styles.buttonSecondary}>
                             Go to Billing
@@ -1113,7 +1101,7 @@ export default function WorkspacePage() {
                     {!addBlockedBecauseNoPlan && workspacePlanFull ? (
                       <div style={styles.warningBox}>
                         <strong>Your current plan is full.</strong> Upgrade your plan or
-                        remove an existing member before adding another workspace user.
+                        remove an existing member before adding another team member.
                         <div style={styles.actionRow}>
                           <a href="/billing" style={styles.buttonSecondary}>
                             Go to Billing
@@ -1142,9 +1130,9 @@ export default function WorkspacePage() {
                       {submittingAdd
                         ? "Adding member..."
                         : addBlockedBecauseNoPlan
-                          ? "Workspace plan required"
+                          ? "Team member plan required"
                           : workspacePlanFull
-                            ? "No slots available"
+                            ? "No team slots available"
                             : "Add member"}
                     </button>
                   </form>
@@ -1154,7 +1142,7 @@ export default function WorkspacePage() {
                       Current rule
                     </div>
                     Your plan currently allows <strong style={{ color: "#0f172a" }}>{maxWorkspaceUsers}</strong> total
-                    workspace user{maxWorkspaceUsers === 1 ? "" : "s"}, including the owner. WhatsApp and Telegram channel slots are separate and are shown under Channel limits.
+                    team member{maxWorkspaceUsers === 1 ? "" : "s"}, including the owner. WhatsApp and Telegram channel capacity is separate and shown under Channel limits.
                   </div>
                 </div>
 
@@ -1212,17 +1200,6 @@ export default function WorkspacePage() {
                                   <div style={styles.miniLabel}>Added</div>
                                   <div style={styles.ownerMeta}>
                                     {formatDate(member.created_at)}
-                                  </div>
-                                </div>
-                                <div>
-                                  <div style={styles.miniLabel}>Member account ID</div>
-                                  <div
-                                    style={{
-                                      ...styles.ownerMeta,
-                                      wordBreak: "break-all",
-                                    }}
-                                  >
-                                    {member.member_account_id || "—"}
                                   </div>
                                 </div>
                               </div>
