@@ -14,6 +14,7 @@ type PublicPlan = {
   credits: string;
   channels: string;
   support: string;
+  bestFor: string;
   highlights: string[];
   recommended?: boolean;
 };
@@ -33,9 +34,10 @@ const plans: PublicPlan[] = [
       quarterly: "₦14,000",
       yearly: "₦51,000",
     },
-    credits: "100 monthly credits",
-    channels: "Web + WhatsApp or Telegram",
+    credits: "100 monthly AI usage credits",
+    channels: "Web plus one messaging channel: WhatsApp or Telegram",
     support: "Standard support",
+    bestFor: "A single user who wants practical tax answers, reminders, and one linked chat channel.",
     highlights: [
       "AI tax answers using Usage Credits",
       "Custom deadlines and reminders",
@@ -51,9 +53,10 @@ const plans: PublicPlan[] = [
       quarterly: "₦33,600",
       yearly: "₦122,400",
     },
-    credits: "300 monthly credits",
-    channels: "Web + WhatsApp + Telegram",
+    credits: "300 monthly AI usage credits",
+    channels: "Web plus WhatsApp and Telegram",
     support: "Priority support",
+    bestFor: "Users who need heavier guidance, document support, and both messaging channels.",
     recommended: true,
     highlights: [
       "Everything in Starter",
@@ -70,9 +73,10 @@ const plans: PublicPlan[] = [
       quarterly: "₦70,000",
       yearly: "₦255,000",
     },
-    credits: "800 monthly credits",
-    channels: "More channel capacity",
+    credits: "800 monthly AI usage credits",
+    channels: "Higher workspace and channel capacity",
     support: "Priority business support",
+    bestFor: "Business users who need more usage capacity, team handling, and heavier workflows.",
     highlights: [
       "Everything in Professional",
       "Advanced business tax workflows",
@@ -87,6 +91,19 @@ const topUps = [
   "50 credits - ₦2,000",
   "100 credits - ₦3,500",
   "500 credits - ₦15,000",
+];
+
+const trustItems = [
+  "Payments are processed through Paystack checkout.",
+  "Supported payment methods are shown by Paystack before you authorize payment.",
+  "Final amount, plan, and billing period are confirmed before checkout.",
+  "Card details are handled by the payment processor, not stored directly by Naija Tax Guide.",
+];
+
+const freeLimits = [
+  "Free access is designed for basic calculators, learning, and reviewed library guidance.",
+  "AI answers, custom deadlines, document generation, and top-ups require an active paid plan.",
+  "Top-up credits add usage only; they do not extend subscription validity.",
 ];
 
 function pageShell(): React.CSSProperties {
@@ -165,6 +182,19 @@ function billingLabel(cycle: BillingCycle): string {
   return "per month";
 }
 
+function smallList(items: string[]) {
+  return (
+    <div style={{ display: "grid", gap: 9 }}>
+      {items.map((item) => (
+        <div key={item} style={{ display: "grid", gridTemplateColumns: "20px minmax(0, 1fr)", gap: 8, color: "var(--text-muted)", lineHeight: 1.6 }}>
+          <strong style={{ color: "var(--accent)" }}>-</strong>
+          <span>{item}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function PublicPricingPage() {
   const router = useRouter();
   const { resolvedMode } = useSharedTheme();
@@ -189,12 +219,13 @@ export default function PublicPricingPage() {
               Clear plans before you create or upgrade an account.
             </h1>
             <p style={{ margin: 0, color: "var(--text-muted)", fontSize: "clamp(16px, 2.6vw, 18px)", lineHeight: 1.8, maxWidth: 900 }}>
-              {SITE.name} shows monthly pricing first for Starter, Professional, and Business. Use the billing switch to compare quarterly or yearly payment structures without crowding each plan card.
+              {SITE.name} shows plan prices, included credits, channel access, and support level before checkout. You can compare monthly, quarterly, and yearly billing without creating an account first.
             </p>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <span style={pill()}>Free tools remain available in the app</span>
               <span style={pill()}>Prices shown in Nigerian Naira</span>
-              <span style={pill("warn")}>Secure checkout confirms final active price</span>
+              <span style={pill("good")}>Paystack checkout</span>
+              <span style={pill()}>Card details handled by payment processor</span>
+              <span style={pill("warn")}>Top-ups require an active paid plan</span>
               <span style={pill()}>Information updated: {SITE.trustReviewDate}</span>
             </div>
           </section>
@@ -249,14 +280,11 @@ export default function PublicPricingPage() {
                 <span>{plan.support}</span>
               </div>
 
-              <div style={{ display: "grid", gap: 8 }}>
-                {plan.highlights.map((item) => (
-                  <div key={item} style={{ display: "grid", gridTemplateColumns: "22px minmax(0, 1fr)", gap: 8, color: "var(--text-muted)", lineHeight: 1.55 }}>
-                    <strong style={{ color: "var(--accent)" }}>-</strong>
-                    <span>{item}</span>
-                  </div>
-                ))}
+              <div style={{ border: "1px solid var(--border)", borderRadius: 16, background: "var(--surface)", padding: 12, color: "var(--text-muted)", lineHeight: 1.65 }}>
+                <strong style={{ color: "var(--text)" }}>Best for: </strong>{plan.bestFor}
               </div>
+
+              {smallList(plan.highlights)}
 
               <button onClick={() => router.push("/login?next=/plans")} style={button(true)}>
                 Choose {plan.name}
@@ -267,11 +295,18 @@ export default function PublicPricingPage() {
 
         <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 18 }}>
           <div style={card()}>
-            <div style={pill()}>Credit top-ups</div>
-            <h2 style={{ margin: 0, color: "var(--text)", fontSize: 26 }}>Optional credits for active paid users</h2>
+            <div style={pill("good")}>Checkout and payment confidence</div>
+            <h2 style={{ margin: 0, color: "var(--text)", fontSize: 26 }}>Payment is confirmed before access changes</h2>
             <p style={{ margin: 0, color: "var(--text-muted)", lineHeight: 1.8 }}>
-              Top-ups add Usage Credits only. They do not extend subscription validity, and they are available only when a paid subscription is active.
+              Checkout shows the selected plan, billing period, and final amount before payment authorization. Subscription access is applied after successful payment confirmation.
             </p>
+            {smallList(trustItems)}
+          </div>
+
+          <div style={card()}>
+            <div style={pill("warn")}>Free and top-up limits</div>
+            <h2 style={{ margin: 0, color: "var(--text)", fontSize: 26 }}>Free access is useful, but not the same as a paid AI plan</h2>
+            {smallList(freeLimits)}
             <div style={{ display: "grid", gap: 10 }}>
               {topUps.map((item) => (
                 <div key={item} style={{ border: "1px solid var(--border)", borderRadius: 14, background: "var(--surface)", padding: 12, color: "var(--text)", fontWeight: 800 }}>
@@ -280,18 +315,19 @@ export default function PublicPricingPage() {
               ))}
             </div>
           </div>
+        </section>
 
-          <div style={card()}>
-            <div style={pill("warn")}>Important tax guidance boundary</div>
-            <h2 style={{ margin: 0, color: "var(--text)", fontSize: 26 }}>Guidance, not official tax representation</h2>
-            <p style={{ margin: 0, color: "var(--text-muted)", lineHeight: 1.8 }}>
-              {SITE.name} provides general Nigerian tax information and guided support. It is not a government portal, law firm, accounting firm, or substitute for a qualified tax professional in sensitive matters, audits, disputes, penalties, or formal filing decisions.
-            </p>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10 }}>
-              <button onClick={() => router.push("/terms")} style={button(false)}>Terms</button>
-              <button onClick={() => router.push("/privacy")} style={button(false)}>Privacy</button>
-              <button onClick={() => router.push("/support")} style={button(false)}>Support</button>
-            </div>
+        <section style={card()}>
+          <div style={pill("warn")}>Important tax guidance boundary</div>
+          <h2 style={{ margin: 0, color: "var(--text)", fontSize: 26 }}>Guidance, not official tax representation</h2>
+          <p style={{ margin: 0, color: "var(--text-muted)", lineHeight: 1.8 }}>
+            {SITE.name} provides general Nigerian tax information and guided support. It is not a government portal, law firm, accounting firm, or substitute for a qualified tax professional in sensitive matters, audits, disputes, penalties, or formal filing decisions.
+          </p>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10 }}>
+            <button onClick={() => router.push("/terms")} style={button(false)}>Terms</button>
+            <button onClick={() => router.push("/privacy")} style={button(false)}>Privacy</button>
+            <button onClick={() => router.push("/refund")} style={button(false)}>Refund</button>
+            <button onClick={() => router.push("/support")} style={button(false)}>Support</button>
           </div>
         </section>
       </div>
