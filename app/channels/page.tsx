@@ -801,7 +801,7 @@ export default function ChannelsPage() {
   const lockMessage =
     maxTotalChannels <= 0
       ? "Your current plan does not allow channel linking yet. Upgrade your plan to unlock channel connection."
-      : "All available channel slots are already in use. Unlink the currently connected channel or upgrade your plan before generating any new link code.";
+      : "All available channel capacity is already in use. Unlink the currently connected channel or upgrade your plan before generating any new link code.";
 
   const topBanner = useMemo(() => {
     if (whatsappLinked && telegramLinked) {
@@ -834,14 +834,14 @@ export default function ChannelsPage() {
       ? {
           title: "Channel linking is not available on this plan yet",
           subtitle:
-            "Your current plan does not include any channel slots. Upgrade your plan to unlock channel connection.",
+            "Your current plan does not include any channel connections. Upgrade your plan to unlock channel connection.",
         }
       : {
           title: "Channel capacity is currently full",
           subtitle: (
             <>
               You are using <strong>{usedTotalChannels}</strong> of{" "}
-              <strong>{maxTotalChannels}</strong> allowed channel slot
+              <strong>{maxTotalChannels}</strong> allowed channel connection
               {maxTotalChannels === 1 ? "" : "s"} on the <strong>{planName}</strong>.
               Upgrade your plan to add more channels, or unlink an existing channel first.
             </>
@@ -864,14 +864,14 @@ export default function ChannelsPage() {
 
   const howItWorksSteps = channelsLockedOrFull
     ? [
-        "1. Review your current channel entitlement and available slots above.",
+        "1. Review your current channel capacity above.",
         "2. Unlink the currently connected channel or upgrade your plan first.",
-        "3. Once a slot becomes available, generate a fresh code for the channel you want to connect.",
+        "3. Once capacity becomes available, generate a fresh code for the channel you want to connect.",
         "4. Copy the code or open the channel link directly on the messaging platform.",
         "5. Return here and refresh the status when needed.",
       ]
     : [
-        "1. Review your current channel entitlement and available slots above.",
+        "1. Review your current channel capacity above.",
         "2. Generate a fresh code for the channel you want to connect.",
         "3. Copy the code or open the channel link directly.",
         "4. Complete the step on the actual messaging platform.",
@@ -978,7 +978,7 @@ export default function ChannelsPage() {
           <div style={summaryCardStyle()}>
             <div style={summaryLabelStyle()}>Plan</div>
             <div style={summaryValueStyle()}>{planName}</div>
-            <div style={summarySubStyle()}>Family: {planFamily}</div>
+            <div style={summarySubStyle()}>Plan type: {planName}</div>
           </div>
 
           <div style={summaryCardStyle()}>
@@ -990,22 +990,26 @@ export default function ChannelsPage() {
           </div>
 
           <div style={summaryCardStyle()}>
-            <div style={summaryLabelStyle()}>WhatsApp slots</div>
+            <div style={summaryLabelStyle()}>WhatsApp channel capacity</div>
             <div style={summaryValueStyle()}>
               {whatsappUsed} / {maxWhatsappChannels}
             </div>
             <div style={summarySubStyle()}>
-              {whatsappRemaining > 0 ? `${whatsappRemaining} slot left` : "No slot left"}
+              {whatsappRemaining > 0
+                ? `${whatsappRemaining} WhatsApp channel left`
+                : "No WhatsApp channel left"}
             </div>
           </div>
 
           <div style={summaryCardStyle()}>
-            <div style={summaryLabelStyle()}>Telegram slots</div>
+            <div style={summaryLabelStyle()}>Telegram channel capacity</div>
             <div style={summaryValueStyle()}>
               {telegramUsed} / {maxTelegramChannels}
             </div>
             <div style={summarySubStyle()}>
-              {telegramRemaining > 0 ? `${telegramRemaining} slot left` : "No slot left"}
+              {telegramRemaining > 0
+                ? `${telegramRemaining} Telegram channel left`
+                : "No Telegram channel left"}
             </div>
           </div>
         </div>
@@ -1206,7 +1210,7 @@ export default function ChannelsPage() {
           title="How it works"
           subtitle={
             channelsLockedOrFull
-              ? "A slot must become available before a new channel can be linked."
+              ? "Channel capacity must become available before a new channel can be linked."
               : "Use this page to check status and complete channel linking."
           }
         >
