@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo } from "react";
+import React from "react";
 import { useRouter } from "next/navigation";
 import AppShell, {
   shellButtonPrimary,
@@ -9,17 +9,6 @@ import AppShell, {
 import WorkspaceSectionCard from "@/components/workspace-section-card";
 import { Banner } from "@/components/ui";
 import { CardsGrid, SectionStack } from "@/components/page-layout";
-import { useWorkspaceState } from "@/hooks/useWorkspaceState";
-
-function labelStyle(): React.CSSProperties {
-  return {
-    margin: 0,
-    fontSize: 14,
-    color: "var(--text-muted)",
-    lineHeight: 1.55,
-    wordBreak: "break-word",
-  };
-}
 
 function valueStyle(): React.CSSProperties {
   return {
@@ -74,48 +63,15 @@ function cardTextBlockStyle(): React.CSSProperties {
   };
 }
 
-function formatDate(value?: string | null) {
-  if (!value) return "Not available";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString(undefined, {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-}
-
-function formatPlanName(value?: string | null) {
-  if (!value) return "No visible plan";
-  return value
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (char) => char.toUpperCase());
-}
-
 export default function RefundPage() {
   const router = useRouter();
-  const { billing, credits, usage } = useWorkspaceState({
-    includeAccount: false,
-    includeBilling: true,
-    includeDebug: true,
-  });
 
-  const latestReference =
-    billing?.last_payment_reference || billing?.payment_reference || "Not available";
-  const currentPlan = billing?.plan_name || billing?.plan_code || "No visible plan";
-  const creditBalance = Number(credits?.balance ?? 0);
-  const usageToday = Number(usage?.count ?? 0);
-  const expiresAt = billing?.expires_at || null;
-
-  const supportLinks = useMemo(
-    () => ({
-      duplicate: `/support?intent=duplicate_charge&reference=${encodeURIComponent(latestReference)}`,
-      wrongPlan: `/support?intent=wrong_plan&reference=${encodeURIComponent(latestReference)}`,
-      activation: `/support?intent=activation_issue&reference=${encodeURIComponent(latestReference)}`,
-      refund: `/support?intent=refund_review&reference=${encodeURIComponent(latestReference)}`,
-    }),
-    [latestReference]
-  );
+  const supportLinks = {
+    duplicate: "/support?intent=duplicate_charge",
+    wrongPlan: "/support?intent=wrong_plan",
+    activation: "/support?intent=activation_issue",
+    refund: "/support?intent=refund_review",
+  };
 
   return (
     <AppShell
@@ -140,31 +96,15 @@ export default function RefundPage() {
         />
 
         <WorkspaceSectionCard
-          title="Visible billing context"
-          subtitle="This snapshot helps you confirm whether the visible account state matches the issue you want to report."
+          title="Before you request a refund review"
+          subtitle="Use Billing for your account-specific plan, payment reference, credit balance, and expiry details."
         >
-          <CardsGrid min={200}>
-            <div style={{ minWidth: 0 }}>
-              <p style={labelStyle()}>Current plan</p>
-              <p style={valueStyle()}>{formatPlanName(currentPlan)}</p>
-            </div>
-            <div style={{ minWidth: 0 }}>
-              <p style={labelStyle()}>Latest reference</p>
-              <p style={valueStyle()}>{latestReference}</p>
-            </div>
-            <div style={{ minWidth: 0 }}>
-              <p style={labelStyle()}>Visible credits</p>
-              <p style={valueStyle()}>{creditBalance}</p>
-            </div>
-            <div style={{ minWidth: 0 }}>
-              <p style={labelStyle()}>Usage today</p>
-              <p style={valueStyle()}>{usageToday}</p>
-            </div>
-            <div style={{ minWidth: 0 }}>
-              <p style={labelStyle()}>Subscription expires</p>
-              <p style={valueStyle()}>{formatDate(expiresAt)}</p>
-            </div>
-          </CardsGrid>
+          <p style={bodyTextStyle()}>
+            Public visitors may read this policy without logging in. Logged-in users
+            should open Billing first to confirm the exact payment reference,
+            selected plan, activation state, and visible credits before submitting
+            a refund-related support request.
+          </p>
         </WorkspaceSectionCard>
 
         <WorkspaceSectionCard
@@ -175,7 +115,7 @@ export default function RefundPage() {
             <div style={cardTextBlockStyle()}>
               <p style={valueStyle()}>Duplicate charge</p>
               <p style={bodyTextStyle()}>
-                Use this when the same card or account appears to have been billed more than once for the same intended payment.
+                Use this when the same card, bank account, or payment method appears to have been billed more than once for the same intended payment.
               </p>
               <div style={{ marginTop: 2 }}>
                 <button
@@ -280,9 +220,9 @@ export default function RefundPage() {
           subtitle="These checks help reduce back-and-forth and speed up review."
         >
           <ul style={bulletListStyle()}>
-            <li>Confirm the latest visible payment reference matches the transaction you are reporting.</li>
+            <li>Open Billing and confirm the latest visible payment reference matches the transaction you are reporting.</li>
             <li>Check whether the visible plan and credit balance already updated before opening a new refund-related ticket.</li>
-            <li>Use the issue-specific support buttons above so billing context is carried into the support flow.</li>
+            <li>Use the issue-specific support buttons above so billing context is easier to understand.</li>
             <li>For duplicate-charge concerns, mention both references if more than one payment was captured.</li>
           </ul>
         </WorkspaceSectionCard>
