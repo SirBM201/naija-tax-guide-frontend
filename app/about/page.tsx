@@ -85,7 +85,7 @@ export default function AboutPage() {
               {SITE.name} was created to make Nigerian tax guidance easier to access, easier to understand, and easier to manage across the channels people already use. The product focuses on practical explanations, basic calculators, usage tracking, saved history, and structured support rather than leaving users to search scattered information alone.
             </p>
             <p style={bodyText()}>
-              The long-term goal is to become a trusted Nigerian tax guidance workspace that combines AI assistance, reviewed knowledge, calculators, reminders, documents, and human escalation where a matter is too sensitive for AI alone.
+              The product is being built as a trusted Nigerian tax guidance workspace that combines AI assistance, reviewed knowledge, calculators, reminders, documents, and human escalation where a matter is too sensitive for AI alone.
             </p>
           </div>
         </WorkspaceSectionCard>
