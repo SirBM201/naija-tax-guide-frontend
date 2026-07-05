@@ -9,6 +9,7 @@ import AppShell, {
 import WorkspaceSectionCard from "@/components/workspace-section-card";
 import { Banner } from "@/components/ui";
 import { SectionStack } from "@/components/page-layout";
+import { SITE } from "@/lib/site";
 
 function sectionBodyStyle(): React.CSSProperties {
   return {
@@ -126,7 +127,7 @@ export default function DataDeletionPage() {
         >
           <div style={sectionBodyStyle()}>
             <p style={paragraphStyle()}>
-              You may send an email to <strong>privacy@naijataxguides.com</strong>{" "}
+              You may send an email to <strong>{SITE.privacyEmail}</strong>{" "}
               with a clear subject line such as{" "}
               <strong>“Data Deletion Request”</strong>.
             </p>
@@ -238,7 +239,7 @@ export default function DataDeletionPage() {
           <div style={sectionBodyStyle()}>
             <p style={paragraphStyle()}>
               For compliance or deletion-related inquiries, contact{" "}
-              <strong>privacy@naijataxguides.com</strong> or use the official
+              <strong>{SITE.privacyEmail}</strong> or use the official
               support route available within the platform where appropriate.
             </p>
           </div>
