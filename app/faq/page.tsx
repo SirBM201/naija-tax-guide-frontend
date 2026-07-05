@@ -77,7 +77,7 @@ export default function FaqPage() {
   return (
     <AppShell
       title="Frequently Asked Questions"
-      subtitle="Clear answers for users, reviewers, partners, and committees evaluating Naija Tax Guide."
+      subtitle="Clear answers for users, partners, and professionals evaluating Naija Tax Guide."
       actions={
         <>
           <button onClick={() => router.push("/pricing")} style={shellButtonPrimary()}>
@@ -95,7 +95,7 @@ export default function FaqPage() {
           subtitle={`${SITE.name} is a guidance product, not a tax authority or substitute for professional representation in sensitive tax matters.`}
         />
 
-        <WorkspaceSectionCard title="Product FAQ" subtitle="Answers external reviewers should be able to verify quickly.">
+        <WorkspaceSectionCard title="Product FAQ" subtitle="Answers users should be able to verify quickly.">
           <div style={{ display: "grid", gap: 14 }}>
             {faqs.map((faq) => (
               <article key={faq.question} style={itemStyle()}>
