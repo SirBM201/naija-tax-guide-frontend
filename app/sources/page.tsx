@@ -22,7 +22,7 @@ const sourceCategories = [
     text: "Personal income tax, PAYE, and state-level administration can depend on residence and state practice, so answers should avoid treating one state process as universal.",
   },
   {
-    title: "Reviewed internal knowledge",
+    title: "Reviewed platform knowledge",
     text: "Curated answers should carry review status, risk level, source category, and last-reviewed date before being treated as reliable user guidance.",
   },
 ];
@@ -38,9 +38,16 @@ const highRiskClaims = [
 
 const updateLogItems = [
   "Record when answer policy, reviewed content, source discipline, or safety wording changes.",
-  "Record expert-review outcomes before claiming that answers are professionally reviewed.",
+  "Record reviewer feedback before marking an answer as professionally reviewed.",
   "Record corrections after user complaints, expert feedback, or changes in official guidance.",
-  "Record follow-up tasks when a source-sensitive answer still needs structured citation metadata.",
+  "Track source-sensitive answers that still need structured citation metadata.",
+];
+
+const metadataExamples = [
+  "Source category: law/regulation, FIRS/NRS guidance, state tax authority practice, or reviewed platform knowledge.",
+  "Jurisdiction and tax head: for example federal VAT, Lagos PAYE, WHT, company income tax, or personal income tax.",
+  "Review state: drafted, reviewed, needs update, or requires professional escalation.",
+  "Freshness details: last reviewed date, effective date where known, and next review trigger for reform-sensitive topics.",
 ];
 
 function body(): React.CSSProperties {
@@ -121,19 +128,23 @@ export default function SourcesPage() {
           {list(highRiskClaims)}
         </WorkspaceSectionCard>
 
-        <WorkspaceSectionCard title="Update-log discipline" subtitle="A product that gives tax guidance should keep an internal record of important tax-content and safety changes.">
+        <WorkspaceSectionCard title="Update-log discipline" subtitle="A product that gives tax guidance needs a controlled record of important tax-content and safety changes.">
           <div style={{ display: "grid", gap: 14 }}>
             <p style={body()}>
-              Naija Tax Guide now maintains an internal tax-content update log in the API repository. This helps separate product-control evidence from marketing claims and gives reviewers a clearer path for checking what changed, when it changed, and what still needs expert validation.
+              Naija Tax Guide maintains a tax-content update log for important guidance and safety changes. This helps separate product-control evidence from marketing claims and gives reviewers a clearer path for checking what changed, when it changed, and what still needs expert validation.
             </p>
             {list(updateLogItems)}
           </div>
         </WorkspaceSectionCard>
 
+        <WorkspaceSectionCard title="Current-state metadata examples" subtitle="The product should make source-sensitive guidance easier to assess before users act on it.">
+          {list(metadataExamples)}
+        </WorkspaceSectionCard>
+
         <WorkspaceSectionCard title="Product direction" subtitle="What the product should continue moving toward.">
           {list([
             "Add source category, jurisdiction, risk level, and last-reviewed date to curated answers.",
-            "Show source metadata when an answer comes from reviewed internal knowledge.",
+            "Show source metadata when an answer comes from reviewed platform knowledge.",
             "Ask users to verify current official guidance when a claim is time-sensitive or state-specific.",
             "Escalate sensitive audit, penalty, dispute, and formal filing matters to qualified professionals.",
           ])}
