@@ -6,6 +6,7 @@ import AppShell, { shellButtonPrimary, shellButtonSecondary } from "@/components
 import WorkspaceSectionCard from "@/components/workspace-section-card";
 import { Banner, appInputStyle, appSelectStyle, appTextareaStyle } from "@/components/ui";
 import { CardsGrid, SectionStack } from "@/components/page-layout";
+import { useAuth } from "@/lib/auth";
 
 type ReviewPackage = {
   code: string;
@@ -79,6 +80,8 @@ function list(items: string[] = []) {
 
 export default function ExpertReviewPage() {
   const router = useRouter();
+  const { authReady, hasSession } = useAuth();
+  const isLoggedIn = authReady && hasSession;
   const [packages, setPackages] = useState<ReviewPackage[]>([]);
   const [packageCode, setPackageCode] = useState("triage");
   const [priority, setPriority] = useState("normal");
@@ -159,14 +162,14 @@ export default function ExpertReviewPage() {
   return (
     <AppShell
       title="Professional Review"
-      subtitle="Request human review for high-risk Nigerian tax matters that should not rely on AI guidance alone."
+      subtitle={isLoggedIn ? "Request human review for high-risk Nigerian tax matters." : "Understand when human review is appropriate before opening an account-specific request."}
       actions={
         <>
           <button type="button" onClick={() => router.push("/support")} style={shellButtonSecondary()}>
             Support
           </button>
-          <button type="button" onClick={() => router.push("/ask")} style={shellButtonPrimary()}>
-            Ask
+          <button type="button" onClick={() => router.push(isLoggedIn ? "/ask" : "/login?next=/expert-review")} style={shellButtonPrimary()}>
+            {isLoggedIn ? "Ask" : "Login to Request Review"}
           </button>
         </>
       }
@@ -202,84 +205,123 @@ export default function ExpertReviewPage() {
           <CardsGrid min={260}>
             {(packages.length ? packages : [
               { code: "triage", name: "Professional Review Triage", status: "available", price_note: "Initial routing and scope review; further professional fees may be quoted after facts are reviewed.", sla_note: "Target first response: 1-2 business days after complete information is received.", best_for: ["Scope review", "Document preparation", "Escalation decision"] },
-            ]).map((item) => (
-              <button
-                key={item.code}
-                type="button"
-                onClick={() => setPackageCode(item.code)}
-                style={{
-                  ...card(),
-                  textAlign: "left",
-                  cursor: "pointer",
-                  border: item.code === packageCode ? "1px solid var(--accent-border)" : "1px solid var(--border)",
-                  background: item.code === packageCode ? "var(--accent-soft)" : "var(--surface)",
-                }}
-              >
-                <strong style={{ color: "var(--text)", fontSize: 18 }}>{item.name}</strong>
-                <p style={bodyText()}>Status: {item.status}</p>
-                {item.price_note ? <p style={bodyText()}>{item.price_note}</p> : null}
-                {item.sla_note ? <p style={bodyText()}>{item.sla_note}</p> : null}
-                {list(item.best_for || [])}
-              </button>
-            ))}
+            ]).map((item) => {
+              const content = (
+                <>
+                  <strong style={{ color: "var(--text)", fontSize: 18 }}>{item.name}</strong>
+                  <p style={bodyText()}>Status: {item.status}</p>
+                  {item.price_note ? <p style={bodyText()}>{item.price_note}</p> : null}
+                  {item.sla_note ? <p style={bodyText()}>{item.sla_note}</p> : null}
+                  {list(item.best_for || [])}
+                </>
+              );
+
+              if (!isLoggedIn) {
+                return (
+                  <article key={item.code} style={card()}>
+                    {content}
+                  </article>
+                );
+              }
+
+              return (
+                <button
+                  key={item.code}
+                  type="button"
+                  onClick={() => setPackageCode(item.code)}
+                  style={{
+                    ...card(),
+                    textAlign: "left",
+                    cursor: "pointer",
+                    border: item.code === packageCode ? "1px solid var(--accent-border)" : "1px solid var(--border)",
+                    background: item.code === packageCode ? "var(--accent-soft)" : "var(--surface)",
+                  }}
+                >
+                  {content}
+                </button>
+              );
+            })}
           </CardsGrid>
         </WorkspaceSectionCard>
 
-        <WorkspaceSectionCard
-          title="Create professional review request"
-          subtitle={selectedPackage ? `Selected: ${selectedPackage.name}` : "Describe the matter clearly so it can be reviewed and routed safely."}
-        >
-          <div style={{ display: "grid", gap: 14 }}>
-            <select value={packageCode} onChange={(event) => setPackageCode(event.target.value)} style={appSelectStyle()}>
-              {(packages.length ? packages : [{ code: "triage", name: "Professional Review Triage", status: "available" }]).map((item) => (
-                <option key={item.code} value={item.code}>{item.name}</option>
-              ))}
-            </select>
-
-            <select value={priority} onChange={(event) => setPriority(event.target.value)} style={appSelectStyle()}>
-              <option value="normal">Priority: Normal</option>
-              <option value="high">Priority: High</option>
-              <option value="urgent">Priority: Urgent</option>
-            </select>
-
-            <input
-              value={subject}
-              onChange={(event) => setSubject(event.target.value)}
-              placeholder="Subject, for example: Review my PAYE notice"
-              style={appInputStyle()}
-            />
-
-            <textarea
-              value={question}
-              onChange={(event) => setQuestion(event.target.value)}
-              placeholder="Paste the tax question, notice summary, or AI answer that needs human review."
-              rows={5}
-              style={appTextareaStyle()}
-            />
-
-            <textarea
-              value={details}
-              onChange={(event) => setDetails(event.target.value)}
-              placeholder="Add relevant facts: state, tax year, entity type, deadline, amount involved, documents received, and what outcome you need. Do not upload sensitive documents here unless support asks through a secure route."
-              rows={8}
-              style={appTextareaStyle()}
-            />
-
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
-              <button
-                type="button"
-                onClick={submitRequest}
-                disabled={submitting}
-                style={{ ...shellButtonPrimary(), opacity: submitting ? 0.7 : 1, cursor: submitting ? "not-allowed" : "pointer" }}
-              >
-                {submitting ? "Submitting..." : "Submit Review Request"}
-              </button>
-              <button type="button" onClick={() => router.push("/support")} style={shellButtonSecondary()}>
-                Track in Support
-              </button>
+        {!isLoggedIn ? (
+          <WorkspaceSectionCard
+            title="Request review after login"
+            subtitle={authReady ? "The request form is account-specific so the review can be tracked safely in Support." : "Preparing the review page."}
+          >
+            <div style={{ display: "grid", gap: 14 }}>
+              <Banner
+                tone="default"
+                title="Why login is required"
+                subtitle="Professional review requests need ticket tracking, contact details, billing context where applicable, and a secure place for follow-up questions."
+              />
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
+                <button type="button" onClick={() => router.push("/login?next=/expert-review")} style={shellButtonPrimary()}>
+                  Login to Request Review
+                </button>
+                <button type="button" onClick={() => router.push("/support")} style={shellButtonSecondary()}>
+                  Support Options
+                </button>
+              </div>
             </div>
-          </div>
-        </WorkspaceSectionCard>
+          </WorkspaceSectionCard>
+        ) : (
+          <WorkspaceSectionCard
+            title="Create professional review request"
+            subtitle={selectedPackage ? `Selected: ${selectedPackage.name}` : "Describe the matter clearly so it can be reviewed and routed safely."}
+          >
+            <div style={{ display: "grid", gap: 14 }}>
+              <select value={packageCode} onChange={(event) => setPackageCode(event.target.value)} style={appSelectStyle()}>
+                {(packages.length ? packages : [{ code: "triage", name: "Professional Review Triage", status: "available" }]).map((item) => (
+                  <option key={item.code} value={item.code}>{item.name}</option>
+                ))}
+              </select>
+
+              <select value={priority} onChange={(event) => setPriority(event.target.value)} style={appSelectStyle()}>
+                <option value="normal">Priority: Normal</option>
+                <option value="high">Priority: High</option>
+                <option value="urgent">Priority: Urgent</option>
+              </select>
+
+              <input
+                value={subject}
+                onChange={(event) => setSubject(event.target.value)}
+                placeholder="Subject, for example: Review my PAYE notice"
+                style={appInputStyle()}
+              />
+
+              <textarea
+                value={question}
+                onChange={(event) => setQuestion(event.target.value)}
+                placeholder="Paste the tax question, notice summary, or AI answer that needs human review."
+                rows={5}
+                style={appTextareaStyle()}
+              />
+
+              <textarea
+                value={details}
+                onChange={(event) => setDetails(event.target.value)}
+                placeholder="Add relevant facts: state, tax year, entity type, deadline, amount involved, documents received, and what outcome you need. Do not upload sensitive documents here unless support asks through a secure route."
+                rows={8}
+                style={appTextareaStyle()}
+              />
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
+                <button
+                  type="button"
+                  onClick={submitRequest}
+                  disabled={submitting}
+                  style={{ ...shellButtonPrimary(), opacity: submitting ? 0.7 : 1, cursor: submitting ? "not-allowed" : "pointer" }}
+                >
+                  {submitting ? "Submitting..." : "Submit Review Request"}
+                </button>
+                <button type="button" onClick={() => router.push("/support")} style={shellButtonSecondary()}>
+                  Track in Support
+                </button>
+              </div>
+            </div>
+          </WorkspaceSectionCard>
+        )}
       </SectionStack>
     </AppShell>
   );
