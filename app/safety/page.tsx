@@ -143,7 +143,7 @@ export default function SafetyPage() {
           </CardsGrid>
         </WorkspaceSectionCard>
 
-        <WorkspaceSectionCard title="Source and freshness direction" subtitle="The product should grow toward stronger citation and update discipline.">
+        <WorkspaceSectionCard title="Source and freshness direction" subtitle="The product uses source and date awareness to reduce stale tax guidance.">
           <div style={{ display: "grid", gap: 14 }}>
             <p style={body()}>
               Naija Tax Guide should keep strengthening its reviewed Nigerian tax knowledge base and should show users when content was last reviewed. Numeric claims such as rates, deadlines, penalties, thresholds, and effective dates should be treated as high-risk and should carry source/date awareness wherever possible.
@@ -151,10 +151,19 @@ export default function SafetyPage() {
             {list([
               "Use curated database/library answers for common questions before AI fallback.",
               "Treat AI-generated answers as guidance that needs review and improvement over time.",
-              "Maintain an internal expert-reviewed benchmark of common Nigerian tax questions.",
+              "Compare recurring answers against a reviewer-approved set of common Nigerian tax questions.",
               "Add source references for PITA, CITA, VAT, WHT, Finance Act updates, FIRS/NRS guidance, and state tax authority practice where applicable.",
             ])}
           </div>
+        </WorkspaceSectionCard>
+
+        <WorkspaceSectionCard title="Current-state metadata examples" subtitle="Examples of the metadata users should expect around source-sensitive guidance.">
+          {list([
+            "Last reviewed date for curated answers and safety-critical policy text.",
+            "Jurisdiction or tax authority scope, such as federal, Lagos State, PAYE, VAT, WHT, or company income tax.",
+            "Risk label where the answer involves deadlines, penalties, official notices, state variation, or reform implementation.",
+            "Escalation note when current official guidance or professional review should be checked before action.",
+          ])}
         </WorkspaceSectionCard>
       </SectionStack>
     </AppShell>
