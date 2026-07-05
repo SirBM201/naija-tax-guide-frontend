@@ -72,8 +72,8 @@ export default function TermsPage() {
           <button onClick={() => router.push("/privacy")} style={shellButtonPrimary()}>
             Open Privacy
           </button>
-          <button onClick={() => router.push("/dashboard")} style={shellButtonSecondary()}>
-            Back to Dashboard
+          <button onClick={() => router.push("/")} style={shellButtonSecondary()}>
+            Back Home
           </button>
         </>
       }
