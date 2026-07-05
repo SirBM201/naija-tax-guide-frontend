@@ -4,6 +4,7 @@ export const SITE = {
   productOwnerLine: "A BMS SparkVision Hub product",
   slogan: "Clear Nigerian tax guidance for individuals, freelancers, and SMEs.",
   supportEmail: "support@naijataxguides.com",
+  privacyEmail: "privacy@naijataxguides.com",
   whatsappDisplay: "07034941158",
   whatsappInternational: "2347034941158",
   telegramBot: "naija-tax-guide-bot",
