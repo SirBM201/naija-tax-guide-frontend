@@ -170,7 +170,7 @@ export default function LandingPage() {
   const goToApp = () => router.push(hasSession ? "/dashboard" : "/login");
   const openWhatsApp = () => window.open(`https://wa.me/${SITE.whatsappInternational}?text=Hi`, "_blank", "noopener,noreferrer");
   const openTelegram = () => window.open(`https://t.me/${SITE.telegramBot}`, "_blank", "noopener,noreferrer");
-  const appLabel = checkingSession ? "Checking..." : hasSession ? "Continue to Dashboard" : `Start Using ${SITE.name}`;
+  const appLabel = checkingSession ? "Open App" : hasSession ? "Continue to Dashboard" : `Start Using ${SITE.name}`;
 
   return (
     <main style={{ minHeight: "100vh", background: "var(--app-bg)", color: "var(--text)", ...themeVars(resolvedMode) }}>
