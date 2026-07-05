@@ -256,11 +256,11 @@ export default function SupportPage() {
       subtitle="Submit and track support requests from one inbox."
       actions={
         <>
-          <button type="button" onClick={() => router.push("/help")} style={shellButtonSecondary()}>
-            Help
+          <button type="button" onClick={() => router.push("/faq")} style={shellButtonSecondary()}>
+            FAQ
           </button>
-          <button type="button" onClick={() => router.push("/dashboard")} style={shellButtonPrimary()}>
-            Dashboard
+          <button type="button" onClick={() => router.push("/pricing")} style={shellButtonPrimary()}>
+            Pricing
           </button>
         </>
       }
