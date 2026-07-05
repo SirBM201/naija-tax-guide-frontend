@@ -125,8 +125,8 @@ export default function ContactPage() {
           <button onClick={() => router.push("/support")} style={shellButtonPrimary()}>
             Open Support
           </button>
-          <button onClick={() => router.push("/dashboard")} style={shellButtonSecondary()}>
-            Back to Dashboard
+          <button onClick={() => router.push("/")} style={shellButtonSecondary()}>
+            Back Home
           </button>
         </>
       }
