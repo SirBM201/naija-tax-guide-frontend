@@ -9,6 +9,34 @@ import AppShell, {
 import WorkspaceSectionCard from "@/components/workspace-section-card";
 import { Banner } from "@/components/ui";
 import { SectionStack } from "@/components/page-layout";
+import { SITE } from "@/lib/site";
+
+const processorRows = [
+  {
+    function: "Payments and checkout",
+    provider: "Paystack and applicable financial institutions",
+    data: "Payment reference, transaction status, plan amount, checkout metadata, and payment confirmation details.",
+    posture: "Sensitive card details are handled by the payment processor and are not stored directly by Naija Tax Guide.",
+  },
+  {
+    function: "Messaging channels",
+    provider: "WhatsApp, Telegram, and related communication infrastructure where enabled",
+    data: "Linked channel identifiers, message delivery events, support context, and account-linking status.",
+    posture: "Channel data is used for service continuity, account protection, and support delivery.",
+  },
+  {
+    function: "Email and support",
+    provider: "Email delivery and support tooling where used",
+    data: "Email address, support ticket content, delivery status, and follow-up history.",
+    posture: "Support sharing should be limited to what is needed to respond, investigate, or keep records.",
+  },
+  {
+    function: "Hosting and security",
+    provider: "Hosting, database, monitoring, and security infrastructure",
+    data: "Operational logs, diagnostic events, access-control records, and system reliability data.",
+    posture: "Operational data should be protected with access controls and retained only as reasonably necessary.",
+  },
+];
 
 function sectionBodyStyle(): React.CSSProperties {
   return {
@@ -69,6 +97,29 @@ function miniHeadingStyle(): React.CSSProperties {
     lineHeight: 1.35,
     wordBreak: "break-word",
     overflowWrap: "anywhere",
+  };
+}
+
+function tableWrap(): React.CSSProperties {
+  return {
+    width: "100%",
+    overflowX: "auto",
+    border: "1px solid var(--border)",
+    borderRadius: 16,
+    background: "var(--surface)",
+  };
+}
+
+function tableCell(header = false): React.CSSProperties {
+  return {
+    padding: "12px 14px",
+    borderBottom: "1px solid var(--border)",
+    color: header ? "var(--text)" : "var(--text-muted)",
+    fontSize: header ? 13 : 14,
+    fontWeight: header ? 900 : 600,
+    lineHeight: 1.55,
+    textAlign: "left",
+    verticalAlign: "top",
   };
 }
 
@@ -192,7 +243,7 @@ export default function PrivacyPage() {
 
         <WorkspaceSectionCard
           title="5. Third-party service providers"
-          subtitle="Some platform functions may rely on carefully selected third-party infrastructure."
+          subtitle="Some platform functions may rely on third-party infrastructure with limited, purpose-based data sharing."
         >
           <div style={sectionBodyStyle()}>
             <p style={paragraphStyle()}>
@@ -207,6 +258,28 @@ export default function PrivacyPage() {
               function, such as payment confirmation, support delivery, secure
               communication, fraud prevention, or system reliability.
             </p>
+            <div style={tableWrap()}>
+              <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 760 }}>
+                <thead>
+                  <tr>
+                    <th style={tableCell(true)}>Function</th>
+                    <th style={tableCell(true)}>Provider category</th>
+                    <th style={tableCell(true)}>Data examples</th>
+                    <th style={tableCell(true)}>Privacy posture</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {processorRows.map((row) => (
+                    <tr key={row.function}>
+                      <td style={tableCell()}>{row.function}</td>
+                      <td style={tableCell()}>{row.provider}</td>
+                      <td style={tableCell()}>{row.data}</td>
+                      <td style={tableCell()}>{row.posture}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </WorkspaceSectionCard>
 
@@ -259,7 +332,7 @@ export default function PrivacyPage() {
             </p>
             <p style={paragraphStyle()}>
               Privacy and deletion-related requests may be sent to
-              <strong> privacy@naijataxguides.com</strong> or raised through the
+              <strong> {SITE.privacyEmail}</strong> or raised through the
               official support route where appropriate.
             </p>
           </div>
