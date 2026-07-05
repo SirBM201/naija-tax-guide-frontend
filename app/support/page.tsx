@@ -6,6 +6,7 @@ import AppShell, { shellButtonPrimary, shellButtonSecondary } from "@/components
 import WorkspaceSectionCard from "@/components/workspace-section-card";
 import { Banner, appInputStyle, appSelectStyle, appTextareaStyle, formatDate } from "@/components/ui";
 import { SectionStack } from "@/components/page-layout";
+import { useAuth } from "@/lib/auth";
 
 type SupportTicket = {
   id?: number;
@@ -46,6 +47,10 @@ function text(value: unknown, fallback = "Not shown"): string {
   return raw || fallback;
 }
 
+function errorMessage(err: unknown, fallback: string): string {
+  return err instanceof Error ? err.message : fallback;
+}
+
 function panelStyle(): React.CSSProperties {
   return {
     border: "1px solid var(--border)",
@@ -84,6 +89,8 @@ function actionGrid(): React.CSSProperties {
 
 export default function SupportPage() {
   const router = useRouter();
+  const { authReady, hasSession } = useAuth();
+  const isLoggedIn = authReady && hasSession;
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [selectedTicketId, setSelectedTicketId] = useState("");
   const [selectedTicket, setSelectedTicket] = useState<SupportTicket | null>(null);
@@ -125,8 +132,8 @@ export default function SupportPage() {
       setMessages(Array.isArray(data.messages) ? data.messages : []);
       setSelectedTicketId(ticketId);
       setError("");
-    } catch (err: any) {
-      setError(err?.message || "Could not load support ticket.");
+    } catch (err: unknown) {
+      setError(errorMessage(err, "Could not load support ticket."));
     } finally {
       setLoadingThread(false);
     }
@@ -157,17 +164,22 @@ export default function SupportPage() {
         await loadTicketDetail(rows[0].ticket_id);
       }
       setError("");
-    } catch (err: any) {
-      setError(err?.message || "Could not load support tickets.");
+    } catch (err: unknown) {
+      setError(errorMessage(err, "Could not load support tickets."));
     } finally {
       setLoadingTickets(false);
     }
   }
 
   useEffect(() => {
-    void loadTickets(true);
+    if (!authReady) return;
+    if (!hasSession) return;
+    const timer = window.setTimeout(() => {
+      void loadTickets(true);
+    }, 0);
+    return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [authReady, hasSession]);
 
   async function submitSupport() {
     if (!form.subject.trim() || !form.message.trim()) {
@@ -208,8 +220,8 @@ export default function SupportPage() {
       if (ticketId && ticketId !== "not shown") {
         await loadTicketDetail(ticketId);
       }
-    } catch (err: any) {
-      setError(err?.message || "Support request could not be submitted.");
+    } catch (err: unknown) {
+      setError(errorMessage(err, "Support request could not be submitted."));
     } finally {
       setSubmitting(false);
     }
@@ -243,8 +255,8 @@ export default function SupportPage() {
       setReplyMessage("");
       await loadTickets(false);
       await loadTicketDetail(selectedTicketId);
-    } catch (err: any) {
-      setError(err?.message || "Reply could not be submitted.");
+    } catch (err: unknown) {
+      setError(errorMessage(err, "Reply could not be submitted."));
     } finally {
       setReplying(false);
     }
@@ -253,14 +265,14 @@ export default function SupportPage() {
   return (
     <AppShell
       title="Support"
-      subtitle="Submit and track support requests from one inbox."
+      subtitle={isLoggedIn ? "Submit and track support requests from your account." : "Find the right support route before opening an account-specific ticket."}
       actions={
         <>
           <button type="button" onClick={() => router.push("/faq")} style={shellButtonSecondary()}>
             FAQ
           </button>
-          <button type="button" onClick={() => router.push("/pricing")} style={shellButtonPrimary()}>
-            Pricing
+          <button type="button" onClick={() => router.push(isLoggedIn ? "/pricing" : "/login?next=/support")} style={shellButtonPrimary()}>
+            {isLoggedIn ? "Pricing" : "Login for Tickets"}
           </button>
         </>
       }
@@ -269,129 +281,167 @@ export default function SupportPage() {
         {notice ? <Banner tone="good" title="Support update" subtitle={notice} /> : null}
         {error ? <Banner tone="danger" title="Support issue" subtitle={error} /> : null}
 
-        <WorkspaceSectionCard title="My support requests" subtitle="All support and professional review tickets are shown here.">
-          <div style={actionGrid()}>
-            <button type="button" onClick={() => loadTickets(true)} style={shellButtonPrimary()}>
-              {loadingTickets ? "Refreshing..." : "Refresh Tickets"}
-            </button>
-            <button type="button" onClick={() => router.push("/expert-review")} style={shellButtonSecondary()}>
-              Professional Review
-            </button>
-          </div>
-
-          {loadingTickets ? (
-            <Banner tone="default" title="Loading tickets" subtitle="Please wait..." />
-          ) : tickets.length === 0 ? (
-            <Banner tone="default" title="No support requests yet" subtitle="Your submitted tickets will appear here." />
-          ) : (
-            <div style={{ display: "grid", gap: 12 }}>
-              {tickets.map((ticket) => {
-                const active = ticket.ticket_id === selectedTicketId;
-                return (
-                  <button
-                    key={ticket.ticket_id}
-                    type="button"
-                    onClick={() => loadTicketDetail(ticket.ticket_id)}
-                    style={{ ...rowStyle(active), textAlign: "left" }}
-                  >
-                    <strong style={{ color: "var(--text)", fontSize: 16, ...wrapStyle() }}>
-                      {text(ticket.ticket_id)} - {text(ticket.subject, "Support request")}
-                    </strong>
-                    <div style={{ color: "var(--text-muted)", lineHeight: 1.7, ...wrapStyle() }}>
-                      Status: {text(ticket.status, "open")} | Priority: {text(ticket.priority, "normal")} | Type: {text(ticket.category, "general")}
-                    </div>
-                    <div style={{ color: "var(--text-muted)", lineHeight: 1.7, ...wrapStyle() }}>
-                      Updated: {ticket.updated_at ? formatDate(ticket.updated_at) : "Not shown"}
-                    </div>
-                    <div style={{ color: "var(--text-muted)", lineHeight: 1.7, ...wrapStyle() }}>
-                      {text(ticket.last_message_preview || ticket.message, "No message preview available.")}
-                    </div>
+        {!isLoggedIn ? (
+          <>
+            <WorkspaceSectionCard
+              title="Public support options"
+              subtitle={authReady ? "Account-specific ticket history and conversations are available after login." : "Preparing the right support options for this page."}
+            >
+              <div style={{ display: "grid", gap: 14 }}>
+                <Banner
+                  tone="default"
+                  title="Need ticket tracking?"
+                  subtitle="Login first so support can attach the request to your account, billing history, linked channels, credits, and previous replies."
+                />
+                <div style={actionGrid()}>
+                  <button type="button" onClick={() => router.push("/login?next=/support")} style={shellButtonPrimary()}>
+                    Login to Open Support Ticket
                   </button>
-                );
-              })}
-            </div>
-          )}
-        </WorkspaceSectionCard>
-
-        <WorkspaceSectionCard title="Ticket conversation" subtitle="Open a ticket above to view and reply.">
-          {!selectedTicketId ? (
-            <Banner tone="default" title="No ticket selected" subtitle="Select a ticket to view the thread." />
-          ) : loadingThread ? (
-            <Banner tone="default" title="Loading thread" subtitle="Please wait..." />
-          ) : selectedTicket ? (
-            <div style={{ display: "grid", gap: 14 }}>
-              <div style={panelStyle()}>
-                <strong style={{ color: "var(--text)", fontSize: 18, ...wrapStyle() }}>
-                  {text(selectedTicket.ticket_id)} - {text(selectedTicket.subject, "Support request")}
-                </strong>
-                <div style={{ color: "var(--text-muted)", lineHeight: 1.7 }}>
-                  Status: {text(selectedTicket.status, "open")} | Priority: {text(selectedTicket.priority, "normal")}
+                  <button type="button" onClick={() => router.push("/faq")} style={shellButtonSecondary()}>
+                    Read FAQ
+                  </button>
+                  <button type="button" onClick={() => router.push("/contact")} style={shellButtonSecondary()}>
+                    General Contact
+                  </button>
                 </div>
               </div>
+            </WorkspaceSectionCard>
 
-              <div style={{ display: "grid", gap: 10 }}>
-                {messages.length === 0 ? (
-                  <Banner tone="default" title="No messages yet" subtitle="The original request or future replies will appear here." />
-                ) : (
-                  messages.map((msg, index) => (
-                    <div key={`${msg.id || index}-${msg.created_at || "message"}`} style={panelStyle()}>
-                      <strong style={{ color: "var(--text)" }}>
-                        {msg.sender_type === "admin" ? msg.sender_name || "Support Team" : msg.sender_name || "You"}
-                      </strong>
-                      <div style={{ color: "var(--text-muted)", fontSize: 13 }}>
-                        {msg.created_at ? formatDate(msg.created_at) : "Not shown"}
-                      </div>
-                      <div style={{ color: "var(--text)", lineHeight: 1.8, whiteSpace: "pre-wrap", ...wrapStyle() }}>
-                        {text(msg.message, "")}
-                      </div>
-                    </div>
-                  ))
-                )}
+            <WorkspaceSectionCard title="What support can help with" subtitle="Use the logged-in support route when an issue needs account context.">
+              <div style={{ display: "grid", gap: 10, color: "var(--text-muted)", lineHeight: 1.75 }}>
+                <div>Billing, subscription, failed payment, and receipt questions.</div>
+                <div>Usage Credits, top-ups, plan access, or linked WhatsApp/Telegram channels.</div>
+                <div>Login, technical faults, or professional review follow-up that should be tracked with a ticket ID.</div>
               </div>
-
-              <textarea
-                value={replyMessage}
-                onChange={(event) => setReplyMessage(event.target.value)}
-                placeholder="Write your reply to support here..."
-                rows={5}
-                style={appTextareaStyle()}
-              />
+            </WorkspaceSectionCard>
+          </>
+        ) : (
+          <>
+            <WorkspaceSectionCard title="My support requests" subtitle="All support and professional review tickets are shown here.">
               <div style={actionGrid()}>
-                <button type="button" onClick={submitReply} disabled={replying} style={shellButtonPrimary()}>
-                  {replying ? "Sending..." : "Send Reply"}
+                <button type="button" onClick={() => loadTickets(true)} style={shellButtonPrimary()}>
+                  {loadingTickets ? "Refreshing..." : "Refresh Tickets"}
                 </button>
-                <button type="button" onClick={() => setReplyMessage("")} style={shellButtonSecondary()}>
-                  Clear Reply
+                <button type="button" onClick={() => router.push("/expert-review")} style={shellButtonSecondary()}>
+                  Professional Review
                 </button>
               </div>
-            </div>
-          ) : (
-            <Banner tone="default" title="Ticket not available" subtitle="Select another ticket or refresh the list." />
-          )}
-        </WorkspaceSectionCard>
 
-        <WorkspaceSectionCard title="Open a new support request" subtitle="Use this for billing, credits, channels, login, or technical issues.">
-          <div style={{ display: "grid", gap: 12 }}>
-            <select value={form.category} onChange={(event) => setField("category", event.target.value)} style={appSelectStyle()}>
-              <option value="general">Issue type: General support</option>
-              <option value="billing">Issue type: Billing or subscription</option>
-              <option value="credits">Issue type: Credits or access</option>
-              <option value="channels">Issue type: WhatsApp or Telegram linking</option>
-              <option value="login">Issue type: Login or authentication</option>
-              <option value="technical">Issue type: Technical issue</option>
-            </select>
-            <select value={form.priority} onChange={(event) => setField("priority", event.target.value)} style={appSelectStyle()}>
-              <option value="normal">Priority: Normal</option>
-              <option value="high">Priority: High</option>
-              <option value="urgent">Priority: Urgent</option>
-            </select>
-            <input value={form.subject} onChange={(event) => setField("subject", event.target.value)} placeholder="Support subject" style={appInputStyle()} />
-            <textarea value={form.message} onChange={(event) => setField("message", event.target.value)} placeholder="Describe the issue clearly." rows={7} style={appTextareaStyle()} />
-            <button type="button" onClick={submitSupport} disabled={submitting} style={shellButtonPrimary()}>
-              {submitting ? "Submitting..." : "Submit Support Request"}
-            </button>
-          </div>
-        </WorkspaceSectionCard>
+              {loadingTickets ? (
+                <Banner tone="default" title="Loading tickets" subtitle="Please wait..." />
+              ) : tickets.length === 0 ? (
+                <Banner tone="default" title="No support requests yet" subtitle="Your submitted tickets will appear here." />
+              ) : (
+                <div style={{ display: "grid", gap: 12 }}>
+                  {tickets.map((ticket) => {
+                    const active = ticket.ticket_id === selectedTicketId;
+                    return (
+                      <button
+                        key={ticket.ticket_id}
+                        type="button"
+                        onClick={() => loadTicketDetail(ticket.ticket_id)}
+                        style={{ ...rowStyle(active), textAlign: "left" }}
+                      >
+                        <strong style={{ color: "var(--text)", fontSize: 16, ...wrapStyle() }}>
+                          {text(ticket.ticket_id)} - {text(ticket.subject, "Support request")}
+                        </strong>
+                        <div style={{ color: "var(--text-muted)", lineHeight: 1.7, ...wrapStyle() }}>
+                          Status: {text(ticket.status, "open")} | Priority: {text(ticket.priority, "normal")} | Type: {text(ticket.category, "general")}
+                        </div>
+                        <div style={{ color: "var(--text-muted)", lineHeight: 1.7, ...wrapStyle() }}>
+                          Updated: {ticket.updated_at ? formatDate(ticket.updated_at) : "Not shown"}
+                        </div>
+                        <div style={{ color: "var(--text-muted)", lineHeight: 1.7, ...wrapStyle() }}>
+                          {text(ticket.last_message_preview || ticket.message, "No message preview available.")}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </WorkspaceSectionCard>
+
+            <WorkspaceSectionCard title="Ticket conversation" subtitle="Open a ticket above to view and reply.">
+              {!selectedTicketId ? (
+                <Banner tone="default" title="No ticket selected" subtitle="Select a ticket to view the thread." />
+              ) : loadingThread ? (
+                <Banner tone="default" title="Loading thread" subtitle="Please wait..." />
+              ) : selectedTicket ? (
+                <div style={{ display: "grid", gap: 14 }}>
+                  <div style={panelStyle()}>
+                    <strong style={{ color: "var(--text)", fontSize: 18, ...wrapStyle() }}>
+                      {text(selectedTicket.ticket_id)} - {text(selectedTicket.subject, "Support request")}
+                    </strong>
+                    <div style={{ color: "var(--text-muted)", lineHeight: 1.7 }}>
+                      Status: {text(selectedTicket.status, "open")} | Priority: {text(selectedTicket.priority, "normal")}
+                    </div>
+                  </div>
+
+                  <div style={{ display: "grid", gap: 10 }}>
+                    {messages.length === 0 ? (
+                      <Banner tone="default" title="No messages yet" subtitle="The original request or future replies will appear here." />
+                    ) : (
+                      messages.map((msg, index) => (
+                        <div key={`${msg.id || index}-${msg.created_at || "message"}`} style={panelStyle()}>
+                          <strong style={{ color: "var(--text)" }}>
+                            {msg.sender_type === "admin" ? msg.sender_name || "Support Team" : msg.sender_name || "You"}
+                          </strong>
+                          <div style={{ color: "var(--text-muted)", fontSize: 13 }}>
+                            {msg.created_at ? formatDate(msg.created_at) : "Not shown"}
+                          </div>
+                          <div style={{ color: "var(--text)", lineHeight: 1.8, whiteSpace: "pre-wrap", ...wrapStyle() }}>
+                            {text(msg.message, "")}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  <textarea
+                    value={replyMessage}
+                    onChange={(event) => setReplyMessage(event.target.value)}
+                    placeholder="Write your reply to support here..."
+                    rows={5}
+                    style={appTextareaStyle()}
+                  />
+                  <div style={actionGrid()}>
+                    <button type="button" onClick={submitReply} disabled={replying} style={shellButtonPrimary()}>
+                      {replying ? "Sending..." : "Send Reply"}
+                    </button>
+                    <button type="button" onClick={() => setReplyMessage("")} style={shellButtonSecondary()}>
+                      Clear Reply
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <Banner tone="default" title="Ticket not available" subtitle="Select another ticket or refresh the list." />
+              )}
+            </WorkspaceSectionCard>
+
+            <WorkspaceSectionCard title="Open a new support request" subtitle="Use this for billing, credits, channels, login, or technical issues.">
+              <div style={{ display: "grid", gap: 12 }}>
+                <select value={form.category} onChange={(event) => setField("category", event.target.value)} style={appSelectStyle()}>
+                  <option value="general">Issue type: General support</option>
+                  <option value="billing">Issue type: Billing or subscription</option>
+                  <option value="credits">Issue type: Credits or access</option>
+                  <option value="channels">Issue type: WhatsApp or Telegram linking</option>
+                  <option value="login">Issue type: Login or authentication</option>
+                  <option value="technical">Issue type: Technical issue</option>
+                </select>
+                <select value={form.priority} onChange={(event) => setField("priority", event.target.value)} style={appSelectStyle()}>
+                  <option value="normal">Priority: Normal</option>
+                  <option value="high">Priority: High</option>
+                  <option value="urgent">Priority: Urgent</option>
+                </select>
+                <input value={form.subject} onChange={(event) => setField("subject", event.target.value)} placeholder="Support subject" style={appInputStyle()} />
+                <textarea value={form.message} onChange={(event) => setField("message", event.target.value)} placeholder="Describe the issue clearly." rows={7} style={appTextareaStyle()} />
+                <button type="button" onClick={submitSupport} disabled={submitting} style={shellButtonPrimary()}>
+                  {submitting ? "Submitting..." : "Submit Support Request"}
+                </button>
+              </div>
+            </WorkspaceSectionCard>
+          </>
+        )}
       </SectionStack>
     </AppShell>
   );
