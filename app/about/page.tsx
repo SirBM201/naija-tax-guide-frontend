@@ -57,7 +57,7 @@ export default function AboutPage() {
   return (
     <AppShell
       title="About Naija Tax Guide"
-      subtitle="A public trust page explaining what the product is, who it serves, and where its responsibility boundaries are."
+      subtitle="Learn what the product is, who it serves, and where its responsibility boundaries are."
       actions={
         <>
           <button onClick={() => router.push("/pricing")} style={shellButtonPrimary()}>
@@ -92,7 +92,7 @@ export default function AboutPage() {
 
         <WorkspaceSectionCard
           title="Registered business information"
-          subtitle="Public company details included for reviewer and user trust."
+          subtitle="Public company details included for user trust and accountability."
         >
           <CardsGrid min={220}>
             <div style={infoCard()}>
