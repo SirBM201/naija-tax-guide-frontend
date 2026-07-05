@@ -95,8 +95,9 @@ const topUps = [
 
 const trustItems = [
   "Payments are processed through Paystack checkout.",
-  "Supported payment methods are shown by Paystack before you authorize payment.",
+  "Available payment methods are shown inside Paystack checkout before you authorize payment.",
   "Final amount, plan, and billing period are confirmed before checkout.",
+  "Naija Tax Guide does not decide which Paystack payment methods are available for every customer, bank, card, or device.",
   "Card details are handled by the payment processor, not stored directly by Naija Tax Guide.",
 ];
 
@@ -104,6 +105,33 @@ const freeLimits = [
   "Free access is designed for basic calculators, learning, and reviewed library guidance.",
   "AI answers, custom deadlines, document generation, and top-ups require an active paid plan.",
   "Top-up credits add usage only; they do not extend subscription validity.",
+];
+
+const billingRules = [
+  "Renewal: paid plans are intended to renew on the selected monthly, quarterly, or yearly cycle unless cancelled or not renewed before the next billing period.",
+  "Cancellation: cancelling stops future renewal. It does not automatically refund a period that has already started unless the Refund Policy applies.",
+  "Credits: included Usage Credits are tied to the active subscription period and plan rules shown at checkout or inside Billing.",
+  "Top-ups: top-up credits are available only to active paid subscribers and add usage capacity, not extra subscription time.",
+  "Failed payment: if Paystack does not confirm a successful payment, plan access or credits may remain unchanged until the payment is verified or retried.",
+  "Receipts: payment references and transaction records should be kept for support, reconciliation, failed payment checks, or refund review.",
+];
+
+const processorRows = [
+  {
+    area: "Checkout",
+    processor: "Paystack",
+    posture: "Handles checkout authorization and payment confirmation. Available methods are displayed by Paystack at checkout.",
+  },
+  {
+    area: "Card/payment details",
+    processor: "Paystack and applicable financial institutions",
+    posture: "Sensitive card details are handled by the payment processor, not stored directly by Naija Tax Guide.",
+  },
+  {
+    area: "Platform billing records",
+    processor: "Naija Tax Guide",
+    posture: "Stores plan, amount, reference, status, subscription, credit, and receipt-related records needed for account access and support.",
+  },
 ];
 
 function pageShell(): React.CSSProperties {
@@ -193,6 +221,29 @@ function smallList(items: string[]) {
       ))}
     </div>
   );
+}
+
+function tableWrap(): React.CSSProperties {
+  return {
+    width: "100%",
+    overflowX: "auto",
+    border: "1px solid var(--border)",
+    borderRadius: 16,
+    background: "var(--surface)",
+  };
+}
+
+function tableCell(header = false): React.CSSProperties {
+  return {
+    padding: "12px 14px",
+    borderBottom: "1px solid var(--border)",
+    color: header ? "var(--text)" : "var(--text-muted)",
+    fontSize: header ? 13 : 14,
+    fontWeight: header ? 900 : 600,
+    lineHeight: 1.55,
+    textAlign: "left",
+    verticalAlign: "top",
+  };
 }
 
 export default function PublicPricingPage() {
@@ -298,7 +349,7 @@ export default function PublicPricingPage() {
             <div style={pill("good")}>Checkout and payment confidence</div>
             <h2 style={{ margin: 0, color: "var(--text)", fontSize: 26 }}>Payment is confirmed before access changes</h2>
             <p style={{ margin: 0, color: "var(--text-muted)", lineHeight: 1.8 }}>
-              Checkout shows the selected plan, billing period, and final amount before payment authorization. Subscription access is applied after successful payment confirmation.
+              Checkout shows the selected plan, billing period, and final amount before payment authorization. Subscription access is applied after successful Paystack confirmation or a successful payment verification flow.
             </p>
             {smallList(trustItems)}
           </div>
@@ -313,6 +364,42 @@ export default function PublicPricingPage() {
                   {item}
                 </div>
               ))}
+            </div>
+          </div>
+        </section>
+
+        <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 18 }}>
+          <div style={card()}>
+            <div style={pill("good")}>Billing rules</div>
+            <h2 style={{ margin: 0, color: "var(--text)", fontSize: 26 }}>How renewal, credits, top-ups, and failed payments work</h2>
+            {smallList(billingRules)}
+          </div>
+
+          <div style={card()}>
+            <div style={pill()}>Processor and privacy posture</div>
+            <h2 style={{ margin: 0, color: "var(--text)", fontSize: 26 }}>Payment data is split by role</h2>
+            <p style={{ margin: 0, color: "var(--text-muted)", lineHeight: 1.8 }}>
+              Naija Tax Guide keeps the billing records needed to manage access, credits, reconciliation, support, and refund review. Sensitive payment details are handled by the payment processor and financial institutions involved in the transaction.
+            </p>
+            <div style={tableWrap()}>
+              <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 620 }}>
+                <thead>
+                  <tr>
+                    <th style={tableCell(true)}>Area</th>
+                    <th style={tableCell(true)}>Processor or holder</th>
+                    <th style={tableCell(true)}>Privacy posture</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {processorRows.map((row) => (
+                    <tr key={row.area}>
+                      <td style={tableCell()}>{row.area}</td>
+                      <td style={tableCell()}>{row.processor}</td>
+                      <td style={tableCell()}>{row.posture}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         </section>
