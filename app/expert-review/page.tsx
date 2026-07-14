@@ -1,11 +1,13 @@
 "use client";
 
+import Link from "next/link";
 import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import AppShell, { shellButtonPrimary, shellButtonSecondary } from "@/components/app-shell";
 import WorkspaceSectionCard from "@/components/workspace-section-card";
 import { Banner, appInputStyle, appSelectStyle, appTextareaStyle } from "@/components/ui";
 import { CardsGrid, SectionStack } from "@/components/page-layout";
+import { SITE } from "@/lib/site";
 import { useAuth } from "@/lib/auth";
 
 type ReviewPackage = {
@@ -22,6 +24,13 @@ type SubmitResult = {
   ticket_id?: string;
   message?: string;
   error?: string;
+};
+
+type ShellProps = {
+  title: string;
+  subtitle: string;
+  actions: React.ReactNode;
+  children: React.ReactNode;
 };
 
 const scopeItems = [
@@ -57,7 +66,7 @@ function card(): React.CSSProperties {
     border: "1px solid var(--border)",
     background: "var(--surface)",
     borderRadius: 18,
-    padding: 18,
+    padding: "clamp(14px, 3vw, 18px)",
     display: "grid",
     gap: 10,
     minWidth: 0,
@@ -75,6 +84,66 @@ function list(items: string[] = []) {
         </div>
       ))}
     </div>
+  );
+}
+
+function PublicReviewShell({ title, subtitle, actions, children }: ShellProps) {
+  const footerYear = new Date().getFullYear();
+
+  return (
+    <main style={{ minHeight: "100vh", background: "var(--app-bg)", color: "var(--text)", padding: "18px 14px 42px" }}>
+      <div style={{ maxWidth: 1180, margin: "0 auto", display: "grid", gap: 20 }}>
+        <header
+          style={{
+            border: "1px solid var(--border)",
+            borderRadius: 24,
+            background: "var(--panel-bg)",
+            padding: "clamp(16px, 4vw, 24px)",
+            display: "grid",
+            gap: 16,
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 14, flexWrap: "wrap" }}>
+            <div style={{ display: "grid", gap: 8, minWidth: 0 }}>
+              <div style={{ color: "var(--gold)", fontWeight: 850, fontSize: 12, textTransform: "uppercase", letterSpacing: 0.6 }}>
+                {SITE.name}
+              </div>
+              <h1 style={{ margin: 0, color: "var(--text)", fontSize: "clamp(28px, 6vw, 42px)", lineHeight: 1.08, fontWeight: 950 }}>
+                {title}
+              </h1>
+              <p style={{ margin: 0, color: "var(--text-muted)", fontSize: "clamp(14px, 2.8vw, 16px)", lineHeight: 1.75, maxWidth: 820 }}>
+                {subtitle}
+              </p>
+            </div>
+            <nav style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
+              <Link href="/" style={shellButtonSecondary()}>
+                Home
+              </Link>
+              <Link href="/pricing" style={shellButtonSecondary()}>
+                Pricing
+              </Link>
+              {actions}
+            </nav>
+          </div>
+        </header>
+
+        <section>{children}</section>
+
+        <footer
+          style={{
+            border: "1px solid var(--border)",
+            borderRadius: 20,
+            background: "var(--panel-bg)",
+            padding: "16px 18px",
+            color: "var(--text-muted)",
+            fontSize: 13,
+            lineHeight: 1.6,
+          }}
+        >
+          © {footerYear} {SITE.name} · {SITE.companyName}. Guidance only; sensitive matters should be professionally reviewed.
+        </footer>
+      </div>
+    </main>
   );
 }
 
@@ -159,170 +228,184 @@ export default function ExpertReviewPage() {
     }
   }
 
-  return (
-    <AppShell
-      title="Professional Review"
-      subtitle={isLoggedIn ? "Request human review for high-risk Nigerian tax matters." : "Understand when human review is appropriate before opening an account-specific request."}
-      actions={
-        <>
-          <button type="button" onClick={() => router.push("/support")} style={shellButtonSecondary()}>
-            Support
-          </button>
-          <button type="button" onClick={() => router.push(isLoggedIn ? "/ask" : "/login?next=/expert-review")} style={shellButtonPrimary()}>
-            {isLoggedIn ? "Ask" : "Login to Request Review"}
-          </button>
-        </>
-      }
-    >
-      <SectionStack>
-        <Banner
-          tone="warn"
-          title="Professional review is human escalation, not instant AI advice"
-          subtitle="Use this route for audits, official notices, assessments, penalties, objections, formal filings, back-duty exposure, restructuring, cross-border questions, or high-value decisions. Final scope, pricing, and availability depend on the facts and reviewer availability."
-        />
+  const title = "Professional Review";
+  const subtitle = isLoggedIn
+    ? "Request human review for high-risk Nigerian tax matters."
+    : "Understand when human review is appropriate before opening an account-specific request.";
+  const actions = (
+    <>
+      <button type="button" onClick={() => router.push("/support")} style={shellButtonSecondary()}>
+        Support
+      </button>
+      <button type="button" onClick={() => router.push(isLoggedIn ? "/ask" : "/login?next=/expert-review")} style={shellButtonPrimary()}>
+        {isLoggedIn ? "Ask" : "Login to Request Review"}
+      </button>
+    </>
+  );
 
-        {notice ? <Banner tone="good" title="Request created" subtitle={notice} /> : null}
-        {error ? <Banner tone="danger" title="Request issue" subtitle={error} /> : null}
+  const content = (
+    <SectionStack>
+      <Banner
+        tone="warn"
+        title="Professional review is human escalation, not instant AI advice"
+        subtitle="Use this route for audits, official notices, assessments, penalties, objections, formal filings, back-duty exposure, restructuring, cross-border questions, or high-value decisions. Final scope, pricing, and availability depend on the facts and reviewer availability."
+      />
 
-        <WorkspaceSectionCard title="What this review can include" subtitle="Professional review starts with triage and may move to a separate scope if the matter needs deeper work.">
-          <CardsGrid min={260}>
-            <div style={card()}>
-              <strong style={{ color: "var(--text)", fontSize: 18 }}>Included in review triage</strong>
-              {list(scopeItems)}
-            </div>
-            <div style={card()}>
-              <strong style={{ color: "var(--text)", fontSize: 18 }}>Not automatically included</strong>
-              {list(excludedItems)}
-            </div>
-            <div style={card()}>
-              <strong style={{ color: "var(--text)", fontSize: 18 }}>Pricing and reviewer boundary</strong>
-              {list(reviewerBoundaryItems)}
-            </div>
-          </CardsGrid>
-        </WorkspaceSectionCard>
+      {notice ? <Banner tone="good" title="Request created" subtitle={notice} /> : null}
+      {error ? <Banner tone="danger" title="Request issue" subtitle={error} /> : null}
 
-        <WorkspaceSectionCard title="Review packages" subtitle="Choose the closest route. The review team may reclassify the request during triage if another route is safer.">
-          <CardsGrid min={260}>
-            {(packages.length ? packages : [
-              { code: "triage", name: "Professional Review Triage", status: "available", price_note: "Initial routing and scope review; further professional fees may be quoted after facts are reviewed.", sla_note: "Target first response: 1-2 business days after complete information is received.", best_for: ["Scope review", "Document preparation", "Escalation decision"] },
-            ]).map((item) => {
-              const content = (
-                <>
-                  <strong style={{ color: "var(--text)", fontSize: 18 }}>{item.name}</strong>
-                  <p style={bodyText()}>Status: {item.status}</p>
-                  {item.price_note ? <p style={bodyText()}>{item.price_note}</p> : null}
-                  {item.sla_note ? <p style={bodyText()}>{item.sla_note}</p> : null}
-                  {list(item.best_for || [])}
-                </>
-              );
+      <WorkspaceSectionCard title="What this review can include" subtitle="Professional review starts with triage and may move to a separate scope if the matter needs deeper work.">
+        <CardsGrid min={260}>
+          <div style={card()}>
+            <strong style={{ color: "var(--text)", fontSize: 18 }}>Included in review triage</strong>
+            {list(scopeItems)}
+          </div>
+          <div style={card()}>
+            <strong style={{ color: "var(--text)", fontSize: 18 }}>Not automatically included</strong>
+            {list(excludedItems)}
+          </div>
+          <div style={card()}>
+            <strong style={{ color: "var(--text)", fontSize: 18 }}>Pricing and reviewer boundary</strong>
+            {list(reviewerBoundaryItems)}
+          </div>
+        </CardsGrid>
+      </WorkspaceSectionCard>
 
-              if (!isLoggedIn) {
-                return (
-                  <article key={item.code} style={card()}>
-                    {content}
-                  </article>
-                );
-              }
+      <WorkspaceSectionCard title="Review packages" subtitle="Choose the closest route. The review team may reclassify the request during triage if another route is safer.">
+        <CardsGrid min={260}>
+          {(packages.length ? packages : [
+            { code: "triage", name: "Professional Review Triage", status: "available", price_note: "Initial routing and scope review; further professional fees may be quoted after facts are reviewed.", sla_note: "Target first response: 1-2 business days after complete information is received.", best_for: ["Scope review", "Document preparation", "Escalation decision"] },
+          ]).map((item) => {
+            const packageContent = (
+              <>
+                <strong style={{ color: "var(--text)", fontSize: 18 }}>{item.name}</strong>
+                <p style={bodyText()}>Status: {item.status}</p>
+                {item.price_note ? <p style={bodyText()}>{item.price_note}</p> : null}
+                {item.sla_note ? <p style={bodyText()}>{item.sla_note}</p> : null}
+                {list(item.best_for || [])}
+              </>
+            );
 
+            if (!isLoggedIn) {
               return (
-                <button
-                  key={item.code}
-                  type="button"
-                  onClick={() => setPackageCode(item.code)}
-                  style={{
-                    ...card(),
-                    textAlign: "left",
-                    cursor: "pointer",
-                    border: item.code === packageCode ? "1px solid var(--accent-border)" : "1px solid var(--border)",
-                    background: item.code === packageCode ? "var(--accent-soft)" : "var(--surface)",
-                  }}
-                >
-                  {content}
-                </button>
+                <article key={item.code} style={card()}>
+                  {packageContent}
+                </article>
               );
-            })}
-          </CardsGrid>
+            }
+
+            return (
+              <button
+                key={item.code}
+                type="button"
+                onClick={() => setPackageCode(item.code)}
+                style={{
+                  ...card(),
+                  textAlign: "left",
+                  cursor: "pointer",
+                  border: item.code === packageCode ? "1px solid var(--accent-border)" : "1px solid var(--border)",
+                  background: item.code === packageCode ? "var(--accent-soft)" : "var(--surface)",
+                }}
+              >
+                {packageContent}
+              </button>
+            );
+          })}
+        </CardsGrid>
+      </WorkspaceSectionCard>
+
+      {!isLoggedIn ? (
+        <WorkspaceSectionCard
+          title="Request review after login"
+          subtitle={authReady ? "The request form is account-specific so the review can be tracked safely in Support." : "Use login when you are ready to create an account-specific review request."}
+        >
+          <div style={{ display: "grid", gap: 14 }}>
+            <Banner
+              tone="default"
+              title="Why login is required"
+              subtitle="Professional review requests need ticket tracking, contact details, billing context where applicable, and a secure place for follow-up questions."
+            />
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 220px), 1fr))", gap: 12 }}>
+              <button type="button" onClick={() => router.push("/login?next=/expert-review")} style={shellButtonPrimary()}>
+                Login to Request Review
+              </button>
+              <button type="button" onClick={() => router.push("/support")} style={shellButtonSecondary()}>
+                Support Options
+              </button>
+            </div>
+          </div>
         </WorkspaceSectionCard>
+      ) : (
+        <WorkspaceSectionCard
+          title="Create professional review request"
+          subtitle={selectedPackage ? `Selected: ${selectedPackage.name}` : "Describe the matter clearly so it can be reviewed and routed safely."}
+        >
+          <div style={{ display: "grid", gap: 14 }}>
+            <select value={packageCode} onChange={(event) => setPackageCode(event.target.value)} style={appSelectStyle()}>
+              {(packages.length ? packages : [{ code: "triage", name: "Professional Review Triage", status: "available" }]).map((item) => (
+                <option key={item.code} value={item.code}>{item.name}</option>
+              ))}
+            </select>
 
-        {!isLoggedIn ? (
-          <WorkspaceSectionCard
-            title="Request review after login"
-            subtitle={authReady ? "The request form is account-specific so the review can be tracked safely in Support." : "Preparing the review page."}
-          >
-            <div style={{ display: "grid", gap: 14 }}>
-              <Banner
-                tone="default"
-                title="Why login is required"
-                subtitle="Professional review requests need ticket tracking, contact details, billing context where applicable, and a secure place for follow-up questions."
-              />
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
-                <button type="button" onClick={() => router.push("/login?next=/expert-review")} style={shellButtonPrimary()}>
-                  Login to Request Review
-                </button>
-                <button type="button" onClick={() => router.push("/support")} style={shellButtonSecondary()}>
-                  Support Options
-                </button>
-              </div>
+            <select value={priority} onChange={(event) => setPriority(event.target.value)} style={appSelectStyle()}>
+              <option value="normal">Priority: Normal</option>
+              <option value="high">Priority: High</option>
+              <option value="urgent">Priority: Urgent</option>
+            </select>
+
+            <input
+              value={subject}
+              onChange={(event) => setSubject(event.target.value)}
+              placeholder="Subject, for example: Review my PAYE notice"
+              style={appInputStyle()}
+            />
+
+            <textarea
+              value={question}
+              onChange={(event) => setQuestion(event.target.value)}
+              placeholder="Paste the tax question, notice summary, or AI answer that needs human review."
+              rows={5}
+              style={appTextareaStyle()}
+            />
+
+            <textarea
+              value={details}
+              onChange={(event) => setDetails(event.target.value)}
+              placeholder="Add relevant facts: state, tax year, entity type, deadline, amount involved, documents received, and what outcome you need. Do not upload sensitive documents here unless support asks through a secure route."
+              rows={8}
+              style={appTextareaStyle()}
+            />
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 220px), 1fr))", gap: 12 }}>
+              <button
+                type="button"
+                onClick={submitRequest}
+                disabled={submitting}
+                style={{ ...shellButtonPrimary(), opacity: submitting ? 0.7 : 1, cursor: submitting ? "not-allowed" : "pointer" }}
+              >
+                {submitting ? "Submitting..." : "Submit Review Request"}
+              </button>
+              <button type="button" onClick={() => router.push("/support")} style={shellButtonSecondary()}>
+                Track in Support
+              </button>
             </div>
-          </WorkspaceSectionCard>
-        ) : (
-          <WorkspaceSectionCard
-            title="Create professional review request"
-            subtitle={selectedPackage ? `Selected: ${selectedPackage.name}` : "Describe the matter clearly so it can be reviewed and routed safely."}
-          >
-            <div style={{ display: "grid", gap: 14 }}>
-              <select value={packageCode} onChange={(event) => setPackageCode(event.target.value)} style={appSelectStyle()}>
-                {(packages.length ? packages : [{ code: "triage", name: "Professional Review Triage", status: "available" }]).map((item) => (
-                  <option key={item.code} value={item.code}>{item.name}</option>
-                ))}
-              </select>
+          </div>
+        </WorkspaceSectionCard>
+      )}
+    </SectionStack>
+  );
 
-              <select value={priority} onChange={(event) => setPriority(event.target.value)} style={appSelectStyle()}>
-                <option value="normal">Priority: Normal</option>
-                <option value="high">Priority: High</option>
-                <option value="urgent">Priority: Urgent</option>
-              </select>
+  if (!isLoggedIn) {
+    return (
+      <PublicReviewShell title={title} subtitle={subtitle} actions={actions}>
+        {content}
+      </PublicReviewShell>
+    );
+  }
 
-              <input
-                value={subject}
-                onChange={(event) => setSubject(event.target.value)}
-                placeholder="Subject, for example: Review my PAYE notice"
-                style={appInputStyle()}
-              />
-
-              <textarea
-                value={question}
-                onChange={(event) => setQuestion(event.target.value)}
-                placeholder="Paste the tax question, notice summary, or AI answer that needs human review."
-                rows={5}
-                style={appTextareaStyle()}
-              />
-
-              <textarea
-                value={details}
-                onChange={(event) => setDetails(event.target.value)}
-                placeholder="Add relevant facts: state, tax year, entity type, deadline, amount involved, documents received, and what outcome you need. Do not upload sensitive documents here unless support asks through a secure route."
-                rows={8}
-                style={appTextareaStyle()}
-              />
-
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
-                <button
-                  type="button"
-                  onClick={submitRequest}
-                  disabled={submitting}
-                  style={{ ...shellButtonPrimary(), opacity: submitting ? 0.7 : 1, cursor: submitting ? "not-allowed" : "pointer" }}
-                >
-                  {submitting ? "Submitting..." : "Submit Review Request"}
-                </button>
-                <button type="button" onClick={() => router.push("/support")} style={shellButtonSecondary()}>
-                  Track in Support
-                </button>
-              </div>
-            </div>
-          </WorkspaceSectionCard>
-        )}
-      </SectionStack>
+  return (
+    <AppShell title={title} subtitle={subtitle} actions={actions}>
+      {content}
     </AppShell>
   );
 }
