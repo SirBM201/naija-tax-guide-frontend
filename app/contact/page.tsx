@@ -29,6 +29,7 @@ function paragraphStyle(): React.CSSProperties {
     lineHeight: 1.85,
     fontSize: "clamp(15px, 2.5vw, 16px)",
     wordBreak: "break-word",
+    overflowWrap: "anywhere",
   };
 }
 
@@ -50,7 +51,7 @@ function infoCardStyle(): React.CSSProperties {
     border: "1px solid var(--border)",
     borderRadius: 18,
     background: "var(--surface)",
-    padding: 18,
+    padding: "clamp(14px, 3vw, 18px)",
     display: "grid",
     gap: 8,
     minWidth: 0,
@@ -89,29 +90,42 @@ function helperStyle(): React.CSSProperties {
     lineHeight: 1.7,
     margin: 0,
     wordBreak: "break-word",
+    overflowWrap: "anywhere",
   };
 }
 
 function contactGridStyle(): React.CSSProperties {
   return {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 220px), 1fr))",
     gap: 16,
     alignItems: "stretch",
   };
 }
 
-function contactHighlightStyle(): React.CSSProperties {
+function actionGridStyle(): React.CSSProperties {
   return {
     display: "grid",
-    gap: 10,
-    borderRadius: 16,
-    border: "1px solid var(--accent-border)",
-    background: "var(--accent-soft)",
-    padding: 16,
-    minWidth: 0,
+    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 190px), 1fr))",
+    gap: 12,
   };
 }
+
+const supportCases = [
+  "Login or account access problems.",
+  "Billing, subscription, renewal, failed payment, receipt, or refund-review issues.",
+  "Usage Credit balance, top-up, or plan-access complaints.",
+  "WhatsApp or Telegram linking issues.",
+  "Any issue that should be tracked with a ticket ID and support thread.",
+];
+
+const contactCases = [
+  "Business or partnership enquiries.",
+  "Media, presentation, or public communication requests.",
+  "General product enquiries before deeper onboarding.",
+  "Compliance, legal, or company-level communication that is not a normal support ticket.",
+  "Professional-review enquiries before a logged-in request is opened.",
+];
 
 export default function ContactPage() {
   const router = useRouter();
@@ -135,7 +149,7 @@ export default function ContactPage() {
         <Banner
           tone="default"
           title="Use the right contact route"
-          subtitle="General enquiries can use this page. Logged-in users who need billing, credits, login, linked-channel, or technical issue tracking should use the Support page so the request can carry account context and a ticket ID."
+          subtitle="General enquiries can use this page. Logged-in users who need billing, credits, login, linked-channel, technical issue tracking, or refund review should use Support so the request can carry account context and a ticket ID."
         />
 
         <WorkspaceSectionCard
@@ -144,7 +158,7 @@ export default function ContactPage() {
         >
           <div style={contactGridStyle()}>
             <div style={infoCardStyle()}>
-              <p style={labelStyle()}>Support email</p>
+              <p style={labelStyle()}>General support email</p>
               <p style={valueStyle()}>{SITE.supportEmail}</p>
               <p style={helperStyle()}>
                 Best for direct business contact, follow-up communication, and general enquiries where email communication is appropriate.
@@ -152,26 +166,26 @@ export default function ContactPage() {
             </div>
 
             <div style={infoCardStyle()}>
+              <p style={labelStyle()}>Privacy email</p>
+              <p style={valueStyle()}>{SITE.privacyEmail}</p>
+              <p style={helperStyle()}>
+                Best for privacy questions, correction requests, deletion follow-up, and data-protection communication.
+              </p>
+            </div>
+
+            <div style={infoCardStyle()}>
               <p style={labelStyle()}>Support route</p>
               <p style={valueStyle()}>In-app Support Page</p>
               <p style={helperStyle()}>
-                Best for logged-in users who need ticket tracking, support replies, billing issue follow-up, or technical help.
+                Best for logged-in users who need ticket tracking, billing issue follow-up, technical help, or payment reference review.
               </p>
             </div>
 
             <div style={infoCardStyle()}>
-              <p style={labelStyle()}>Professional-review route</p>
-              <p style={valueStyle()}>Request human review</p>
+              <p style={labelStyle()}>Professional review</p>
+              <p style={valueStyle()}>Human review route</p>
               <p style={helperStyle()}>
                 Best for audits, disputes, penalties, formal filings, official notices, or high-value decisions that should not rely on AI guidance alone.
-              </p>
-            </div>
-
-            <div style={infoCardStyle()}>
-              <p style={labelStyle()}>Privacy / deletion route</p>
-              <p style={valueStyle()}>Use Privacy or Data Deletion page</p>
-              <p style={helperStyle()}>
-                Best for compliance, privacy, and deletion-related requests where a formal route is preferred.
               </p>
             </div>
           </div>
@@ -183,16 +197,10 @@ export default function ContactPage() {
         >
           <div style={sectionBodyStyle()}>
             <p style={paragraphStyle()}>
-              The Contact page is intended for general company communication such
-              as public enquiries, operational questions, business follow-up,
-              product interest, partnership discussion, or other non-ticket
-              communication.
+              The Contact page is intended for general company communication such as public enquiries, operational questions, business follow-up, product interest, partnership discussion, media requests, or other non-ticket communication.
             </p>
-
             <p style={paragraphStyle()}>
-              If the matter is actually a user issue that needs tracking, status
-              updates, or in-app reply handling, the Support page should be used
-              instead of this Contact page.
+              If the matter is a user issue that needs tracking, status updates, account context, billing records, or in-app reply handling, the Support page should be used instead.
             </p>
           </div>
         </WorkspaceSectionCard>
@@ -203,11 +211,7 @@ export default function ContactPage() {
         >
           <div style={sectionBodyStyle()}>
             <p style={paragraphStyle()}>
-              {SITE.name} provides general tax information and guided support. It
-              does not replace a licensed accountant, tax consultant, lawyer,
-              government authority, or formal representative. Where a user needs
-              professional review, the correct step is to request a human review
-              route or consult an independent qualified tax professional.
+              {SITE.name} provides general tax information and guided support. It does not replace a licensed accountant, tax consultant, lawyer, government authority, or formal representative. Where a user needs professional review, the correct step is to request a human review route or consult an independent qualified tax professional.
             </p>
             <ul style={bulletListStyle()}>
               <li>Tax audit letters, official notices, assessments, objections, appeals, and penalties.</li>
@@ -222,30 +226,18 @@ export default function ContactPage() {
           title="3. When to use Support instead"
           subtitle="Support remains the official help center for operational user issues."
         >
-          <div style={sectionBodyStyle()}>
-            <ul style={bulletListStyle()}>
-              <li>Login or account access problems.</li>
-              <li>Billing, subscription, or renewal issues.</li>
-              <li>Credit balance or access limitation complaints.</li>
-              <li>Technical failures or channel-linking issues.</li>
-              <li>Any issue that should be tracked with a ticket ID and support thread.</li>
-            </ul>
-          </div>
+          <ul style={bulletListStyle()}>
+            {supportCases.map((item) => <li key={item}>{item}</li>)}
+          </ul>
         </WorkspaceSectionCard>
 
         <WorkspaceSectionCard
           title="4. Suitable use cases for this Contact page"
           subtitle="This page is better for broader communication that does not need the support ticket workflow."
         >
-          <div style={sectionBodyStyle()}>
-            <ul style={bulletListStyle()}>
-              <li>Business or partnership enquiries.</li>
-              <li>Media, presentation, or public communication requests.</li>
-              <li>General product enquiries before deeper onboarding.</li>
-              <li>Compliance, legal, or company-level communication that is not a normal support ticket.</li>
-              <li>Escalation guidance where the issue does not belong inside a standard support inbox.</li>
-            </ul>
-          </div>
+          <ul style={bulletListStyle()}>
+            {contactCases.map((item) => <li key={item}>{item}</li>)}
+          </ul>
         </WorkspaceSectionCard>
 
         <WorkspaceSectionCard
@@ -254,37 +246,31 @@ export default function ContactPage() {
         >
           <div style={sectionBodyStyle()}>
             <p style={paragraphStyle()}>
-              General enquiries sent through the Contact route may be reviewed
-              manually and may not receive the same ticket-based workflow that
-              exists inside the Support page.
+              General enquiries sent through the Contact route may be reviewed manually and may not receive the same ticket-based workflow that exists inside the Support page.
             </p>
-
             <p style={paragraphStyle()}>
-              For urgent user issues, billing complaints, technical problems, or
-              requests that need traceable follow-up, users should go directly
-              to the Support page so the request can be recorded properly.
+              For urgent user issues, billing complaints, technical problems, failed payment checks, or requests that need traceable follow-up, users should go directly to Support so the request can be recorded properly.
             </p>
           </div>
         </WorkspaceSectionCard>
 
         <WorkspaceSectionCard
-          title="6. Official contact note"
-          subtitle={`Use direct company contact with ${SITE.companyName} responsibly and keep messages relevant to the communication route.`}
+          title="6. Quick actions"
+          subtitle="Use these routes to move to the right page quickly."
         >
-          <div style={sectionBodyStyle()}>
-            <div style={contactHighlightStyle()}>
-              <p style={labelStyle()}>Official contact email</p>
-              <p style={valueStyle()}>{SITE.supportEmail}</p>
-              <p style={helperStyle()}>
-                Use this email for general business communication where a support ticket is not the appropriate workflow.
-              </p>
-            </div>
-
-            <p style={paragraphStyle()}>
-              Where a request is more suitable for a privacy, deletion, billing,
-              professional-review, or support workflow, the platform may redirect
-              the user to the appropriate page so the matter can be handled correctly.
-            </p>
+          <div style={actionGridStyle()}>
+            <button type="button" onClick={() => router.push("/support")} style={shellButtonPrimary()}>
+              Open Support
+            </button>
+            <button type="button" onClick={() => router.push("/expert-review")} style={shellButtonSecondary()}>
+              Professional Review
+            </button>
+            <button type="button" onClick={() => router.push("/privacy")} style={shellButtonSecondary()}>
+              Privacy
+            </button>
+            <button type="button" onClick={() => router.push("/data-deletion")} style={shellButtonSecondary()}>
+              Data Deletion
+            </button>
           </div>
         </WorkspaceSectionCard>
       </SectionStack>
