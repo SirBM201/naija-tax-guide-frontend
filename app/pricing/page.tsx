@@ -29,7 +29,11 @@ const plans: PublicPlan[] = [
   {
     name: "Starter",
     audience: "Individuals, salary earners, and light tax guidance needs.",
-    prices: { monthly: "₦5,000", quarterly: "₦14,000", yearly: "₦51,000" },
+    prices: {
+      monthly: "₦5,000",
+      quarterly: "₦14,000",
+      yearly: "₦51,000",
+    },
     credits: "100 monthly AI usage credits",
     channels: "Web plus one messaging channel: WhatsApp or Telegram",
     support: "Standard support",
@@ -44,7 +48,11 @@ const plans: PublicPlan[] = [
   {
     name: "Professional",
     audience: "Freelancers, consultants, creators, and growing SMEs.",
-    prices: { monthly: "₦12,000", quarterly: "₦33,600", yearly: "₦122,400" },
+    prices: {
+      monthly: "₦12,000",
+      quarterly: "₦33,600",
+      yearly: "₦122,400",
+    },
     credits: "300 monthly AI usage credits",
     channels: "Web plus WhatsApp and Telegram",
     support: "Priority support",
@@ -60,7 +68,11 @@ const plans: PublicPlan[] = [
   {
     name: "Business",
     audience: "Teams, businesses, consultants, and heavier compliance workflows.",
-    prices: { monthly: "₦25,000", quarterly: "₦70,000", yearly: "₦255,000" },
+    prices: {
+      monthly: "₦25,000",
+      quarterly: "₦70,000",
+      yearly: "₦255,000",
+    },
     credits: "800 monthly AI usage credits",
     channels: "Higher workspace and channel capacity",
     support: "Priority business support",
@@ -75,9 +87,10 @@ const plans: PublicPlan[] = [
 ];
 
 const topUps = [
-  "100 Usage Credits - ₦200",
-  "300 Usage Credits - ₦500",
-  "1,000 Usage Credits - ₦1,500",
+  "10 Usage Credits - ₦500",
+  "50 Usage Credits - ₦2,000",
+  "100 Usage Credits - ₦3,500",
+  "500 Usage Credits - ₦15,000",
 ];
 
 const trustItems = [
@@ -135,7 +148,7 @@ function card(accent = false): React.CSSProperties {
     borderRadius: 22,
     border: accent ? "1px solid var(--gold)" : "1px solid var(--border)",
     background: "var(--panel-bg)",
-    padding: "clamp(16px, 3vw, 20px)",
+    padding: 20,
     display: "grid",
     gap: 14,
     minWidth: 0,
@@ -257,7 +270,7 @@ export default function PublicPricingPage() {
               Clear plans before you create or upgrade an account.
             </h1>
             <p style={{ margin: 0, color: "var(--text-muted)", fontSize: "clamp(16px, 2.6vw, 18px)", lineHeight: 1.8, maxWidth: 900 }}>
-              {SITE.name} shows plan prices, included credits, channel access, support level, billing rules, and top-up limits before checkout.
+              {SITE.name} shows plan prices, included credits, channel access, and support level before checkout. You can compare monthly, quarterly, and yearly billing without creating an account first.
             </p>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
               <span style={pill()}>Prices shown in Nigerian Naira</span>
@@ -276,7 +289,7 @@ export default function PublicPricingPage() {
               Monthly is shown by default. Switch only when you want to compare quarterly or yearly totals.
             </p>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 180px), 1fr))", gap: 10 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
             {billingOptions.map((option) => {
               const active = billingCycle === option.key;
               return (
@@ -289,7 +302,7 @@ export default function PublicPricingPage() {
           </div>
         </section>
 
-        <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 280px), 1fr))", gap: 18 }}>
+        <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 18 }}>
           {plans.map((plan) => (
             <article key={plan.name} style={card(Boolean(plan.recommended))}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
@@ -331,7 +344,7 @@ export default function PublicPricingPage() {
           ))}
         </section>
 
-        <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 280px), 1fr))", gap: 18 }}>
+        <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 18 }}>
           <div style={card()}>
             <div style={pill("good")}>Checkout and payment confidence</div>
             <h2 style={{ margin: 0, color: "var(--text)", fontSize: 26 }}>Payment is confirmed before access changes</h2>
@@ -355,7 +368,7 @@ export default function PublicPricingPage() {
           </div>
         </section>
 
-        <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: 18 }}>
+        <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 18 }}>
           <div style={card()}>
             <div style={pill("good")}>Billing rules</div>
             <h2 style={{ margin: 0, color: "var(--text)", fontSize: 26 }}>How renewal, credits, top-ups, and failed payments work</h2>
@@ -397,7 +410,7 @@ export default function PublicPricingPage() {
           <p style={{ margin: 0, color: "var(--text-muted)", lineHeight: 1.8 }}>
             {SITE.name} provides general Nigerian tax information and guided support. It is not a government portal, law firm, accounting firm, or substitute for a qualified tax professional in sensitive matters, audits, disputes, penalties, or formal filing decisions.
           </p>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 160px), 1fr))", gap: 10 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10 }}>
             <button onClick={() => router.push("/terms")} style={button(false)}>Terms</button>
             <button onClick={() => router.push("/privacy")} style={button(false)}>Privacy</button>
             <button onClick={() => router.push("/refund")} style={button(false)}>Refund</button>
