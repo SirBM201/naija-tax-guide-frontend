@@ -9,6 +9,7 @@ import AppShell, {
 import WorkspaceSectionCard from "@/components/workspace-section-card";
 import { Banner } from "@/components/ui";
 import { CardsGrid, SectionStack } from "@/components/page-layout";
+import { useAuth } from "@/lib/auth";
 
 function valueStyle(): React.CSSProperties {
   return {
@@ -63,23 +64,41 @@ function cardTextBlockStyle(): React.CSSProperties {
   };
 }
 
+const reviewItems = [
+  "Duplicate payments or duplicate billing for the same intended service item.",
+  "Technical activation failure after a successful payment.",
+  "Money debited but Paystack or the platform did not confirm the intended outcome.",
+  "Clear platform-side billing or processing error that blocked the purchased access.",
+];
+
+const generallyNotRefundable = [
+  "Used subscription time or an already-consumed access window.",
+  "Correct plan activation followed by change of mind.",
+  "Requests where the purchased service was delivered as described.",
+  "Top-up credits that were successfully delivered and then consumed.",
+];
+
 export default function RefundPage() {
   const router = useRouter();
+  const { authReady, hasSession } = useAuth();
+  const isLoggedIn = authReady && hasSession;
 
-  const supportLinks = {
-    duplicate: "/support?intent=duplicate_charge",
-    wrongPlan: "/support?intent=wrong_plan",
-    activation: "/support?intent=activation_issue",
-    refund: "/support?intent=refund_review",
-  };
+  function supportPath(intent: string) {
+    const next = `/support?intent=${encodeURIComponent(intent)}`;
+    return isLoggedIn ? next : `/login?next=${encodeURIComponent(next)}`;
+  }
+
+  function billingPath() {
+    return isLoggedIn ? "/billing" : `/login?next=${encodeURIComponent("/billing")}`;
+  }
 
   return (
     <AppShell
       title="Refund Policy"
-      subtitle="Review refund eligibility, duplicate-charge handling, and the fastest next step when a billing result looks wrong."
+      subtitle="Review refund eligibility, duplicate-charge handling, failed activation steps, and the fastest route when a billing result looks wrong."
       actions={
         <>
-          <button onClick={() => router.push("/billing")} style={shellButtonPrimary()}>
+          <button onClick={() => router.push(billingPath())} style={shellButtonPrimary()}>
             Open Billing
           </button>
           <button onClick={() => router.push("/support")} style={shellButtonSecondary()}>
@@ -92,18 +111,15 @@ export default function RefundPage() {
         <Banner
           tone="warn"
           title="Refunds are reviewed, not automatic"
-          subtitle="Because Naija Tax Guide is a digital-access service, refund approval depends on payment evidence, activation state, plan outcome, and whether usable value has already been delivered."
+          subtitle="Because Naija Tax Guide is a digital-access service, refund approval depends on payment evidence, activation state, plan outcome, credit usage, and whether usable value has already been delivered."
         />
 
         <WorkspaceSectionCard
           title="Before you request a refund review"
-          subtitle="Use Billing for your account-specific plan, payment reference, credit balance, and expiry details."
+          subtitle="Account-specific billing questions need a payment reference and a logged-in support trail."
         >
           <p style={bodyTextStyle()}>
-            Public visitors may read this policy without logging in. Logged-in users
-            should open Billing first to confirm the exact payment reference,
-            selected plan, activation state, and visible credits before submitting
-            a refund-related support request.
+            Review the visible plan, payment reference, activation state, credit balance, and receipt details in Billing where available. If money was debited but access did not update, open a support ticket with the Paystack reference, amount, date, plan selected, and the result you saw after checkout.
           </p>
         </WorkspaceSectionCard>
 
@@ -115,16 +131,11 @@ export default function RefundPage() {
             <div style={cardTextBlockStyle()}>
               <p style={valueStyle()}>Duplicate charge</p>
               <p style={bodyTextStyle()}>
-                Use this when the same card, bank account, or payment method appears to have been billed more than once for the same intended payment.
+                Use this when the same card, bank account, or payment route appears to have been billed more than once for the same intended payment.
               </p>
-              <div style={{ marginTop: 2 }}>
-                <button
-                  onClick={() => router.push(supportLinks.duplicate)}
-                  style={actionButtonStyle(true)}
-                >
-                  Report Duplicate Charge
-                </button>
-              </div>
+              <button onClick={() => router.push(supportPath("duplicate_charge"))} style={actionButtonStyle(true)}>
+                Report Duplicate Charge
+              </button>
             </div>
 
             <div style={cardTextBlockStyle()}>
@@ -132,29 +143,19 @@ export default function RefundPage() {
               <p style={bodyTextStyle()}>
                 Use this when payment was successful but the visible plan does not match the one you intended to buy.
               </p>
-              <div style={{ marginTop: 2 }}>
-                <button
-                  onClick={() => router.push(supportLinks.wrongPlan)}
-                  style={actionButtonStyle(false)}
-                >
-                  Report Wrong Plan
-                </button>
-              </div>
+              <button onClick={() => router.push(supportPath("wrong_plan"))} style={actionButtonStyle(false)}>
+                Report Wrong Plan
+              </button>
             </div>
 
             <div style={cardTextBlockStyle()}>
               <p style={valueStyle()}>Payment successful but access failed</p>
               <p style={bodyTextStyle()}>
-                Use this when the payment completed but activation, credits, or access did not reflect correctly.
+                Use this when checkout completed but activation, credits, renewal, or access did not reflect correctly.
               </p>
-              <div style={{ marginTop: 2 }}>
-                <button
-                  onClick={() => router.push(supportLinks.activation)}
-                  style={actionButtonStyle(false)}
-                >
-                  Report Activation Issue
-                </button>
-              </div>
+              <button onClick={() => router.push(supportPath("activation_issue"))} style={actionButtonStyle(false)}>
+                Report Activation Issue
+              </button>
             </div>
 
             <div style={cardTextBlockStyle()}>
@@ -162,14 +163,9 @@ export default function RefundPage() {
               <p style={bodyTextStyle()}>
                 Use this when you believe the transaction falls inside the refund-review rules on this page.
               </p>
-              <div style={{ marginTop: 2 }}>
-                <button
-                  onClick={() => router.push(supportLinks.refund)}
-                  style={actionButtonStyle(false)}
-                >
-                  Start Refund Review
-                </button>
-              </div>
+              <button onClick={() => router.push(supportPath("refund_review"))} style={actionButtonStyle(false)}>
+                Start Refund Review
+              </button>
             </div>
           </CardsGrid>
         </WorkspaceSectionCard>
@@ -177,7 +173,7 @@ export default function RefundPage() {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+            gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 240px), 1fr))",
             gap: 20,
           }}
         >
@@ -186,10 +182,7 @@ export default function RefundPage() {
             subtitle="These are review scenarios, not guaranteed approvals."
           >
             <ul style={bulletListStyle()}>
-              <li>Duplicate payments or duplicate billing for the same intended service item.</li>
-              <li>Technical activation failure after a successful payment.</li>
-              <li>Unauthorized transaction concerns, subject to investigation.</li>
-              <li>Clear platform-side billing or processing error that blocked the intended outcome.</li>
+              {reviewItems.map((item) => <li key={item}>{item}</li>)}
             </ul>
           </WorkspaceSectionCard>
 
@@ -198,20 +191,31 @@ export default function RefundPage() {
             subtitle="These usually fail refund review once value has already been consumed correctly."
           >
             <ul style={bulletListStyle()}>
-              <li>Used subscription time or already-consumed access window.</li>
-              <li>Correct plan activation followed by change of mind.</li>
-              <li>Requests where the purchased service was delivered as described.</li>
-              <li>Refund claims made only because a different plan would have been preferred later.</li>
+              {generallyNotRefundable.map((item) => <li key={item}>{item}</li>)}
             </ul>
           </WorkspaceSectionCard>
         </div>
+
+        <WorkspaceSectionCard
+          title="Failed or pending payment"
+          subtitle="A failed payment should not change plan access unless successful confirmation is later received."
+        >
+          <div style={{ display: "grid", gap: 14 }}>
+            <p style={bodyTextStyle()}>
+              If Paystack does not confirm a successful payment, subscription access and top-up credits may remain unchanged. If your bank shows a debit but the app still shows no activation, wait for payment confirmation where applicable and then open Support with the reference and evidence.
+            </p>
+            <p style={bodyTextStyle()}>
+              Do not repeat large payments several times without checking the Billing page and support route first, especially where a bank debit already appears.
+            </p>
+          </div>
+        </WorkspaceSectionCard>
 
         <WorkspaceSectionCard
           title="Refund review window"
           subtitle="Requests should be made quickly while payment evidence is still easy to confirm."
         >
           <p style={bodyTextStyle()}>
-            Eligible refund-related concerns should normally be raised within <strong>3 days of payment</strong>. Later requests may still be reviewed in unusual cases, but approval becomes harder when billing evidence, activation state, or provider-side timing can no longer be confirmed clearly.
+            Eligible refund-related concerns should normally be raised within <strong>3 days of payment</strong>. Later requests may still be reviewed in unusual cases, but approval becomes harder when billing evidence, activation state, credit usage, or provider-side timing can no longer be confirmed clearly.
           </p>
         </WorkspaceSectionCard>
 
@@ -221,8 +225,8 @@ export default function RefundPage() {
         >
           <ul style={bulletListStyle()}>
             <li>Open Billing and confirm the latest visible payment reference matches the transaction you are reporting.</li>
-            <li>Check whether the visible plan and credit balance already updated before opening a new refund-related ticket.</li>
-            <li>Use the issue-specific support buttons above so billing context is easier to understand.</li>
+            <li>Check whether the visible plan and credit balance already updated before opening a refund-related ticket.</li>
+            <li>Keep receipts, debit alerts, Paystack references, and the selected plan name available.</li>
             <li>For duplicate-charge concerns, mention both references if more than one payment was captured.</li>
           </ul>
         </WorkspaceSectionCard>
