@@ -1,14 +1,14 @@
 "use client";
 
-import React, { Suspense, useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import React, { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import AppShell, {
   shellButtonPrimary,
   shellButtonSecondary,
 } from "@/components/app-shell";
 import WorkspaceSectionCard from "@/components/workspace-section-card";
 import { Banner, MetricCard, ShortcutCard, formatDate } from "@/components/ui";
-import { CardsGrid, SectionStack } from "@/components/page-layout";
+import { CardsGrid, SectionStack, TwoColumnSection } from "@/components/page-layout";
 import { useWorkspaceState } from "@/hooks/useWorkspaceState";
 import { buildWorkspaceAlerts } from "@/lib/workspace-alerts";
 
@@ -18,8 +18,11 @@ type TopupPackage = {
   code: string;
   name: string;
   credits: number;
-  price: number;
-  bestFor: string;
+  amount_ngn?: number;
+  amount_kobo?: number;
+  price?: number;
+  description?: string;
+  bestFor?: string;
   badge?: string;
 };
 
@@ -35,28 +38,35 @@ type CreditActivity = {
   amount?: number | string;
 };
 
-const TOPUP_PACKAGES: TopupPackage[] = [
+const FALLBACK_TOPUP_PACKAGES: TopupPackage[] = [
+  {
+    code: "TOPUP_10",
+    name: "10 Usage Credits",
+    credits: 10,
+    amount_ngn: 500,
+    bestFor: "Light AI questions and quick extra help.",
+  },
+  {
+    code: "TOPUP_50",
+    name: "50 Usage Credits",
+    credits: 50,
+    amount_ngn: 2000,
+    bestFor: "Occasional AI guidance and simple document drafts.",
+    badge: "Popular",
+  },
   {
     code: "TOPUP_100",
     name: "100 Usage Credits",
     credits: 100,
-    price: 200,
-    bestFor: "Light AI questions, quick explanations, and small document tasks.",
+    amount_ngn: 3500,
+    bestFor: "Regular AI answers, filing checklists, and summaries.",
   },
   {
-    code: "TOPUP_300",
-    name: "300 Usage Credits",
-    credits: 300,
-    price: 500,
-    bestFor: "Regular AI guidance, filing checklists, and summaries.",
-    badge: "Popular",
-  },
-  {
-    code: "TOPUP_1000",
-    name: "1,000 Usage Credits",
-    credits: 1000,
-    price: 1500,
-    bestFor: "Heavier document work, business use, and linked-channel usage.",
+    code: "TOPUP_500",
+    name: "500 Usage Credits",
+    credits: 500,
+    amount_ngn: 15000,
+    bestFor: "Best value for heavier document work, business use, and linked-channel usage.",
     badge: "Best Value",
   },
 ];
@@ -78,13 +88,6 @@ const CREDIT_COVERAGE = [
   "Premium WhatsApp / Telegram AI usage",
 ];
 
-const CREDIT_RULES = [
-  "Top-ups are available only to active paid subscribers.",
-  "Top-up credits add usage capacity only; they do not extend subscription validity.",
-  "The final amount and available payment methods are shown inside Paystack checkout before authorization.",
-  "If a debit occurs but credits do not update, use Support with the Paystack reference.",
-];
-
 function safeText(value: unknown, fallback = "—"): string {
   const text =
     typeof value === "string"
@@ -102,6 +105,19 @@ function safeNumber(value: unknown): number {
 
 function money(value: number): string {
   return `₦${value.toLocaleString("en-NG")}`;
+}
+
+function packagePrice(pkg: TopupPackage): number {
+  const direct = safeNumber(pkg.amount_ngn ?? pkg.price);
+  if (direct > 0) return direct;
+  const kobo = safeNumber(pkg.amount_kobo);
+  return kobo > 0 ? kobo / 100 : 0;
+}
+
+function packageRate(pkg: TopupPackage): string {
+  const credits = Math.max(1, safeNumber(pkg.credits));
+  const price = packagePrice(pkg);
+  return `About ${money(price / credits)} per credit`;
 }
 
 function creditTone(balance: number): Tone {
@@ -131,10 +147,14 @@ function normalizePlanFamily(subscription: unknown, billing: unknown): string {
   if (code.includes("professional")) return "professional";
   if (code.includes("starter")) return "starter";
 
-  const directFamily = safeText(s?.plan_family || b?.plan_family || "", "").toLowerCase();
-  if (directFamily.includes("business")) return "business";
-  if (directFamily.includes("professional")) return "professional";
-  if (directFamily.includes("starter")) return "starter";
+  const directFamily = safeText(s?.plan_family || b?.plan_family || "", "");
+  if (directFamily) {
+    const family = directFamily.toLowerCase();
+    if (family.includes("business")) return "business";
+    if (family.includes("professional")) return "professional";
+    if (family.includes("starter")) return "starter";
+  }
+
   return "free";
 }
 
@@ -154,46 +174,57 @@ function isActivePaidSubscription(subscription: unknown, billing: unknown): bool
   if (!active) return false;
   if (family === "free") return false;
   if (code === "free" || code.includes("free")) return false;
+
   return true;
 }
 
-function topupStatusCopy(status: string, reference: string) {
-  const clean = status.trim().toLowerCase();
-  if (clean === "success") {
+function topupReturnCopy(search: string): { tone: Tone; title: string; subtitle: string } | null {
+  const params = new URLSearchParams(search);
+  const status = (params.get("topup") || "").trim().toLowerCase();
+  const reference = (params.get("reference") || "").trim();
+
+  if (!status) return null;
+
+  if (status === "success") {
     return {
-      tone: "good" as const,
-      title: "Top-up payment confirmed",
-      subtitle: `Credits should be visible shortly. Reference: ${reference || "not shown"}.`,
+      tone: "good",
+      title: "Top-up confirmed",
+      subtitle: `Your Usage Credits should now be updated. Reference: ${reference || "not shown"}.`,
     };
   }
-  if (clean === "not_applied") {
+
+  if (status === "not_applied") {
     return {
-      tone: "warn" as const,
+      tone: "warn",
       title: "Top-up paid, credits need review",
       subtitle: `Payment was confirmed but credits were not applied yet. Contact Support with reference ${reference || "not shown"}.`,
     };
   }
-  if (clean === "verify_failed") {
+
+  if (status === "verify_failed") {
     return {
-      tone: "danger" as const,
+      tone: "danger",
       title: "Top-up verification failed",
       subtitle: `The payment could not be verified automatically. Use Support with reference ${reference || "not shown"} if money was deducted.`,
     };
   }
-  if (clean === "pending") {
+
+  if (status === "pending") {
     return {
-      tone: "warn" as const,
+      tone: "warn",
       title: "Top-up payment pending",
       subtitle: `Paystack has not confirmed the top-up yet. Refresh Credits before retrying. Reference: ${reference || "not shown"}.`,
     };
   }
-  if (clean === "missing_reference") {
+
+  if (status === "missing_reference") {
     return {
-      tone: "danger" as const,
+      tone: "danger",
       title: "Top-up reference missing",
       subtitle: "The return URL did not include a payment reference. Open Support if money was deducted.",
     };
   }
+
   return null;
 }
 
@@ -220,10 +251,11 @@ function cardStyle(tone: Tone = "default"): React.CSSProperties {
     border: `1px solid ${border}`,
     borderRadius: 22,
     background,
-    padding: "clamp(14px, 3vw, 18px)",
+    padding: 18,
     display: "grid",
     gap: 10,
     minWidth: 0,
+    overflowWrap: "anywhere",
   };
 }
 
@@ -260,21 +292,37 @@ function listItemStyle(): React.CSSProperties {
     borderRadius: 16,
     padding: "12px 14px",
     background: "var(--surface)",
-    display: "grid",
-    gridTemplateColumns: "minmax(0, 1fr) auto",
+    display: "flex",
     alignItems: "center",
+    justifyContent: "space-between",
     gap: 12,
     minWidth: 0,
+    overflowWrap: "anywhere",
   };
 }
 
-function CreditsPageContent() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const topupStatus = useMemo(() => (searchParams?.get("topup") || "").trim(), [searchParams]);
-  const returnedReference = useMemo(() => (searchParams?.get("reference") || "").trim(), [searchParams]);
+function normalizePackages(rows: unknown): TopupPackage[] {
+  if (!Array.isArray(rows)) return FALLBACK_TOPUP_PACKAGES;
 
-  const workspaceState = useWorkspaceState();
+  const cleaned = rows
+    .map((row) => row as Record<string, unknown>)
+    .filter((row) => safeText(row.code || "", ""))
+    .map((row) => ({
+      code: safeText(row.code, ""),
+      name: safeText(row.name, "Usage Credits"),
+      credits: safeNumber(row.credits),
+      amount_ngn: safeNumber(row.amount_ngn),
+      amount_kobo: safeNumber(row.amount_kobo),
+      description: safeText(row.description || "", ""),
+      bestFor: safeText(row.description || "Add extra Usage Credits to an active paid account.", "Add extra Usage Credits to an active paid account."),
+    }))
+    .filter((row) => row.credits > 0 && packagePrice(row) > 0);
+
+  return cleaned.length ? cleaned : FALLBACK_TOPUP_PACKAGES;
+}
+
+export default function CreditsPage() {
+  const router = useRouter();
   const {
     profile,
     usage,
@@ -283,7 +331,7 @@ function CreditsPageContent() {
     billing,
     credits,
     refreshAll,
-  } = workspaceState;
+  } = useWorkspaceState();
 
   const usageAny = usage as Record<string, unknown> | null | undefined;
   const subscriptionAny = subscription as Record<string, unknown> | null | undefined;
@@ -291,8 +339,39 @@ function CreditsPageContent() {
   const creditsAny = credits as Record<string, unknown> | null | undefined;
 
   const [topupLoading, setTopupLoading] = useState<string | null>(null);
+  const [topupPackages, setTopupPackages] = useState<TopupPackage[]>(FALLBACK_TOPUP_PACKAGES);
   const [localError, setLocalError] = useState<string | null>(null);
   const [localMessage, setLocalMessage] = useState<string | null>(null);
+  const [returnNotice, setReturnNotice] = useState<{ tone: Tone; title: string; subtitle: string } | null>(null);
+
+  useEffect(() => {
+    setReturnNotice(topupReturnCopy(window.location.search));
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadPackages() {
+      try {
+        const response = await fetch("/api/billing/topup/packages", {
+          method: "GET",
+          credentials: "include",
+          cache: "no-store",
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!cancelled && Array.isArray(data?.packages)) {
+          setTopupPackages(normalizePackages(data.packages));
+        }
+      } catch {
+        if (!cancelled) setTopupPackages(FALLBACK_TOPUP_PACKAGES);
+      }
+    }
+
+    void loadPackages();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const allAlerts = useMemo(
     () =>
@@ -361,8 +440,14 @@ function CreditsPageContent() {
   const planFamily = normalizePlanFamily(subscription, billing);
   const activePaid = isActivePaidSubscription(subscription, billing);
 
-  const updatedAt = safeText(creditsAny?.updated_at || creditsAny?.last_updated_at || "", "");
-  const expiresAt = safeText(subscriptionAny?.expires_at || billingAny?.expires_at || "", "");
+  const updatedAt = safeText(
+    creditsAny?.updated_at || creditsAny?.last_updated_at || "",
+    ""
+  );
+  const expiresAt = safeText(
+    subscriptionAny?.expires_at || billingAny?.expires_at || "",
+    ""
+  );
 
   const usageHistory: CreditActivity[] =
     Array.isArray(creditsAny?.history)
@@ -372,8 +457,6 @@ function CreditsPageContent() {
         : Array.isArray(usageAny?.credit_logs)
           ? (usageAny.credit_logs as CreditActivity[])
           : [];
-
-  const returnBanner = topupStatusCopy(topupStatus, returnedReference);
 
   async function startTopup(pkg: TopupPackage) {
     setLocalError(null);
@@ -419,14 +502,13 @@ function CreditsPageContent() {
         data?.url;
 
       if (checkoutUrl) {
-        setLocalMessage("Redirecting to Paystack checkout. Confirm the final amount before authorizing payment.");
         window.location.href = checkoutUrl;
         return;
       }
 
       setLocalMessage(
         data?.message ||
-          "Top-up request started. If Paystack checkout does not open, please try again."
+          "Top-up request started. If checkout does not open, please try again."
       );
     } catch (error) {
       const message =
@@ -439,17 +521,10 @@ function CreditsPageContent() {
     }
   }
 
-  function supportWithReference() {
-    const params = new URLSearchParams();
-    params.set("intent", "topup_issue");
-    if (returnedReference) params.set("reference", returnedReference);
-    router.push(`/support?${params.toString()}`);
-  }
-
   return (
     <AppShell
       title="Credits & Add-ons"
-      subtitle="Track Usage Credits, buy approved top-ups, and understand what remains free across web, WhatsApp, and Telegram."
+      subtitle="Track Usage Credits, buy add-ons, and understand what remains free across web, WhatsApp, and Telegram."
       actions={
         <>
           <button onClick={() => refreshAll()} style={shellButtonPrimary()}>
@@ -458,19 +533,23 @@ function CreditsPageContent() {
           <button onClick={() => router.push("/plans")} style={shellButtonSecondary()}>
             Open Plans
           </button>
-          <button onClick={() => router.push("/billing")} style={shellButtonSecondary()}>
-            Billing
+          <button onClick={() => router.push("/ask")} style={shellButtonSecondary()}>
+            Ask
           </button>
         </>
       }
     >
       <SectionStack>
         {creditAlert ? (
-          <Banner tone={creditAlert.tone} title={creditAlert.title} subtitle={creditAlert.subtitle} />
+          <Banner
+            tone={creditAlert.tone}
+            title={creditAlert.title}
+            subtitle={creditAlert.subtitle}
+          />
         ) : null}
 
-        {returnBanner ? (
-          <Banner tone={returnBanner.tone} title={returnBanner.title} subtitle={returnBanner.subtitle} />
+        {returnNotice ? (
+          <Banner tone={returnNotice.tone} title={returnNotice.title} subtitle={returnNotice.subtitle} />
         ) : null}
 
         {localError ? (
@@ -515,233 +594,252 @@ function CreditsPageContent() {
               label="Top-up Access"
               value={activePaid ? "Enabled" : "Locked"}
               tone={activePaid ? "good" : "warn"}
-              helper={activePaid ? "Available while your subscription is active." : "Requires active paid subscription."}
+              helper={
+                activePaid
+                  ? "Available while your subscription is active."
+                  : "Requires active paid subscription."
+              }
             />
           </CardsGrid>
         </WorkspaceSectionCard>
 
-        <WorkspaceSectionCard
-          title="Buy Usage Credits"
-          subtitle="These top-up packages match the approved billing API codes. Paystack confirms the final amount before authorization."
-        >
-          <CardsGrid min={230} gap={14}>
-            {TOPUP_PACKAGES.map((pkg) => (
-              <div key={pkg.code} style={cardStyle(pkg.badge ? "warn" : "default")}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={valueStyle()}>{pkg.name}</div>
-                    <div style={mutedTextStyle}>{pkg.credits.toLocaleString()} credits</div>
-                  </div>
-                  {pkg.badge ? (
-                    <span
-                      style={{
-                        border: "1px solid var(--warn-border)",
-                        background: "var(--warn-bg)",
-                        color: "var(--text)",
-                        borderRadius: 999,
-                        padding: "5px 10px",
-                        height: "fit-content",
-                        fontSize: 12,
-                        fontWeight: 900,
-                      }}
-                    >
-                      {pkg.badge}
-                    </span>
-                  ) : null}
-                </div>
-
-                <div style={cardStyle("default")}>
-                  <div style={smallLabelStyle}>Price</div>
-                  <div style={valueStyle("large")}>{money(pkg.price)}</div>
-                  <div style={mutedTextStyle}>Code: {pkg.code}</div>
-                </div>
-
-                <div style={mutedTextStyle}>{pkg.bestFor}</div>
-
-                <button
-                  type="button"
-                  onClick={() => startTopup(pkg)}
-                  disabled={!activePaid || topupLoading === pkg.code}
-                  style={
-                    activePaid
-                      ? shellButtonPrimary()
-                      : {
-                          border: "1px solid var(--border)",
-                          borderRadius: 16,
-                          background: "var(--surface-soft)",
-                          color: "var(--text-muted)",
-                          padding: "13px 16px",
+        <TwoColumnSection leftRatio={1.25} rightRatio={0.75} gap={18} collapseAt={980}>
+          <WorkspaceSectionCard
+            title="Buy Usage Credits"
+            subtitle="Add-ons are available only to active paid subscribers. Prices follow the approved top-up ladder and do not extend subscription validity."
+          >
+            <CardsGrid min={220} gap={14}>
+              {topupPackages.map((pkg) => (
+                <div key={pkg.code} style={cardStyle(pkg.badge ? "warn" : "default")}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={valueStyle()}>{pkg.name}</div>
+                      <div style={mutedTextStyle}>{pkg.credits.toLocaleString()} credits</div>
+                    </div>
+                    {pkg.badge ? (
+                      <span
+                        style={{
+                          border: "1px solid var(--warn-border)",
+                          background: "var(--warn-bg)",
+                          color: "var(--warning-text, #92400e)",
+                          borderRadius: 999,
+                          padding: "5px 10px",
+                          height: "fit-content",
+                          fontSize: 12,
                           fontWeight: 900,
-                          cursor: "not-allowed",
-                        }
-                  }
-                >
-                  {topupLoading === pkg.code
-                    ? "Starting checkout..."
-                    : activePaid
-                      ? "Continue to Paystack"
-                      : "Upgrade Required"}
-                </button>
+                        }}
+                      >
+                        {pkg.badge}
+                      </span>
+                    ) : null}
+                  </div>
+
+                  <div style={cardStyle("default")}>
+                    <div style={smallLabelStyle}>Price</div>
+                    <div style={valueStyle("large")}>{money(packagePrice(pkg))}</div>
+                    <div style={mutedTextStyle}>{packageRate(pkg)}</div>
+                  </div>
+
+                  <div style={mutedTextStyle}>{pkg.bestFor || pkg.description}</div>
+
+                  <button
+                    type="button"
+                    onClick={() => startTopup(pkg)}
+                    disabled={!activePaid || topupLoading === pkg.code}
+                    style={
+                      activePaid
+                        ? shellButtonPrimary()
+                        : {
+                            border: "1px solid var(--border)",
+                            borderRadius: 16,
+                            background: "var(--surface-soft)",
+                            color: "var(--text-muted)",
+                            padding: "13px 16px",
+                            fontWeight: 900,
+                            cursor: "not-allowed",
+                          }
+                    }
+                  >
+                    {topupLoading === pkg.code
+                      ? "Starting checkout..."
+                      : activePaid
+                        ? "Buy Top-up"
+                        : "Upgrade Required"}
+                  </button>
+                </div>
+              ))}
+            </CardsGrid>
+          </WorkspaceSectionCard>
+
+          <WorkspaceSectionCard
+            title="Credit snapshot"
+            subtitle="A short operational summary of your current credit state."
+          >
+            <div style={{ display: "grid", gap: 12, minWidth: 0 }}>
+              <div style={cardStyle(activePaid ? "good" : "warn")}>
+                <div style={smallLabelStyle}>Current Plan</div>
+                <div style={valueStyle()}>{planName}</div>
+                <div style={mutedTextStyle}>Status: {planStatus}</div>
+                <div style={mutedTextStyle}>Family: {planFamily}</div>
               </div>
-            ))}
-          </CardsGrid>
-        </WorkspaceSectionCard>
 
-        <WorkspaceSectionCard
-          title="Credit snapshot"
-          subtitle="A short operational summary of your current credit and subscription state."
-        >
-          <CardsGrid min={190} gap={14}>
-            <div style={cardStyle(activePaid ? "good" : "warn")}>
-              <div style={smallLabelStyle}>Current Plan</div>
-              <div style={valueStyle()}>{planName}</div>
-              <div style={mutedTextStyle}>Status: {planStatus}</div>
-              <div style={mutedTextStyle}>Family: {planFamily}</div>
-            </div>
-            <div style={cardStyle()}>
-              <div style={smallLabelStyle}>Included by Plan</div>
-              <div style={valueStyle()}>{String(includedByPlan)}</div>
-              <div style={mutedTextStyle}>Plan credits visible from the current backend state.</div>
-            </div>
-            <div style={cardStyle()}>
-              <div style={smallLabelStyle}>Consumed Credits</div>
-              <div style={valueStyle()}>{String(consumed)}</div>
-              <div style={mutedTextStyle}>Already-used credits if your backend exposes that value.</div>
-            </div>
-            <div style={cardStyle()}>
-              <div style={smallLabelStyle}>Last Credit Update</div>
-              <div style={valueStyle()}>{updatedAt ? formatDate(updatedAt) : "Not shown"}</div>
-            </div>
-            <div style={cardStyle()}>
-              <div style={smallLabelStyle}>Plan Expiry</div>
-              <div style={valueStyle()}>{expiresAt ? formatDate(expiresAt) : "Not shown"}</div>
-            </div>
-          </CardsGrid>
-        </WorkspaceSectionCard>
+              <div style={cardStyle()}>
+                <div style={smallLabelStyle}>Included by Plan</div>
+                <div style={valueStyle()}>{String(includedByPlan)}</div>
+                <div style={mutedTextStyle}>Plan credits visible from the current backend state.</div>
+              </div>
 
-        <WorkspaceSectionCard
-          title="Credit rules summary"
-          subtitle="The current approved policy for Usage Credits and top-ups."
-        >
+              <div style={cardStyle()}>
+                <div style={smallLabelStyle}>Consumed Credits</div>
+                <div style={valueStyle()}>{String(consumed)}</div>
+                <div style={mutedTextStyle}>Already-used credits if your backend exposes that value.</div>
+              </div>
+
+              <div style={cardStyle()}>
+                <div style={smallLabelStyle}>Last Credit Update</div>
+                <div style={valueStyle()}>{updatedAt ? formatDate(updatedAt) : "Not shown"}</div>
+              </div>
+
+              <div style={cardStyle()}>
+                <div style={smallLabelStyle}>Plan Expiry</div>
+                <div style={valueStyle()}>{expiresAt ? formatDate(expiresAt) : "Not shown"}</div>
+              </div>
+            </div>
+          </WorkspaceSectionCard>
+        </TwoColumnSection>
+
+        <TwoColumnSection leftRatio={1} rightRatio={1} gap={18} collapseAt={980}>
+          <WorkspaceSectionCard title="Always free tools" subtitle="These tools do not consume Usage Credits.">
+            <div style={{ display: "grid", gap: 10 }}>
+              {ALWAYS_FREE_TOOLS.map((tool) => (
+                <div key={tool} style={listItemStyle()}>
+                  <span style={{ fontWeight: 800, color: "var(--text)" }}>{tool}</span>
+                  <span
+                    style={{
+                      borderRadius: 999,
+                      background: "var(--success-bg)",
+                      color: "var(--success-text, #166534)",
+                      padding: "5px 10px",
+                      fontSize: 12,
+                      fontWeight: 900,
+                    }}
+                  >
+                    Free
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ ...cardStyle("good"), marginTop: 14 }}>
+              <div style={mutedTextStyle}>
+                Free Forever users can also use basic database/library answers and 12 non-AI quiz attempts daily. AI usage, custom deadlines, document generation, and add-ons require a paid plan.
+              </div>
+            </div>
+          </WorkspaceSectionCard>
+
+          <WorkspaceSectionCard title="What Usage Credits cover" subtitle="Credits are reserved for higher-value tools.">
+            <div style={{ display: "grid", gap: 10 }}>
+              {CREDIT_COVERAGE.map((item) => (
+                <div key={item} style={listItemStyle()}>
+                  <span style={{ fontWeight: 800, color: "var(--text)" }}>{item}</span>
+                </div>
+              ))}
+            </div>
+          </WorkspaceSectionCard>
+        </TwoColumnSection>
+
+        <TwoColumnSection leftRatio={1.1} rightRatio={0.9} gap={18} collapseAt={980}>
+          <WorkspaceSectionCard
+            title="Helpful actions"
+            subtitle="Go directly to the page that best solves your credit situation."
+          >
+            <CardsGrid min={200} gap={14}>
+              <ShortcutCard
+                title="Ask"
+                subtitle="Open the assistant and continue asking when your credits are ready."
+                tone={balance > 0 ? "good" : "default"}
+                onClick={() => router.push("/ask")}
+              />
+              <ShortcutCard
+                title="Plans"
+                subtitle="Review plans if you need stronger usage capacity or included credits."
+                tone={balance <= 0 ? "warn" : "default"}
+                onClick={() => router.push("/plans")}
+              />
+              <ShortcutCard
+                title="Billing"
+                subtitle="Check whether the real issue is payment or subscription visibility."
+                tone="default"
+                onClick={() => router.push("/billing")}
+              />
+              <ShortcutCard
+                title="Support"
+                subtitle="Get help if the visible credit state does not match what you expect."
+                tone="danger"
+                onClick={() => router.push("/support")}
+              />
+            </CardsGrid>
+          </WorkspaceSectionCard>
+
+          <WorkspaceSectionCard
+            title="Recent credit activity"
+            subtitle="A transparent record of credit deductions and top-ups where available."
+          >
+            {usageHistory.length > 0 ? (
+              <div style={{ display: "grid", gap: 10 }}>
+                {usageHistory.slice(0, 8).map((item, index) => {
+                  const delta = safeNumber(item.credits_delta ?? item.credit_delta ?? item.amount);
+
+                  return (
+                    <div key={item.id || index} style={cardStyle()}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontWeight: 900, color: "var(--text)" }}>
+                            {safeText(item.description || item.action || item.action_code, "Credit activity")}
+                          </div>
+                          <div style={mutedTextStyle}>
+                            {safeText(item.channel, "web")} • {item.created_at ? formatDate(item.created_at) : "Date not shown"}
+                          </div>
+                        </div>
+                        <div style={valueStyle()}>{delta > 0 ? `+${delta}` : String(delta)}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div style={cardStyle()}>
+                <div style={mutedTextStyle}>
+                  No credit activity is available yet. Once backend usage logging is connected, top-ups, AI answers, document actions, and filing guidance will appear here.
+                </div>
+              </div>
+            )}
+          </WorkspaceSectionCard>
+        </TwoColumnSection>
+
+        <WorkspaceSectionCard title="Credit rules summary" subtitle="The current approved policy for Naija Tax Guide.">
           <CardsGrid min={230} gap={14}>
             <div style={cardStyle("good")}>
-              <div style={valueStyle()}>Free tools</div>
-              <div style={mutedTextStyle}>Basic calculators remain free and do not consume Usage Credits.</div>
-              <div style={{ display: "grid", gap: 10, marginTop: 4 }}>
-                {ALWAYS_FREE_TOOLS.map((tool) => (
-                  <div key={tool} style={listItemStyle()}>
-                    <span style={{ fontWeight: 800, color: "var(--text)", overflowWrap: "anywhere" }}>{tool}</span>
-                    <span style={{ borderRadius: 999, background: "var(--success-bg)", border: "1px solid var(--success-border)", padding: "5px 10px", fontSize: 12, fontWeight: 900 }}>Free</span>
-                  </div>
-                ))}
+              <div style={valueStyle()}>Free Forever</div>
+              <div style={mutedTextStyle}>
+                Basic calculators are completely free. Database/library answers and 12 non-AI quiz attempts are available daily.
               </div>
             </div>
             <div style={cardStyle("warn")}>
-              <div style={valueStyle()}>Top-up rules</div>
-              <div style={{ display: "grid", gap: 10 }}>
-                {CREDIT_RULES.map((rule) => (
-                  <div key={rule} style={mutedTextStyle}>- {rule}</div>
-                ))}
-              </div>
-            </div>
-            <div style={cardStyle()}>
-              <div style={valueStyle()}>Credits cover</div>
-              <div style={{ display: "grid", gap: 10 }}>
-                {CREDIT_COVERAGE.map((item) => (
-                  <div key={item} style={listItemStyle()}>
-                    <span style={{ fontWeight: 800, color: "var(--text)", overflowWrap: "anywhere" }}>{item}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </CardsGrid>
-        </WorkspaceSectionCard>
-
-        <WorkspaceSectionCard
-          title="Helpful actions"
-          subtitle="Go directly to the page that best solves your credit situation."
-        >
-          <CardsGrid min={200} gap={14}>
-            <ShortcutCard
-              title="Ask"
-              subtitle="Open the assistant and continue asking when your credits are ready."
-              tone={balance > 0 ? "good" : "default"}
-              onClick={() => router.push("/ask")}
-            />
-            <ShortcutCard
-              title="Plans"
-              subtitle="Review plans if you need stronger usage capacity or included credits."
-              tone={balance <= 0 ? "warn" : "default"}
-              onClick={() => router.push("/plans")}
-            />
-            <ShortcutCard
-              title="Billing"
-              subtitle="Check whether the real issue is payment or subscription visibility."
-              tone="default"
-              onClick={() => router.push("/billing")}
-            />
-            <ShortcutCard
-              title="Support"
-              subtitle="Get help if payment or credit state does not match what you expect."
-              tone="danger"
-              onClick={supportWithReference}
-            />
-          </CardsGrid>
-        </WorkspaceSectionCard>
-
-        <WorkspaceSectionCard
-          title="Recent credit activity"
-          subtitle="A transparent record of credit deductions and top-ups where backend usage logging is available."
-        >
-          {usageHistory.length > 0 ? (
-            <div style={{ display: "grid", gap: 10 }}>
-              {usageHistory.slice(0, 8).map((item, index) => {
-                const delta = safeNumber(item.credits_delta ?? item.credit_delta ?? item.amount);
-
-                return (
-                  <div key={item.id || index} style={cardStyle()}>
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontWeight: 900, color: "var(--text)", overflowWrap: "anywhere" }}>
-                          {safeText(item.description || item.action || item.action_code, "Credit activity")}
-                        </div>
-                        <div style={mutedTextStyle}>
-                          {safeText(item.channel, "web")} • {item.created_at ? formatDate(item.created_at) : "Date not shown"}
-                        </div>
-                      </div>
-                      <div style={valueStyle()}>{delta > 0 ? `+${delta}` : String(delta)}</div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div style={cardStyle()}>
+              <div style={valueStyle()}>Top-ups</div>
               <div style={mutedTextStyle}>
-                No credit activity is available yet. Top-ups, AI answers, document actions, and filing guidance will appear here when backend usage logging exposes them.
+                Credit add-ons are available only to active paid subscribers. Free and inactive users cannot buy top-ups.
               </div>
             </div>
-          )}
+            <div style={cardStyle()}>
+              <div style={valueStyle()}>Paid plans</div>
+              <div style={mutedTextStyle}>
+                Paid users receive plan credits, can buy add-ons, and can use credits across web, WhatsApp, and Telegram.
+              </div>
+            </div>
+          </CardsGrid>
         </WorkspaceSectionCard>
       </SectionStack>
     </AppShell>
-  );
-}
-
-function CreditsFallback() {
-  return (
-    <AppShell title="Credits & Add-ons" subtitle="Preparing credit workspace.">
-      <SectionStack>
-        <Banner tone="default" title="Preparing Credits" subtitle="Your credit workspace is loading." />
-      </SectionStack>
-    </AppShell>
-  );
-}
-
-export default function CreditsPage() {
-  return (
-    <Suspense fallback={<CreditsFallback />}>
-      <CreditsPageContent />
-    </Suspense>
   );
 }
