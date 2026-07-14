@@ -11,7 +11,7 @@ type PublicPlan = {
   name: string;
   audience: string;
   prices: Record<BillingCycle, string>;
-  credits: string;
+  credits: Record<BillingCycle, string>;
   channels: string;
   support: string;
   bestFor: string;
@@ -34,7 +34,11 @@ const plans: PublicPlan[] = [
       quarterly: "₦14,000",
       yearly: "₦51,000",
     },
-    credits: "100 monthly AI usage credits",
+    credits: {
+      monthly: "100 AI usage credits per month",
+      quarterly: "300 AI usage credits per quarter",
+      yearly: "1,200 AI usage credits per year",
+    },
     channels: "Web plus one messaging channel: WhatsApp or Telegram",
     support: "Standard support",
     bestFor: "A single user who wants practical tax answers, reminders, and one linked chat channel.",
@@ -53,7 +57,11 @@ const plans: PublicPlan[] = [
       quarterly: "₦33,600",
       yearly: "₦122,400",
     },
-    credits: "300 monthly AI usage credits",
+    credits: {
+      monthly: "300 AI usage credits per month",
+      quarterly: "900 AI usage credits per quarter",
+      yearly: "3,600 AI usage credits per year",
+    },
     channels: "Web plus WhatsApp and Telegram",
     support: "Priority support",
     bestFor: "Users who need heavier guidance, document support, and both messaging channels.",
@@ -73,7 +81,11 @@ const plans: PublicPlan[] = [
       quarterly: "₦70,000",
       yearly: "₦255,000",
     },
-    credits: "800 monthly AI usage credits",
+    credits: {
+      monthly: "800 AI usage credits per month",
+      quarterly: "2,400 AI usage credits per quarter",
+      yearly: "9,600 AI usage credits per year",
+    },
     channels: "Higher workspace and channel capacity",
     support: "Priority business support",
     bestFor: "Business users who need more usage capacity, team handling, and heavier workflows.",
@@ -210,6 +222,12 @@ function billingLabel(cycle: BillingCycle): string {
   return "per month";
 }
 
+function creditNote(cycle: BillingCycle): string {
+  if (cycle === "quarterly") return "Total credits included for the 3-month billing period.";
+  if (cycle === "yearly") return "Total credits included for the 12-month billing period.";
+  return "Credits included for the monthly billing period.";
+}
+
 function smallList(items: string[]) {
   return (
     <div style={{ display: "grid", gap: 9 }}>
@@ -326,7 +344,8 @@ export default function PublicPricingPage() {
               </div>
 
               <div style={{ display: "grid", gap: 8, color: "var(--text)", lineHeight: 1.6 }}>
-                <strong>{plan.credits}</strong>
+                <strong>{plan.credits[billingCycle]}</strong>
+                <span style={{ color: "var(--text-muted)", fontSize: 14 }}>{creditNote(billingCycle)}</span>
                 <span>{plan.channels}</span>
                 <span>{plan.support}</span>
               </div>
