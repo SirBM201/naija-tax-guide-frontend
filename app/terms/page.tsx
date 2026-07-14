@@ -8,14 +8,15 @@ import AppShell, {
 } from "@/components/app-shell";
 import WorkspaceSectionCard from "@/components/workspace-section-card";
 import { Banner } from "@/components/ui";
-import { SectionStack } from "@/components/page-layout";
+import { CardsGrid, SectionStack } from "@/components/page-layout";
+import { SITE } from "@/lib/site";
 
 function sectionBodyStyle(): React.CSSProperties {
   return {
     display: "grid",
     gap: 16,
     color: "var(--text)",
-    fontSize: 15,
+    fontSize: "clamp(15px, 2.6vw, 16px)",
     lineHeight: 1.85,
     minWidth: 0,
   };
@@ -26,7 +27,7 @@ function paragraphStyle(): React.CSSProperties {
     margin: 0,
     color: "var(--text)",
     lineHeight: 1.85,
-    fontSize: 15,
+    fontSize: "clamp(15px, 2.6vw, 16px)",
     wordBreak: "break-word",
     overflowWrap: "anywhere",
   };
@@ -40,7 +41,7 @@ function bulletListStyle(): React.CSSProperties {
     gap: 10,
     color: "var(--text)",
     lineHeight: 1.8,
-    fontSize: 15,
+    fontSize: "clamp(15px, 2.6vw, 16px)",
     minWidth: 0,
   };
 }
@@ -50,7 +51,7 @@ function mutedNoteStyle(): React.CSSProperties {
     border: "1px solid var(--border)",
     borderRadius: 18,
     background: "var(--surface)",
-    padding: 16,
+    padding: "clamp(14px, 3vw, 16px)",
     color: "var(--text-muted)",
     lineHeight: 1.8,
     fontSize: 14,
@@ -60,20 +61,56 @@ function mutedNoteStyle(): React.CSSProperties {
   };
 }
 
+function ruleCardStyle(): React.CSSProperties {
+  return {
+    border: "1px solid var(--border)",
+    borderRadius: 18,
+    background: "var(--surface)",
+    padding: "clamp(14px, 3vw, 18px)",
+    display: "grid",
+    gap: 8,
+    minWidth: 0,
+    height: "100%",
+  };
+}
+
+const accountRules = [
+  "Users should provide reasonably accurate account information when registering or updating workspace details.",
+  "Users are responsible for keeping login credentials and linked access methods secure.",
+  "Users should not allow unauthorized third parties to operate their workspace.",
+  "The platform may restrict access where misuse, abuse, fraud risk, or policy breach is reasonably suspected.",
+];
+
+const billingRules = [
+  "Plans may define billing interval, usage limits, channel access, and included Usage Credits.",
+  "Plan access is applied after successful payment confirmation or successful verification.",
+  "If payment fails, is abandoned, or is not confirmed, access and credits may remain unchanged.",
+  "Top-up credits add usage capacity only; they do not extend subscription validity.",
+  "Receipts, references, and transaction records may be used for support, reconciliation, failed payment checks, or refund review.",
+];
+
+const acceptableUseRules = [
+  "No impersonation, fraudulent claims, or deliberate identity misrepresentation.",
+  "No abusive, harmful, threatening, spammy, or unlawful use of the system or linked channels.",
+  "No attempts to bypass billing limits, credit restrictions, access controls, or channel verification requirements.",
+  "No misuse of AI-generated outputs as official state-backed tax rulings or guaranteed legal certifications.",
+  "No deliberate disruption of the service, unauthorized security testing, or malicious automation against the platform.",
+];
+
 export default function TermsPage() {
   const router = useRouter();
 
   return (
     <AppShell
       title="Terms of Use"
-      subtitle="Read the operating rules, access conditions, payment logic, usage expectations, and legal boundaries that apply to the Naija Tax Guide service."
+      subtitle="Read the operating rules, access conditions, payment logic, usage expectations, and legal boundaries that apply to Naija Tax Guide."
       actions={
         <>
           <button onClick={() => router.push("/privacy")} style={shellButtonPrimary()}>
             Open Privacy
           </button>
-          <button onClick={() => router.push("/")} style={shellButtonSecondary()}>
-            Back Home
+          <button onClick={() => router.push("/pricing")} style={shellButtonSecondary()}>
+            Pricing
           </button>
         </>
       }
@@ -82,7 +119,7 @@ export default function TermsPage() {
         <Banner
           tone="warn"
           title="Important scope boundary"
-          subtitle="Naija Tax Guide provides digital tax information and guided support. It is not a government tax authority, official filing portal, legal chamber, or automatic substitute for licensed professional judgment in advanced cases."
+          subtitle="Naija Tax Guide provides digital tax information and guided support. It is not a government tax authority, official filing portal, law firm, accounting firm, or automatic substitute for licensed professional judgment in advanced cases."
         />
 
         <WorkspaceSectionCard
@@ -91,17 +128,10 @@ export default function TermsPage() {
         >
           <div style={sectionBodyStyle()}>
             <p style={paragraphStyle()}>
-              Users should not use the service if they do not accept these
-              terms, the privacy framework, refund rules, data handling
-              processes, or any other published operational conditions that
-              apply to the platform.
+              Users should not use the service if they do not accept these terms, the privacy framework, refund rules, data handling processes, billing rules, or other published operational conditions that apply to the platform.
             </p>
-
             <p style={paragraphStyle()}>
-              Continued access or use of the platform after changes to the
-              service, policies, or legal pages may indicate acceptance of the
-              updated terms where such treatment is permitted by law and
-              platform policy.
+              Continued access or use after changes to the service, policies, or legal pages may indicate acceptance of the updated terms where permitted by law and platform policy.
             </p>
           </div>
         </WorkspaceSectionCard>
@@ -112,18 +142,10 @@ export default function TermsPage() {
         >
           <div style={sectionBodyStyle()}>
             <p style={paragraphStyle()}>
-              The platform may provide tax-related explanations, guidance paths,
-              summaries, support responses, and account-linked interaction
-              tools, but it should not be interpreted as formal government
-              instruction, regulated legal representation, or guaranteed
-              professional tax certification.
+              The platform may provide tax-related explanations, guidance paths, summaries, support responses, calculators, document drafts, and account-linked interaction tools. It should not be interpreted as formal government instruction, regulated legal representation, accounting sign-off, or guaranteed professional tax certification.
             </p>
-
             <p style={paragraphStyle()}>
-              Users remain responsible for confirming whether their issue
-              requires escalation to a qualified tax professional, accountant,
-              legal adviser, or direct communication with the relevant
-              authority.
+              Users remain responsible for confirming whether their issue requires escalation to a qualified tax professional, accountant, legal adviser, or direct communication with the relevant tax authority.
             </p>
           </div>
         </WorkspaceSectionCard>
@@ -132,28 +154,22 @@ export default function TermsPage() {
           title="3. Accounts, access, and workspace use"
           subtitle="Users are responsible for the security and lawful use of their account and workspace."
         >
-          <div style={sectionBodyStyle()}>
-            <ul style={bulletListStyle()}>
-              <li>Users should provide reasonably accurate account information when registering or updating workspace details.</li>
-              <li>Users are responsible for maintaining the confidentiality of their login credentials and linked access methods.</li>
-              <li>Users should not knowingly allow unauthorized third parties to operate their workspace.</li>
-              <li>The platform may suspend or restrict access where account misuse, abuse, fraud risk, or policy breach is reasonably suspected.</li>
-            </ul>
-          </div>
+          <ul style={bulletListStyle()}>
+            {accountRules.map((item) => <li key={item}>{item}</li>)}
+          </ul>
         </WorkspaceSectionCard>
 
         <WorkspaceSectionCard
-          title="4. Subscription, billing, and credits"
-          subtitle="Paid access, credit usage, and billing behavior are governed by the selected plan and the relevant payment rules."
+          title="4. Subscription, billing, payments, and credits"
+          subtitle="Paid access, credit usage, checkout, and billing behavior are governed by the selected plan and payment rules."
         >
           <div style={sectionBodyStyle()}>
             <ul style={bulletListStyle()}>
-              <li>Subscription plans may define billing interval, usage limits, and included credit structure.</li>
-              <li>Certain actions may stop working when a plan expires, a payment fails, or credit balance reaches zero.</li>
-              <li>Auto-renewal may apply where the user has agreed to recurring billing.</li>
-              <li>Users are responsible for reviewing their selected plan, renewal condition, and payment authorization before activation.</li>
-              <li>The platform may show pending plan changes, grace periods, or delayed activation states where relevant.</li>
+              {billingRules.map((item) => <li key={item}>{item}</li>)}
             </ul>
+            <div style={mutedNoteStyle()}>
+              Payments are processed through Paystack checkout. Available payment methods are displayed by Paystack before authorization. Naija Tax Guide keeps the billing records needed for access, credits, support, reconciliation, and refund review, but does not store full card details directly.
+            </div>
           </div>
         </WorkspaceSectionCard>
 
@@ -163,22 +179,10 @@ export default function TermsPage() {
         >
           <div style={sectionBodyStyle()}>
             <p style={paragraphStyle()}>
-              By completing a paid transaction, a user authorizes the platform
-              and its payment providers to process the relevant charge for the
-              selected subscription, credit purchase, or other approved service
-              item.
+              By completing a paid transaction, a user authorizes the platform and its payment providers to process the relevant charge for the selected subscription, credit purchase, or approved service item.
             </p>
-
             <p style={paragraphStyle()}>
-              Refunds are generally not guaranteed after digital access or usage
-              has begun. However, the platform may review refund requests in
-              valid situations such as duplicate charges, clear processing
-              errors, or failed activation caused by a platform issue.
-            </p>
-
-            <p style={paragraphStyle()}>
-              The detailed refund framework should be read together with the
-              Refund Policy page, which forms part of the overall service rules.
+              Refunds are generally not guaranteed after digital access, subscription time, or delivered credits have been used. Refund requests may be reviewed for duplicate charges, clear processing errors, failed activation caused by a platform issue, or other valid billing concerns described in the Refund Policy.
             </p>
           </div>
         </WorkspaceSectionCard>
@@ -187,15 +191,9 @@ export default function TermsPage() {
           title="6. Acceptable use rules"
           subtitle="Users must not abuse the platform, impersonate others, or misuse the service for harmful, deceptive, or unlawful purposes."
         >
-          <div style={sectionBodyStyle()}>
-            <ul style={bulletListStyle()}>
-              <li>No impersonation, fraudulent claims, or deliberate identity misrepresentation.</li>
-              <li>No abusive, harmful, threatening, or illegal use of the system or linked support channels.</li>
-              <li>No attempts to bypass billing limits, credit restrictions, access controls, or channel verification requirements.</li>
-              <li>No misuse of AI-generated outputs as official state-backed tax rulings or guaranteed legal certifications.</li>
-              <li>No deliberate disruption of the service, system testing without permission, or malicious automation against the platform.</li>
-            </ul>
-          </div>
+          <ul style={bulletListStyle()}>
+            {acceptableUseRules.map((item) => <li key={item}>{item}</li>)}
+          </ul>
         </WorkspaceSectionCard>
 
         <WorkspaceSectionCard
@@ -204,21 +202,13 @@ export default function TermsPage() {
         >
           <div style={sectionBodyStyle()}>
             <p style={paragraphStyle()}>
-              Users may contact the platform through the published support
-              routes for account questions, billing concerns, technical issues,
-              support follow-up, and operational clarification where relevant.
+              Users may contact the platform through published support routes for account questions, billing concerns, failed payment checks, technical issues, professional-review follow-up, and operational clarification where relevant.
             </p>
-
             <p style={paragraphStyle()}>
-              The platform may use in-app support inbox tools, email delivery,
-              or other approved communication methods to respond to support
-              requests, ticket updates, or account-level notices.
+              Privacy and deletion-related communication should use <strong>{SITE.privacyEmail}</strong>. General contact may use <strong>{SITE.supportEmail}</strong> where a support ticket is not the right route.
             </p>
-
             <div style={mutedNoteStyle()}>
-              Support access should not be used for spam, threats, repeated bad
-              faith submissions, or unlawful demands. Abuse of support channels
-              may lead to restriction or enforcement action.
+              Support access should not be used for spam, threats, repeated bad-faith submissions, or unlawful demands. Abuse of support channels may lead to restriction or enforcement action.
             </div>
           </div>
         </WorkspaceSectionCard>
@@ -227,15 +217,9 @@ export default function TermsPage() {
           title="8. Intellectual property and platform materials"
           subtitle="The platform structure, interface, logic, written content, and related materials remain protected to the extent allowed by law."
         >
-          <div style={sectionBodyStyle()}>
-            <p style={paragraphStyle()}>
-              Users may use the platform for normal personal or approved
-              business access within the permitted service scope, but they
-              should not reproduce, repackage, scrape, reverse-engineer,
-              resell, or misrepresent platform materials in a way that violates
-              intellectual property rights or operational restrictions.
-            </p>
-          </div>
+          <p style={paragraphStyle()}>
+            Users may use the platform for normal personal or approved business access within the permitted service scope, but they should not reproduce, repackage, scrape, reverse-engineer, resell, or misrepresent platform materials in a way that violates intellectual property rights or operational restrictions.
+          </p>
         </WorkspaceSectionCard>
 
         <WorkspaceSectionCard
@@ -244,56 +228,41 @@ export default function TermsPage() {
         >
           <div style={sectionBodyStyle()}>
             <p style={paragraphStyle()}>
-              Availability may be affected by maintenance, hosting events,
-              provider downtime, payment interruptions, API issues, abuse
-              controls, or other technical and operational dependencies.
+              Availability may be affected by maintenance, hosting events, provider downtime, payment interruptions, API issues, abuse controls, or other technical and operational dependencies.
             </p>
-
             <p style={paragraphStyle()}>
-              To the extent permitted by law, the platform may limit or suspend
-              features where necessary for security, compliance, fraud
-              prevention, system stability, or service integrity.
+              To the extent permitted by law, the platform may limit or suspend features where necessary for security, compliance, fraud prevention, system stability, or service integrity.
             </p>
           </div>
         </WorkspaceSectionCard>
 
         <WorkspaceSectionCard
-          title="10. Limitation of reliance and user responsibility"
-          subtitle="Users remain responsible for their decisions, filings, payments, escalations, and reliance choices."
+          title="10. Reliance, responsibility, and escalation"
+          subtitle="Users remain responsible for decisions, filings, payments, escalations, and reliance choices."
         >
-          <div style={sectionBodyStyle()}>
-            <p style={paragraphStyle()}>
-              The platform should be treated as a guided digital support tool,
-              not an automatic guarantee of filing accuracy, refund success,
-              compliance clearance, or professional certification in every
-              scenario.
-            </p>
-
-            <p style={paragraphStyle()}>
-              Users are responsible for reviewing outputs, confirming sensitive
-              decisions, preserving records where needed, and seeking regulated
-              professional advice when the issue goes beyond the platform’s
-              intended scope.
-            </p>
-          </div>
+          <CardsGrid min={240}>
+            <div style={ruleCardStyle()}>
+              <strong style={{ color: "var(--text)", fontSize: 18 }}>Use guidance carefully</strong>
+              <p style={paragraphStyle()}>
+                Treat outputs as guidance and check sensitive figures, dates, deadlines, penalties, and state-specific rules before acting.
+              </p>
+            </div>
+            <div style={ruleCardStyle()}>
+              <strong style={{ color: "var(--text)", fontSize: 18 }}>Escalate high-risk matters</strong>
+              <p style={paragraphStyle()}>
+                Audits, disputes, assessments, penalties, objections, formal filings, and high-value decisions should be reviewed by qualified professionals.
+              </p>
+            </div>
+          </CardsGrid>
         </WorkspaceSectionCard>
 
         <WorkspaceSectionCard
           title="11. Policy updates and interpretation"
           subtitle="Legal and operational pages may be updated over time as the platform evolves."
         >
-          <div style={sectionBodyStyle()}>
-            <p style={paragraphStyle()}>
-              Users should review the legal pages periodically to stay aware of
-              any material changes that affect access, payment rules, privacy
-              handling, or channel operation.
-            </p>
-
-            <p style={paragraphStyle()}>
-              Where direct clarification is needed, users should use the support
-              route published within the platform.
-            </p>
-          </div>
+          <p style={paragraphStyle()}>
+            Users should review the legal pages periodically to stay aware of material changes that affect access, payment rules, privacy handling, refunds, support, or channel operation. Where direct clarification is needed, users should use the appropriate support or contact route.
+          </p>
         </WorkspaceSectionCard>
       </SectionStack>
     </AppShell>
