@@ -25,54 +25,61 @@ type VerifyResp = {
   message?: string;
 };
 
-type VerifyState = "idle" | "checking" | "applied" | "paid_not_applied" | "not_paid" | "failed";
+type VerifyState = "idle" | "confirming" | "applied" | "paid_not_applied" | "not_paid" | "failed";
 
 function statusCopy(state: VerifyState, response: VerifyResp | null, errorMessage: string | null) {
-  if (state === "checking") {
+  if (state === "confirming") {
     return {
       tone: "default" as const,
       title: "Confirming your payment",
-      subtitle: "We are checking Paystack and updating your subscription. This usually completes within a few seconds.",
+      subtitle: "The payment reference is being verified with Paystack. Subscription access changes only after successful confirmation and account activation.",
     };
   }
 
   if (state === "applied") {
     return {
       tone: "good" as const,
-      title: "Payment confirmed",
-      subtitle: "Your subscription has been applied. Open billing to confirm the current plan and credits on your account.",
+      title: "Payment confirmed and access updated",
+      subtitle: "Your subscription has been applied. Open Billing to confirm the current plan, expiry, and Usage Credits now visible on your account.",
     };
   }
 
   if (state === "paid_not_applied") {
     return {
       tone: "warn" as const,
-      title: "Payment received, activation still pending",
-      subtitle: response?.message || "Paystack confirmed the payment, but the subscription update did not complete yet. Use Refresh Billing or contact support with the payment reference.",
+      title: "Payment confirmed, activation needs review",
+      subtitle: response?.message || "Paystack confirmed the payment, but the subscription update has not completed. Refresh Billing, then contact Support with the reference if access still does not update.",
     };
   }
 
   if (state === "not_paid") {
     return {
       tone: "warn" as const,
-      title: "Payment is not completed yet",
-      subtitle: `Current Paystack status: ${response?.status || "unknown"}. If money was deducted, wait briefly and refresh this page before retrying payment.`,
+      title: "Payment is not confirmed yet",
+      subtitle: `Current Paystack status: ${response?.status || "unknown"}. If money was deducted, do not repeat large payments immediately. Refresh Billing and keep the reference for support review.`,
     };
   }
 
   if (state === "failed") {
     return {
       tone: "danger" as const,
-      title: "Could not confirm payment",
-      subtitle: errorMessage || response?.error || "The payment verification request failed. Open billing and try Refresh Billing, or contact support with the reference.",
+      title: "Payment could not be confirmed",
+      subtitle: errorMessage || response?.error || "The payment verification request failed. Open Billing and use Support with the reference if money was deducted.",
     };
   }
 
   return {
     tone: "default" as const,
     title: "Billing result",
-    subtitle: "We are preparing your billing confirmation.",
+    subtitle: "Payment confirmation will appear here when a valid reference is available.",
   };
+}
+
+function supportPath(reference: string, state: VerifyState) {
+  const params = new URLSearchParams();
+  params.set("intent", state === "paid_not_applied" ? "activation_issue" : "billing_payment_review");
+  if (reference) params.set("reference", reference);
+  return `/support?${params.toString()}`;
 }
 
 function BillingSuccessPageContent() {
@@ -83,7 +90,7 @@ function BillingSuccessPageContent() {
   const reference = useMemo(() => (searchParams?.get("reference") || "").trim(), [searchParams]);
   const planHint = useMemo(() => (searchParams?.get("plan") || "").trim(), [searchParams]);
 
-  const [state, setState] = useState<VerifyState>(reference ? "checking" : "failed");
+  const [state, setState] = useState<VerifyState>(reference ? "confirming" : "failed");
   const [response, setResponse] = useState<VerifyResp | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(
     reference ? null : "Payment reference is missing from the return URL."
@@ -95,7 +102,7 @@ function BillingSuccessPageContent() {
     const verifyPayment = async () => {
       if (!reference) return;
 
-      setState("checking");
+      setState("confirming");
       setErrorMessage(null);
 
       for (let attempt = 0; attempt < 6; attempt += 1) {
@@ -128,7 +135,7 @@ function BillingSuccessPageContent() {
           }
 
           if (attempt < 5) {
-            setState("checking");
+            setState("confirming");
             await new Promise((resolve) => window.setTimeout(resolve, 2000));
             continue;
           }
@@ -172,7 +179,8 @@ function BillingSuccessPageContent() {
     planHint ||
     "Not currently visible";
 
-  const visibleStatus = subscription?.status || billing?.status || response?.activation_state || response?.status || "Checking";
+  const visibleStatus = subscription?.status || billing?.status || response?.activation_state || response?.status || "Confirming";
+  const actionSupportPath = supportPath(reference, state);
 
   return (
     <AppShell
@@ -189,6 +197,9 @@ function BillingSuccessPageContent() {
           >
             Open Billing
           </button>
+          <button onClick={() => router.push(actionSupportPath)} style={shellButtonSecondary()}>
+            Support
+          </button>
           <button onClick={() => router.push("/plans")} style={shellButtonSecondary()}>
             Manage Plans
           </button>
@@ -200,20 +211,43 @@ function BillingSuccessPageContent() {
 
         <WorkspaceSectionCard
           title="Payment confirmation"
-          subtitle="Use these details when checking your billing page or contacting support."
+          subtitle="Use these details when checking Billing or contacting Support."
         >
           <CardsGrid min={180}>
             <MetricCard label="Payment Reference" value={reference || "Missing"} tone={reference ? "good" : "danger"} helper="Reference returned by Paystack." />
-            <MetricCard label="Payment Status" value={response?.paid ? "Paid" : response?.status || "Checking"} tone={response?.paid ? "good" : state === "failed" ? "danger" : "warn"} helper="Current status from payment verification." />
-            <MetricCard label="Activation" value={response?.applied ? "Applied" : state === "checking" ? "Checking" : "Not applied yet"} tone={response?.applied ? "good" : state === "paid_not_applied" ? "warn" : state === "failed" ? "danger" : "default"} helper="Whether the subscription update has been written to the account." />
+            <MetricCard label="Payment Status" value={response?.paid ? "Confirmed paid" : response?.status || "Confirming"} tone={response?.paid ? "good" : state === "failed" ? "danger" : "warn"} helper="Current status from payment verification." />
+            <MetricCard label="Activation" value={response?.applied ? "Applied" : state === "confirming" ? "Confirming" : "Not applied yet"} tone={response?.applied ? "good" : state === "paid_not_applied" ? "warn" : state === "failed" ? "danger" : "default"} helper="Whether the subscription update has been written to the account." />
             <MetricCard label="Visible Plan" value={activePlan} tone={response?.applied ? "good" : "default"} helper={`Visible account status: ${visibleStatus}`} />
+          </CardsGrid>
+        </WorkspaceSectionCard>
+
+        <WorkspaceSectionCard
+          title="What to do next"
+          subtitle="Use the route that matches the payment result."
+        >
+          <CardsGrid min={220}>
+            <div style={{ display: "grid", gap: 10, border: "1px solid var(--border)", borderRadius: 18, background: "var(--surface)", padding: 16 }}>
+              <strong style={{ color: "var(--text)", fontSize: 17 }}>Payment confirmed</strong>
+              <p style={{ margin: 0, color: "var(--text-muted)", lineHeight: 1.7 }}>Open Billing to confirm plan, expiry date, receipt reference, and Usage Credits.</p>
+              <button type="button" onClick={() => router.push("/billing")} style={shellButtonPrimary()}>Open Billing</button>
+            </div>
+            <div style={{ display: "grid", gap: 10, border: "1px solid var(--border)", borderRadius: 18, background: "var(--surface)", padding: 16 }}>
+              <strong style={{ color: "var(--text)", fontSize: 17 }}>Payment not reflected</strong>
+              <p style={{ margin: 0, color: "var(--text-muted)", lineHeight: 1.7 }}>Contact Support with the reference, selected plan, debit evidence, and the result shown on this page.</p>
+              <button type="button" onClick={() => router.push(actionSupportPath)} style={shellButtonSecondary()}>Open Support</button>
+            </div>
+            <div style={{ display: "grid", gap: 10, border: "1px solid var(--border)", borderRadius: 18, background: "var(--surface)", padding: 16 }}>
+              <strong style={{ color: "var(--text)", fontSize: 17 }}>Refund concern</strong>
+              <p style={{ margin: 0, color: "var(--text-muted)", lineHeight: 1.7 }}>Use the Refund Policy if you see duplicate charges, failed activation, or another billing issue that needs review.</p>
+              <button type="button" onClick={() => router.push("/refund")} style={shellButtonSecondary()}>Refund Policy</button>
+            </div>
           </CardsGrid>
         </WorkspaceSectionCard>
 
         {state === "paid_not_applied" || state === "failed" ? (
           <WorkspaceSectionCard
             title="Support details"
-            subtitle="Share this concise payment record if the plan still does not activate after refreshing billing."
+            subtitle="Share this concise payment record if the plan still does not activate after refreshing Billing."
           >
             <div
               style={{
@@ -239,12 +273,12 @@ function BillingSuccessPageContent() {
 
 function BillingSuccessFallback() {
   return (
-    <AppShell title="Billing Result" subtitle="Loading payment confirmation.">
+    <AppShell title="Billing Result" subtitle="Preparing payment confirmation.">
       <SectionStack>
         <Banner
           tone="default"
-          title="Loading billing result"
-          subtitle="We are preparing the payment confirmation page."
+          title="Preparing billing result"
+          subtitle="The payment confirmation page is loading."
         />
       </SectionStack>
     </AppShell>
