@@ -134,7 +134,7 @@ export default function InstallButtons({ appHref = "/login", showInstructions = 
             fontSize: 14,
           }}
         >
-          <strong style={{ color: "var(--text) }}>{installed ? "Installed mode detected." : "Phone install options."}</strong>{" "}
+          <strong style={{ color: "var(--text)" }}>{installed ? "Installed mode detected." : "Phone install options."}</strong>{" "}
           {message ||
             (isIos
               ? "For iPhone and iPad, use Safari's Share menu and choose Add to Home Screen."
