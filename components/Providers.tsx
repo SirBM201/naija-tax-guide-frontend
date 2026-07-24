@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect } from "react";
+import PwaManager from "@/components/PwaManager";
 import { AuthProvider } from "@/lib/auth";
 import { ThemeProvider, themeVars, useSharedTheme } from "@/lib/theme";
 
@@ -36,6 +37,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   return (
     <ThemeProvider>
       <AuthProvider>
+        <PwaManager />
         <ThemeSurface>{children}</ThemeSurface>
       </AuthProvider>
     </ThemeProvider>
