@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import InstallButtons from "@/components/InstallButtons";
 import { apiJson } from "@/lib/api";
 import { SITE } from "@/lib/site";
 import { themeChipStyle, themeVars, useSharedTheme } from "@/lib/theme";
@@ -41,6 +42,7 @@ const sampleInteractions = [
 
 const trustLinks = [
   { label: "Pricing", href: "/pricing" },
+  { label: "Download", href: "/download" },
   { label: "About", href: "/about" },
   { label: "FAQ", href: "/faq" },
   { label: "Safety", href: "/safety" },
@@ -170,6 +172,7 @@ export default function LandingPage() {
   const goToApp = () => router.push(hasSession ? "/dashboard" : "/login");
   const openWhatsApp = () => window.open(`https://wa.me/${SITE.whatsappInternational}?text=Hi`, "_blank", "noopener,noreferrer");
   const openTelegram = () => window.open(`https://t.me/${SITE.telegramBot}`, "_blank", "noopener,noreferrer");
+  const appHref = hasSession ? "/dashboard" : "/login";
   const appLabel = checkingSession ? "Open App" : hasSession ? "Continue to Dashboard" : `Start Using ${SITE.name}`;
 
   return (
@@ -211,11 +214,13 @@ export default function LandingPage() {
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12 }}>
                 <button onClick={goToApp} disabled={checkingSession} style={primaryButton(checkingSession)}>{appLabel}</button>
                 <button onClick={() => router.push("/pricing")} style={secondaryButton()}>View Public Pricing</button>
+                <button onClick={() => router.push("/download")} style={secondaryButton()}>Download / Install App</button>
                 <button onClick={openWhatsApp} style={secondaryButton()}>Open WhatsApp Bot</button>
                 <button onClick={openTelegram} style={secondaryButton()}>Open Telegram Bot</button>
               </div>
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                 <span style={pillStyle()}>Web workspace</span>
+                <span style={pillStyle()}>Installable mobile app</span>
                 <span style={pillStyle()}>WhatsApp: {SITE.whatsappDisplay}</span>
                 <span style={pillStyle()}>Telegram: @{SITE.telegramBot}</span>
               </div>
@@ -285,6 +290,15 @@ export default function LandingPage() {
           </div>
         </section>
 
+        <section style={cardStyle("good")}>
+          {sectionTitle(
+            "Download / Install",
+            "Use Naija Tax Guide on web, Android, iPhone, iPad, and tablet.",
+            "Install the app-like version from supported mobile browsers now. Google Play and App Store links can be added later after native wrapper and store-payment review."
+          )}
+          <InstallButtons appHref={appHref} />
+        </section>
+
         <section style={cardStyle("warn")}>
           <div style={pillStyle("warn")}>Safety and compliance posture</div>
           <h2 style={{ margin: 0, color: "var(--text)", fontSize: "clamp(28px, 5vw, 36px)", lineHeight: 1.1 }}>Built to answer carefully, not carelessly.</h2>
@@ -307,6 +321,7 @@ export default function LandingPage() {
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12 }}>
               <button onClick={goToApp} disabled={checkingSession} style={primaryButton(checkingSession)}>{appLabel}</button>
               <button onClick={() => router.push("/pricing")} style={secondaryButton()}>Review Plans First</button>
+              <button onClick={() => router.push("/download")} style={secondaryButton()}>Install on Phone / Tablet</button>
             </div>
           </div>
         </section>
