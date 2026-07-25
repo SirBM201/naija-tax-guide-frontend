@@ -1,4 +1,4 @@
-const CACHE_NAME = "naija-tax-guide-shell-v3";
+const CACHE_NAME = "naija-tax-guide-shell-v4";
 const STATIC_ASSETS = [
   "/",
   "/pricing",
@@ -6,9 +6,7 @@ const STATIC_ASSETS = [
   "/offline",
   "/manifest.webmanifest",
   "/favicon.svg",
-  "/bms-logo.jpg",
-  "/icons/ntg-icon.svg",
-  "/icons/ntg-maskable.svg"
+  "/bms-logo.jpg"
 ];
 
 self.addEventListener("install", (event) => {
