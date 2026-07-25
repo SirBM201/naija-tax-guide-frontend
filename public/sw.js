@@ -1,4 +1,4 @@
-const CACHE_NAME = "naija-tax-guide-shell-v2";
+const CACHE_NAME = "naija-tax-guide-shell-v3";
 const STATIC_ASSETS = [
   "/",
   "/pricing",
@@ -53,8 +53,8 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  const cacheableDestinations = new Set(["font", "image", "manifest", "script", "style"]);
-  if (cacheableDestinations.has(request.destination) || url.pathname.endsWith(".webmanifest")) {
+  const cacheableDestinations = new Set(["font", "image", "script", "style", "manifest"]);
+  if (cacheableDestinations.has(request.destination) || url.pathname === "/manifest.webmanifest") {
     event.respondWith(
       caches.match(request).then((cached) => {
         const networkFetch = fetch(request)
