@@ -1,4 +1,4 @@
-const CACHE_NAME = "naija-tax-guide-shell-v1";
+const CACHE_NAME = "naija-tax-guide-shell-v2";
 const STATIC_ASSETS = [
   "/",
   "/pricing",
@@ -6,7 +6,9 @@ const STATIC_ASSETS = [
   "/offline",
   "/manifest.webmanifest",
   "/favicon.svg",
-  "/bms-logo.jpg"
+  "/bms-logo.jpg",
+  "/icons/ntg-icon.svg",
+  "/icons/ntg-maskable.svg"
 ];
 
 self.addEventListener("install", (event) => {
@@ -51,8 +53,8 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  const cacheableDestinations = new Set(["font", "image", "script", "style"]);
-  if (cacheableDestinations.has(request.destination)) {
+  const cacheableDestinations = new Set(["font", "image", "manifest", "script", "style"]);
+  if (cacheableDestinations.has(request.destination) || url.pathname.endsWith(".webmanifest")) {
     event.respondWith(
       caches.match(request).then((cached) => {
         const networkFetch = fetch(request)
