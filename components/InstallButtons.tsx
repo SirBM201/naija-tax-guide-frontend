@@ -56,6 +56,16 @@ function detectAndroid(): boolean {
   return /android/i.test(window.navigator.userAgent);
 }
 
+function detectEdge(): boolean {
+  if (typeof window === "undefined") return false;
+  return /Edg\//i.test(window.navigator.userAgent);
+}
+
+function detectChromeLike(): boolean {
+  if (typeof window === "undefined") return false;
+  return /Chrome\//i.test(window.navigator.userAgent) || /CriOS/i.test(window.navigator.userAgent) || detectEdge();
+}
+
 function detectInAppBrowser(): boolean {
   if (typeof window === "undefined") return false;
   return /FBAN|FBAV|Instagram|Line|Twitter|LinkedInApp|WhatsApp/i.test(window.navigator.userAgent);
@@ -66,13 +76,32 @@ function installLink(): string {
   return `${window.location.origin}/download`;
 }
 
+function manualInstallHelp(isIos: boolean, isAndroid: boolean, isEdge: boolean): string {
+  if (isIos) {
+    return "iPhone/iPad: open this page in Safari, tap Share, then choose Add to Home Screen.";
+  }
+
+  if (isAndroid) {
+    return "Android Chrome: stay on this page for about 30 seconds, tap the page once, then use Chrome menu > Install app or Add to Home screen.";
+  }
+
+  if (isEdge) {
+    return "Microsoft Edge desktop: use the address-bar install icon, or open menu (...) > Apps > Install this site as an app.";
+  }
+
+  return "Chrome desktop: use the address-bar install icon, or open menu (...) > Save and share > Install page as app.";
+}
+
 export default function InstallButtons({ appHref = "/login", showInstructions = true }: InstallButtonsProps) {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [installed, setInstalled] = useState(false);
   const [isIos, setIsIos] = useState(false);
   const [isAndroid, setIsAndroid] = useState(false);
+  const [isEdge, setIsEdge] = useState(false);
+  const [isChromeLike, setIsChromeLike] = useState(false);
   const [isInAppBrowser, setIsInAppBrowser] = useState(false);
   const [serviceWorkerReady, setServiceWorkerReady] = useState(false);
+  const [secondsOnPage, setSecondsOnPage] = useState(0);
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -80,6 +109,8 @@ export default function InstallButtons({ appHref = "/login", showInstructions = 
       setInstalled(detectStandalone());
       setIsIos(detectIos());
       setIsAndroid(detectAndroid());
+      setIsEdge(detectEdge());
+      setIsChromeLike(detectChromeLike());
       setIsInAppBrowser(detectInAppBrowser());
       setDeferredPrompt(window.__ntgInstallPrompt || null);
       setServiceWorkerReady(Boolean(window.__ntgServiceWorkerReady));
@@ -101,11 +132,17 @@ export default function InstallButtons({ appHref = "/login", showInstructions = 
       refreshState();
     };
 
+    const interval = window.setInterval(() => {
+      setSecondsOnPage((value) => value + 1);
+      refreshState();
+    }, 1000);
+
     window.addEventListener("ntg:pwa-install-ready", onPromptReady);
     window.addEventListener("ntg:pwa-installed", onInstalled);
     window.addEventListener("ntg:pwa-sw-ready", onSwReady);
 
     return () => {
+      window.clearInterval(interval);
       window.removeEventListener("ntg:pwa-install-ready", onPromptReady);
       window.removeEventListener("ntg:pwa-installed", onInstalled);
       window.removeEventListener("ntg:pwa-sw-ready", onSwReady);
@@ -116,11 +153,12 @@ export default function InstallButtons({ appHref = "/login", showInstructions = 
     if (message) return message;
     if (installed) return "Installed mode detected. Open Naija Tax Guide from your home screen or app launcher.";
     if (isInAppBrowser) return "You appear to be inside an in-app browser. For installation, open this page in Chrome on Android or Safari on iPhone/iPad.";
-    if (isIos) return "For iPhone and iPad, open this page in Safari, tap Share, then choose Add to Home Screen.";
     if (deferredPrompt) return "Your browser is ready to install Naija Tax Guide. Tap Install App Now.";
-    if (isAndroid) return "If the install prompt is not shown, open Chrome menu and choose Install app or Add to Home screen.";
-    return "On Chrome or Edge, use Install App Now when available, or use the browser install icon/menu.";
-  }, [deferredPrompt, installed, isAndroid, isInAppBrowser, isIos, message]);
+    if (secondsOnPage < 30 && isChromeLike) {
+      return `${manualInstallHelp(isIos, isAndroid, isEdge)} Some Chrome/Edge versions only show the one-tap prompt after a short visit; keep this page open for ${30 - secondsOnPage}s more.`;
+    }
+    return manualInstallHelp(isIos, isAndroid, isEdge);
+  }, [deferredPrompt, installed, isAndroid, isChromeLike, isEdge, isInAppBrowser, isIos, message, secondsOnPage]);
 
   const openWebApp = () => {
     window.location.assign(appHref);
@@ -147,18 +185,8 @@ export default function InstallButtons({ appHref = "/login", showInstructions = 
       return;
     }
 
-    if (isIos) {
-      setMessage("iPhone or iPad: open this page in Safari, tap Share, then choose Add to Home Screen.");
-      return;
-    }
-
-    if (isInAppBrowser) {
-      setMessage("Open this link in Chrome on Android or Safari on iPhone/iPad, then use the browser install option.");
-      return;
-    }
-
     setMessage(
-      "Install prompt is not available yet on this browser. Try Chrome on Android, Edge/Chrome on desktop, or use the browser menu: Install app / Add to Home screen."
+      `${manualInstallHelp(isIos, isAndroid, isEdge)} The one-tap Install App Now button only works when the browser fires its install prompt.`
     );
   };
 
@@ -201,7 +229,7 @@ export default function InstallButtons({ appHref = "/login", showInstructions = 
           <strong style={{ color: "var(--text)" }}>{installed ? "Installed mode detected." : "Phone install options."}</strong>{" "}
           {statusMessage}
           <div style={{ marginTop: 8, color: "var(--text-faint)", fontSize: 13 }}>
-            Service worker: {serviceWorkerReady ? "ready" : "loading"}. App store links will be added later after native wrapper approval.
+            Service worker: {serviceWorkerReady ? "ready" : "loading"}. Time on page: {secondsOnPage}s. App store links will be added later after native wrapper approval.
           </div>
         </div>
       )}
