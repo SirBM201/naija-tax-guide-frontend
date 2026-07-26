@@ -1,10 +1,9 @@
-const CACHE_NAME = "naija-tax-guide-shell-v4";
+const CACHE_NAME = "naija-tax-guide-shell-v5";
 const STATIC_ASSETS = [
   "/",
   "/pricing",
   "/download",
   "/offline",
-  "/manifest.webmanifest",
   "/favicon.svg",
   "/bms-logo.jpg"
 ];
@@ -38,6 +37,10 @@ self.addEventListener("fetch", (event) => {
   if (url.pathname.startsWith("/api/")) return;
   if (url.pathname.startsWith("/_next/webpack-hmr")) return;
 
+  // Never cache the manifest. Browser install metadata must always be fresh,
+  // especially while icons and installability are being tested.
+  if (url.pathname === "/manifest.webmanifest") return;
+
   if (request.mode === "navigate") {
     event.respondWith(
       fetch(request)
@@ -51,8 +54,8 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  const cacheableDestinations = new Set(["font", "image", "script", "style", "manifest"]);
-  if (cacheableDestinations.has(request.destination) || url.pathname === "/manifest.webmanifest") {
+  const cacheableDestinations = new Set(["font", "image", "script", "style"]);
+  if (cacheableDestinations.has(request.destination)) {
     event.respondWith(
       caches.match(request).then((cached) => {
         const networkFetch = fetch(request)
