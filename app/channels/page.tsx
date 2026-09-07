@@ -3,62 +3,1238 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { apiJson, isApiError } from "@/lib/api";
-import AppShell, { shellButtonPrimary, shellButtonSecondary } from "@/components/app-shell";
+import AppShell, {
+  shellButtonPrimary,
+  shellButtonSecondary,
+} from "@/components/app-shell";
 import WorkspaceSectionCard from "@/components/workspace-section-card";
 import { Banner, formatDate } from "@/components/ui";
 import { CardsGrid, SectionStack } from "@/components/page-layout";
 import { useWorkspaceState } from "@/hooks/useWorkspaceState";
 
 type LinkProvider = "wa" | "tg";
-type Channel = "whatsapp" | "telegram";
-type LinkGenerateResponse = { ok?:boolean; code?:string; expires_in_minutes?:number; expires_at?:string; provider?:string; account_id?:string; error?:string; deep_link?:string; link_url?:string; bot_url?:string; whatsapp_url?:string; telegram_url?:string };
-type LinkUnlinkResponse = { ok?:boolean; unlinked?:boolean; reason?:string; error?:string };
-type LinkState = { loading:boolean; error:string; success:string; code:string; expiresInMinutes:number|null; expiresAt:string; generatedAt:number|null; launchUrl:string };
-type WorkspaceLimitsResponse = { ok?:boolean; entitlements?:{ plan?:{name?:string;plan_family?:string}; plan_family?:string|null } };
-type ActivationSnapshot = { ok?:boolean; connected_channels?:Channel[]; active_channels?:Channel[]; paused_channels?:Channel[]; connected_count?:number; active_count?:number; selection_required?:boolean; max_active_channels?:number; error?:string };
 
-function makeEmptyLinkState():LinkState{return{loading:false,error:"",success:"",code:"",expiresInMinutes:null,expiresAt:"",generatedAt:null,launchUrl:""};}
-function safeText(value:unknown,fallback="Not shown"){const text=typeof value==="string"?value.trim():value==null?"":String(value).trim();return text||fallback;}
-function truthyValue(value:unknown){if(typeof value==="boolean")return value;if(typeof value==="number")return value>0;if(typeof value==="string")return["1","true","yes","active","linked","enabled","verified"].includes(value.trim().toLowerCase());return false;}
-function channelCardStyle():React.CSSProperties{return{border:"1px solid var(--border)",borderRadius:22,background:"var(--surface)",padding:22,display:"grid",gap:16,minWidth:0,width:"100%"};}
-function itemStyle():React.CSSProperties{return{display:"grid",gap:4,padding:"0 0 12px",borderBottom:"1px solid var(--border)",minWidth:0};}
-function itemLabelStyle():React.CSSProperties{return{fontSize:13,fontWeight:700,color:"var(--text-muted)"};}
-function itemValueStyle():React.CSSProperties{return{fontSize:16,fontWeight:800,color:"var(--text)",minWidth:0,overflowWrap:"anywhere",wordBreak:"break-word",lineHeight:1.45};}
-function actionGridStyle(min=180):React.CSSProperties{return{display:"grid",gridTemplateColumns:`repeat(auto-fit,minmax(min(100%, ${min}px),1fr))`,gap:12,width:"100%",minWidth:0,alignItems:"stretch"};}
-function verificationLabel(v:boolean){return v?"Verified":"Not verified yet";}
-function formatMinutesLabel(m:number|null){if(!m||m<=0)return"Code validity window unavailable.";return m===1?"Code expires in 1 minute.":`Code expires in ${m} minutes.`;}
-function buttonStyleWithDisabledState(base:React.CSSProperties,disabled:boolean):React.CSSProperties{const b={...base,width:"100%",minWidth:0,justifyContent:"center",textAlign:"center" as const,whiteSpace:"normal" as const,lineHeight:1.35};return disabled?{...b,cursor:"not-allowed",background:"#e5e7eb",color:"#6b7280",border:"1px solid #d1d5db",boxShadow:"none"}:{...b,cursor:"pointer",opacity:1};}
+type LinkGenerateResponse = {
+  ok?: boolean;
+  code?: string;
+  expires_in_minutes?: number;
+  expires_at?: string;
+  provider?: string;
+  account_id?: string;
+  error?: string;
+  deep_link?: string;
+  link_url?: string;
+  bot_url?: string;
+  whatsapp_url?: string;
+  telegram_url?: string;
+};
 
-function LinkCodePanel({provider,title,description,accountId,busy,locked,lockedMessage}:{provider:LinkProvider;title:string;description:string;accountId:string;busy:boolean;locked:boolean;lockedMessage:string}){
- const[state,setState]=useState<LinkState>(makeEmptyLinkState());const canGenerate=Boolean(accountId&&accountId!=="—")&&!busy&&!state.loading&&!locked;const hasCode=Boolean(state.code)&&!locked;const hasLaunchUrl=Boolean(state.launchUrl)&&!locked;
- async function handleGenerate(){if(locked){setState(p=>({...p,error:lockedMessage,success:""}));return;}if(!accountId||accountId==="—"){setState(p=>({...p,error:"Authenticated account reference is missing. Refresh the page and try again.",success:""}));return;}setState(p=>({...p,loading:true,error:"",success:""}));try{const res=await apiJson<LinkGenerateResponse>("/link/generate",{method:"POST",timeoutMs:20000,useAuthToken:false,query:{provider},body:{provider}});if(!res?.ok||!res?.code){setState(p=>({...p,loading:false,error:res?.error||`Could not generate a new ${title} link code.`,success:""}));return;}const returned=safeText(res.provider||"","").toLowerCase();if(returned&&returned!==provider){setState(p=>({...p,loading:false,error:`${title} generate returned wrong provider (${returned}).`,success:""}));return;}const launchUrl=safeText(res.deep_link||res.link_url||res.bot_url||res.whatsapp_url||res.telegram_url||"","");setState({loading:false,error:"",success:`${title} code generated successfully.`,code:String(res.code).toUpperCase(),expiresInMinutes:typeof res.expires_in_minutes==="number"?res.expires_in_minutes:null,expiresAt:safeText(res.expires_at||"",""),generatedAt:Date.now(),launchUrl});}catch(e){setState(p=>({...p,loading:false,error:isApiError(e)?e.message||`Request failed while generating ${title} link code.`:"Unexpected error while generating link code.",success:""}));}}
- async function handleCopy(){if(!state.code||locked)return;try{await navigator.clipboard.writeText(state.code);setState(p=>({...p,success:`${title} code copied.`,error:""}));}catch{setState(p=>({...p,success:"",error:"Copy failed. Please copy the code manually."}));}}
- const instruction=useMemo(()=>!state.code?"":provider==="tg"?`Send this code to the Telegram bot immediately: ${state.code}`:`Send this code to the official WhatsApp linking chat immediately: ${state.code}`,[provider,state.code]);
- return <div style={channelCardStyle()}><div><div style={{fontSize:14,color:"var(--text-muted)",fontWeight:700}}>{title}</div><div style={{fontSize:26,fontWeight:900}}>Live link setup</div><div style={{color:"var(--text-muted)",lineHeight:1.7}}>{description}</div></div><div style={itemStyle()}><div style={itemLabelStyle()}>Current Link Code</div><div style={{...itemValueStyle(),fontSize:28,letterSpacing:3}}>{state.code||"--------"}</div><div style={{color:"var(--text-muted)",fontSize:14}}>{state.code?formatMinutesLabel(state.expiresInMinutes):"No code generated yet."}</div>{instruction?<div>{instruction}</div>:null}</div><div style={itemStyle()}><div style={itemLabelStyle()}>Expires At</div><div style={itemValueStyle()}>{state.expiresAt?formatDate(state.expiresAt):"Not shown"}</div></div>{locked?<div style={{borderRadius:14,border:"1px solid #fed7aa",background:"#fff7ed",padding:12,color:"#9a3412",fontSize:14,lineHeight:1.6}}>{lockedMessage}</div>:null}<div style={actionGridStyle(170)}><button onClick={handleGenerate} disabled={!canGenerate} style={buttonStyleWithDisabledState(shellButtonPrimary(),!canGenerate)}>{state.loading?"Generating...":locked?`Generate ${title} Code Unavailable`:`Generate ${title} Code`}</button><button onClick={handleCopy} disabled={!hasCode} style={buttonStyleWithDisabledState(shellButtonSecondary(),!hasCode)}>Copy Code</button><button onClick={()=>state.launchUrl&&window.open(state.launchUrl,"_blank","noopener,noreferrer")} disabled={!hasLaunchUrl} style={buttonStyleWithDisabledState(shellButtonSecondary(),!hasLaunchUrl)}>Open Link</button></div>{state.success?<div style={{color:"#047857",fontWeight:700}}>{state.success}</div>:null}{state.error?<div style={{color:"#b91c1c",fontWeight:700}}>{state.error}</div>:null}</div>;
+type LinkUnlinkResponse = {
+  ok?: boolean;
+  unlinked?: boolean;
+  reason?: string;
+  error?: string;
+};
+
+type LinkState = {
+  loading: boolean;
+  error: string;
+  success: string;
+  code: string;
+  expiresInMinutes: number | null;
+  expiresAt: string;
+  generatedAt: number | null;
+  launchUrl: string;
+};
+
+type WorkspaceLimitsResponse = {
+  ok?: boolean;
+  counts?: {
+    active_members_only?: number;
+    owner_included_total?: number;
+  };
+  entitlements?: {
+    ok?: boolean;
+    plan?: {
+      name?: string;
+      code?: string;
+      plan_family?: string;
+      active?: boolean;
+    };
+    plan_code?: string | null;
+    plan_family?: string | null;
+    workspace_limits?: {
+      max_workspace_users?: number;
+      max_linked_web_accounts?: number;
+    };
+    channel_limits?: {
+      max_total_channels?: number;
+      max_whatsapp_channels?: number;
+      max_telegram_channels?: number;
+    };
+  };
+};
+
+function makeEmptyLinkState(): LinkState {
+  return {
+    loading: false,
+    error: "",
+    success: "",
+    code: "",
+    expiresInMinutes: null,
+    expiresAt: "",
+    generatedAt: null,
+    launchUrl: "",
+  };
 }
 
-function UnlinkButton({provider,title,onDone}:{provider:LinkProvider;title:string;onDone:()=>Promise<void>|void}){const[busy,setBusy]=useState(false);const[msg,setMsg]=useState("");async function handleUnlink(){if(!window.confirm(`Permanently unlink ${title} from this website account? Pausing is normally enough when changing active channels.`))return;setBusy(true);setMsg("");try{const res=await apiJson<LinkUnlinkResponse>("/link/unlink",{method:"POST",timeoutMs:20000,useAuthToken:false,query:{provider},body:{provider}});setMsg(res?.ok?(res.unlinked?`${title} permanently unlinked.`:`${title} is not currently linked.`):(res?.error||"Could not unlink right now."));if(res?.ok)await onDone();}catch(e){setMsg(isApiError(e)?e.message||"Could not unlink right now.":"Could not unlink right now.");}finally{setBusy(false);}}return <div style={{display:"grid",gap:8}}><button onClick={handleUnlink} disabled={busy} style={buttonStyleWithDisabledState(shellButtonSecondary(),busy)}>{busy?`Unlinking ${title}...`:`Permanently unlink ${title}`}</button>{msg?<div style={{fontSize:13,color:"var(--text-muted)"}}>{msg}</div>:null}</div>;}
+function safeText(value: unknown, fallback = "Not shown"): string {
+  const text =
+    typeof value === "string"
+      ? value.trim()
+      : value == null
+      ? ""
+      : String(value).trim();
+  return text || fallback;
+}
 
-export default function ChannelsPage(){
- const{refreshSession}=useAuth();const{busy,load,accountId,activeNow,channelLinks}=useWorkspaceState({refreshSession,autoLoad:true,includeAccount:true,includeBilling:true,includeDebug:true,includeLinkStatus:true,loadingMessage:"Loading channel status..."});
- const[limitsData,setLimitsData]=useState<WorkspaceLimitsResponse|null>(null);const[limitsError,setLimitsError]=useState("");const[activation,setActivation]=useState<ActivationSnapshot|null>(null);const[activationError,setActivationError]=useState("");
- const loadLimits=useCallback(async()=>{try{setLimitsError("");setLimitsData(await apiJson<WorkspaceLimitsResponse>("/workspace/limits",{method:"GET",timeoutMs:20000,useAuthToken:false}));}catch(e){setLimitsError(isApiError(e)?e.message||"Unable to load channel entitlements.":"Unable to load channel entitlements.");}},[]);
- const loadActivation=useCallback(async()=>{try{setActivationError("");setActivation(await apiJson<ActivationSnapshot>("/channels/activation",{method:"GET",timeoutMs:20000,useAuthToken:false}));}catch(e){setActivationError(isApiError(e)?e.message||"Unable to load channel activation state.":"Unable to load channel activation state.");}},[]);
- const refreshPage=useCallback(async(message="Refreshing channel status...")=>{await Promise.all([load(message),loadLimits(),loadActivation()]);},[load,loadLimits,loadActivation]);
- useEffect(()=>{void Promise.all([loadLimits(),loadActivation()]);const refresh=()=>void loadActivation();window.addEventListener("ntg:channel-activation-changed",refresh);return()=>window.removeEventListener("ntg:channel-activation-changed",refresh);},[loadLimits,loadActivation]);
- const whatsappLinked=truthyValue(channelLinks?.whatsapp_linked||channelLinks?.whatsapp?.linked);const telegramLinked=truthyValue(channelLinks?.telegram_linked||channelLinks?.telegram?.linked);const whatsappVerified=truthyValue(channelLinks?.whatsapp_verified||channelLinks?.whatsapp?.verified||channelLinks?.whatsapp?.is_verified);const telegramVerified=truthyValue(channelLinks?.telegram_verified||channelLinks?.telegram?.verified||channelLinks?.telegram?.is_verified);
- const whatsappValue=safeText(channelLinks?.whatsapp?.value||channelLinks?.whatsapp?.phone||channelLinks?.whatsapp_number||"");const telegramValue=safeText(channelLinks?.telegram?.value||channelLinks?.telegram?.username||channelLinks?.telegram_username||"");const whatsappUpdatedAt=safeText(channelLinks?.whatsapp?.updated_at||channelLinks?.whatsapp_updated_at||"","");const telegramUpdatedAt=safeText(channelLinks?.telegram?.updated_at||channelLinks?.telegram_updated_at||"","");
- const planName=safeText(limitsData?.entitlements?.plan?.name||"Free","Free");const isFreePlan=(limitsData?.entitlements?.plan_family||limitsData?.entitlements?.plan?.plan_family||"free").toLowerCase().includes("free");
- const connected=activation?.connected_channels||[];const active=activation?.active_channels||[];const paused=activation?.paused_channels||[];const maxActive=activation?.max_active_channels??0;const activeCount=activation?.active_count??active.length;const connectedCount=activation?.connected_count??connected.length;const selectionRequired=Boolean(activation?.selection_required);const linkingLocked=maxActive<=0||selectionRequired||activeCount>=maxActive;
- const lockMessage=maxActive<=0?"Your current plan does not allow an external messaging channel.":selectionRequired?"Choose which preserved connection should remain active before linking another channel.":"Your active-channel allowance is currently in use. You do not need to unlink a preserved connection. Change the active channel above, or upgrade if you need more channels active at the same time.";
- const channelStatus=(channel:Channel,linked:boolean)=>!linked?"Not linked":active.includes(channel)?"Active":paused.includes(channel)?"Connected · Paused":selectionRequired?"Connected · awaiting selection":"Connected";
- const attentionBanner=!activeNow?{title:isFreePlan?"Free plan limits are active":"Subscription attention needed",subtitle:isFreePlan?"Your account can view channel status, but paid channel actions require an eligible plan.":"Your account can view channel status, but some actions may remain limited until subscription access is active."}:null;
- return <AppShell title="Channels" subtitle="Link, activate, pause, and manage supported messaging channels without losing preserved connections." actions={<button onClick={()=>void refreshPage()} disabled={busy} style={buttonStyleWithDisabledState(shellButtonPrimary(),busy)}>Refresh Status</button>}><SectionStack>
-  {limitsError?<Banner tone="warn" title="Channel entitlement check needs attention" subtitle={limitsError}/>:null}{activationError?<Banner tone="warn" title="Channel activation check needs attention" subtitle={activationError}/>:null}
-  {selectionRequired?<Banner tone="warn" title="Choose your active messaging channel" subtitle={`You have ${connectedCount} preserved connections but your plan allows ${maxActive} active external channel${maxActive===1?"":"s"}. Use the selector above. Excess connections remain saved and paused; unlinking is not required.`}/>:<Banner tone="good" title="Channel state is entitlement-aware" subtitle={`${activeCount} / ${maxActive} active · ${connectedCount} connected${paused.length?` · ${paused.length} paused`:""}. Connected and active are intentionally tracked separately.`}/>} 
-  {attentionBanner?<Banner tone="warn" title={attentionBanner.title} subtitle={attentionBanner.subtitle}/>:null}
-  <CardsGrid min={260}>{(["whatsapp","telegram"] as Channel[]).map(channel=>{const isWa=channel==="whatsapp";const linked=isWa?whatsappLinked:telegramLinked;const verified=isWa?whatsappVerified:telegramVerified;const value=isWa?whatsappValue:telegramValue;const updated=isWa?whatsappUpdatedAt:telegramUpdatedAt;const title=isWa?"WhatsApp":"Telegram";return <div key={channel} style={channelCardStyle()}><div><div style={{fontSize:14,color:"var(--text-muted)",fontWeight:700}}>{title}</div><div style={{fontSize:26,fontWeight:900}}>{channelStatus(channel,linked)}</div><div style={{color:"var(--text-muted)",lineHeight:1.7}}>{active.includes(channel)?"This connection is active and may consume NTG channel services.":paused.includes(channel)?"This connection is preserved but paused under the current entitlement. It does not need to be relinked later.":linked?"This connection is preserved on your account.":"This channel is not yet linked to your workspace."}</div></div><div style={itemStyle()}><div style={itemLabelStyle()}>Activation</div><div style={itemValueStyle()}>{channelStatus(channel,linked)}</div></div><div style={itemStyle()}><div style={itemLabelStyle()}>Verification</div><div style={itemValueStyle()}>{verificationLabel(verified)}</div></div><div style={itemStyle()}><div style={itemLabelStyle()}>{isWa?"Linked Number":"Linked Account"}</div><div style={itemValueStyle()}>{value}</div></div><div><div style={itemLabelStyle()}>Last Updated</div><div style={itemValueStyle()}>{updated?formatDate(updated):"Not shown"}</div></div>{linked?<UnlinkButton provider={isWa?"wa":"tg"} title={title} onDone={()=>refreshPage()}/>:null}</div>;})}</CardsGrid>
-  <CardsGrid min={280}><LinkCodePanel provider="wa" title="WhatsApp" description="Generate a temporary WhatsApp linking code for this workspace." accountId={accountId} busy={busy} locked={linkingLocked} lockedMessage={lockMessage}/><LinkCodePanel provider="tg" title="Telegram" description="Generate a temporary Telegram linking code for this workspace." accountId={accountId} busy={busy} locked={linkingLocked} lockedMessage={lockMessage}/></CardsGrid>
-  <WorkspaceSectionCard title="How channel limits work" subtitle="Active entitlement and durable connection are separate states."><div style={{display:"grid",gap:10,color:"var(--text-muted)",fontSize:14,lineHeight:1.8}}><div>1. A linked channel remains connected until you explicitly choose to permanently unlink it.</div><div>2. Your plan controls how many connected channels may be active at the same time.</div><div>3. After a downgrade, excess connections are paused rather than deleted.</div><div>4. If a choice is required, select the channel to keep active using the control above.</div><div>5. Upgrading can make preserved paused connections eligible for reactivation without relinking.</div></div></WorkspaceSectionCard>
- </SectionStack></AppShell>;
+function truthyValue(value: unknown): boolean {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value > 0;
+  if (typeof value === "string") {
+    const raw = value.trim().toLowerCase();
+    return ["1", "true", "yes", "active", "linked", "enabled", "verified"].includes(raw);
+  }
+  return false;
+}
+
+function safeNumber(value: unknown, fallback = 0) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function channelCardStyle(): React.CSSProperties {
+  return {
+    border: "1px solid var(--border)",
+    borderRadius: 22,
+    background: "var(--surface)",
+    padding: 22,
+    display: "grid",
+    gap: 16,
+    minWidth: 0,
+    width: "100%",
+  };
+}
+
+function itemStyle(): React.CSSProperties {
+  return {
+    display: "grid",
+    gap: 4,
+    padding: "0 0 12px 0",
+    borderBottom: "1px solid var(--border)",
+    minWidth: 0,
+  };
+}
+
+function itemLabelStyle(): React.CSSProperties {
+  return {
+    fontSize: 13,
+    fontWeight: 700,
+    color: "var(--text-muted)",
+  };
+}
+
+function itemValueStyle(): React.CSSProperties {
+  return {
+    fontSize: 16,
+    fontWeight: 800,
+    color: "var(--text)",
+    minWidth: 0,
+    overflowWrap: "anywhere",
+    wordBreak: "break-word",
+    lineHeight: 1.45,
+  };
+}
+
+function summaryGridStyle(): React.CSSProperties {
+  return {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 180px), 1fr))",
+    gap: 16,
+    width: "100%",
+    minWidth: 0,
+  };
+}
+
+function summaryCardStyle(): React.CSSProperties {
+  return {
+    border: "1px solid var(--border)",
+    borderRadius: 22,
+    background: "var(--surface)",
+    padding: 18,
+    boxShadow: "0 8px 24px rgba(15, 23, 42, 0.04)",
+    display: "grid",
+    gap: 8,
+    minWidth: 0,
+  };
+}
+
+function summaryLabelStyle(): React.CSSProperties {
+  return {
+    fontSize: 12,
+    fontWeight: 900,
+    color: "var(--text-faint)",
+    letterSpacing: 0.6,
+  };
+}
+
+function summaryValueStyle(): React.CSSProperties {
+  return {
+    fontSize: 22,
+    fontWeight: 900,
+    color: "var(--text)",
+    lineHeight: 1.2,
+    minWidth: 0,
+    overflowWrap: "anywhere",
+    wordBreak: "break-word",
+  };
+}
+
+function summarySubStyle(): React.CSSProperties {
+  return {
+    fontSize: 13,
+    color: "var(--text-muted)",
+    lineHeight: 1.6,
+    minWidth: 0,
+    overflowWrap: "anywhere",
+    wordBreak: "break-word",
+  };
+}
+
+function actionGridStyle(min = 180): React.CSSProperties {
+  return {
+    display: "grid",
+    gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, ${min}px), 1fr))`,
+    gap: 12,
+    width: "100%",
+    minWidth: 0,
+    alignItems: "stretch",
+  };
+}
+
+function statusLabel(linked: boolean, verified: boolean): string {
+  if (linked && verified) return "Linked";
+  if (linked && !verified) return "Pending Verification";
+  return "Not Linked";
+}
+
+function verificationLabel(verified: boolean): string {
+  return verified ? "Verified" : "Not verified yet";
+}
+
+function formatMinutesLabel(minutes: number | null) {
+  if (!minutes || minutes <= 0) return "Code validity window unavailable.";
+  if (minutes === 1) return "Code expires in 1 minute.";
+  return `Code expires in ${minutes} minutes.`;
+}
+
+function buttonStyleWithDisabledState(
+  baseStyle: React.CSSProperties,
+  disabled: boolean
+): React.CSSProperties {
+  const normalizedBase: React.CSSProperties = {
+    ...baseStyle,
+    width: "100%",
+    minWidth: 0,
+    justifyContent: "center",
+    textAlign: "center",
+    whiteSpace: "normal",
+    lineHeight: 1.35,
+  };
+
+  if (!disabled) {
+    return {
+      ...normalizedBase,
+      cursor: "pointer",
+      opacity: 1,
+    };
+  }
+
+  return {
+    ...normalizedBase,
+    cursor: "not-allowed",
+    opacity: 1,
+    background: "#e5e7eb",
+    color: "#6b7280",
+    border: "1px solid #d1d5db",
+    boxShadow: "none",
+    filter: "grayscale(0.12)",
+    transform: "none",
+  };
+}
+
+function LinkCodePanel({
+  provider,
+  title,
+  description,
+  accountId,
+  busy,
+  locked,
+  lockedMessage,
+}: {
+  provider: LinkProvider;
+  title: string;
+  description: string;
+  accountId: string;
+  busy: boolean;
+  locked: boolean;
+  lockedMessage: string;
+}) {
+  const [state, setState] = useState<LinkState>(makeEmptyLinkState());
+
+  const canGenerate =
+    Boolean(accountId && accountId !== "—") && !busy && !state.loading && !locked;
+  const hasCode = Boolean(state.code) && !locked;
+  const hasLaunchUrl = Boolean(state.launchUrl) && !locked;
+
+  async function handleGenerate() {
+    if (locked) {
+      setState((prev) => ({
+        ...prev,
+        error: lockedMessage,
+        success: "",
+      }));
+      return;
+    }
+
+    if (!accountId || accountId === "—") {
+      setState((prev) => ({
+        ...prev,
+        error: "Authenticated account reference is missing. Refresh the page and try again.",
+        success: "",
+      }));
+      return;
+    }
+
+    setState((prev) => ({
+      ...prev,
+      loading: true,
+      error: "",
+      success: "",
+    }));
+
+    try {
+      const res = await apiJson<LinkGenerateResponse>("/link/generate", {
+        method: "POST",
+        timeoutMs: 20000,
+        useAuthToken: false,
+        query: { provider },
+        body: { provider },
+      });
+
+      if (!res?.ok || !res?.code) {
+        setState((prev) => ({
+          ...prev,
+          loading: false,
+          error: res?.error || `Could not generate a new ${title} link code.`,
+          success: "",
+        }));
+        return;
+      }
+
+      const returnedProvider = safeText(res.provider || "", "").toLowerCase();
+      if (returnedProvider && returnedProvider !== provider) {
+        setState((prev) => ({
+          ...prev,
+          loading: false,
+          error: `${title} generate returned wrong provider (${returnedProvider}).`,
+          success: "",
+        }));
+        return;
+      }
+
+      const launchUrl = safeText(
+        res?.deep_link ||
+          res?.link_url ||
+          res?.bot_url ||
+          res?.whatsapp_url ||
+          res?.telegram_url ||
+          "",
+        ""
+      );
+
+      setState({
+        loading: false,
+        error: "",
+        success: `${title} code generated successfully.`,
+        code: String(res.code || "").toUpperCase(),
+        expiresInMinutes:
+          typeof res.expires_in_minutes === "number" ? res.expires_in_minutes : null,
+        expiresAt: safeText(res.expires_at || "", ""),
+        generatedAt: Date.now(),
+        launchUrl,
+      });
+    } catch (error: unknown) {
+      const message = isApiError(error)
+        ? error.message || `Request failed while generating ${title} link code.`
+        : error instanceof Error
+        ? error.message || `Request failed while generating ${title} link code.`
+        : "Unexpected error while generating link code.";
+
+      setState((prev) => ({
+        ...prev,
+        loading: false,
+        error: message,
+        success: "",
+      }));
+    }
+  }
+
+  async function handleCopy() {
+    if (!state.code || locked) return;
+
+    try {
+      await navigator.clipboard.writeText(state.code);
+      setState((prev) => ({
+        ...prev,
+        success: `${title} code copied.`,
+        error: "",
+      }));
+    } catch {
+      setState((prev) => ({
+        ...prev,
+        success: "",
+        error: "Copy failed. Please copy the code manually.",
+      }));
+    }
+  }
+
+  function handleOpenLink() {
+    if (!state.launchUrl || locked) return;
+    window.open(state.launchUrl, "_blank", "noopener,noreferrer");
+  }
+
+  const sendInstruction = useMemo(() => {
+    if (!state.code) return "";
+    if (provider === "tg") {
+      return `Send this code to the Telegram bot immediately: ${state.code}`;
+    }
+    return `Send this code to the official WhatsApp linking chat immediately: ${state.code}`;
+  }, [provider, state.code]);
+
+  return (
+    <div style={channelCardStyle()}>
+      <div style={{ display: "grid", gap: 6, minWidth: 0 }}>
+        <div style={{ fontSize: 14, color: "var(--text-muted)", fontWeight: 700 }}>
+          {title}
+        </div>
+        <div
+          style={{
+            fontSize: 26,
+            fontWeight: 900,
+            color: "var(--text)",
+            lineHeight: 1.2,
+            overflowWrap: "anywhere",
+          }}
+        >
+          Live link setup
+        </div>
+        <div
+          style={{
+            color: "var(--text-muted)",
+            lineHeight: 1.7,
+            minWidth: 0,
+            overflowWrap: "anywhere",
+            wordBreak: "break-word",
+          }}
+        >
+          {description}
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gap: 10, minWidth: 0 }}>
+        <div style={itemStyle()}>
+          <div style={itemLabelStyle()}>Current Link Code</div>
+          <div
+            style={{
+              ...itemValueStyle(),
+              fontSize: 28,
+              letterSpacing: 3,
+              opacity: locked ? 0.6 : 1,
+            }}
+          >
+            {state.code || "--------"}
+          </div>
+          <div
+            style={{
+              color: "var(--text-muted)",
+              lineHeight: 1.7,
+              fontSize: 14,
+              minWidth: 0,
+              overflowWrap: "anywhere",
+              wordBreak: "break-word",
+            }}
+          >
+            {state.code ? formatMinutesLabel(state.expiresInMinutes) : "No code generated yet."}
+          </div>
+          {sendInstruction ? (
+            <div
+              style={{
+                color: "var(--text)",
+                lineHeight: 1.7,
+                fontSize: 14,
+                minWidth: 0,
+                overflowWrap: "anywhere",
+                wordBreak: "break-word",
+              }}
+            >
+              {sendInstruction}
+            </div>
+          ) : null}
+        </div>
+
+        <div style={itemStyle()}>
+          <div style={itemLabelStyle()}>Expires At</div>
+          <div style={itemValueStyle()}>
+            {state.expiresAt ? formatDate(state.expiresAt) : "Not shown"}
+          </div>
+        </div>
+      </div>
+
+      {locked ? (
+        <div
+          style={{
+            borderRadius: 14,
+            border: "1px solid #fed7aa",
+            background: "#fff7ed",
+            padding: 12,
+            color: "#9a3412",
+            fontSize: 14,
+            lineHeight: 1.6,
+            minWidth: 0,
+            overflowWrap: "anywhere",
+            wordBreak: "break-word",
+          }}
+        >
+          {lockedMessage}
+        </div>
+      ) : null}
+
+      <div style={actionGridStyle(170)}>
+        <button
+          onClick={handleGenerate}
+          disabled={!canGenerate}
+          aria-disabled={!canGenerate}
+          style={buttonStyleWithDisabledState(shellButtonPrimary(), !canGenerate)}
+        >
+          {state.loading
+            ? "Generating..."
+            : locked
+            ? `Generate ${title} Code Unavailable`
+            : `Generate ${title} Code`}
+        </button>
+
+        <button
+          onClick={handleCopy}
+          disabled={!hasCode}
+          aria-disabled={!hasCode}
+          style={buttonStyleWithDisabledState(shellButtonSecondary(), !hasCode)}
+        >
+          Copy Code
+        </button>
+
+        <button
+          onClick={handleOpenLink}
+          disabled={!hasLaunchUrl}
+          aria-disabled={!hasLaunchUrl}
+          style={buttonStyleWithDisabledState(shellButtonSecondary(), !hasLaunchUrl)}
+        >
+          Open Link
+        </button>
+      </div>
+
+      {state.success ? (
+        <div
+          style={{
+            borderRadius: 14,
+            border: "1px solid var(--success-border)",
+            background: "var(--success-bg)",
+            padding: 12,
+            color: "var(--text)",
+            fontSize: 14,
+            lineHeight: 1.6,
+            minWidth: 0,
+            overflowWrap: "anywhere",
+            wordBreak: "break-word",
+          }}
+        >
+          {state.success}
+        </div>
+      ) : null}
+
+      {state.error ? (
+        <div
+          style={{
+            borderRadius: 14,
+            border: "1px solid var(--danger-border)",
+            background: "var(--danger-bg)",
+            padding: 12,
+            color: "var(--text)",
+            fontSize: 14,
+            lineHeight: 1.6,
+            minWidth: 0,
+            overflowWrap: "anywhere",
+            wordBreak: "break-word",
+          }}
+        >
+          {state.error}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function UnlinkButton({
+  provider,
+  title,
+  onDone,
+}: {
+  provider: LinkProvider;
+  title: string;
+  onDone: () => Promise<void> | void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  async function handleUnlink() {
+    if (!window.confirm(`Unlink ${title} from this website account?`)) return;
+    setBusy(true);
+    setMsg("");
+
+    try {
+      const res = await apiJson<LinkUnlinkResponse>("/link/unlink", {
+        method: "POST",
+        timeoutMs: 20000,
+        useAuthToken: false,
+        query: { provider },
+        body: { provider },
+      });
+
+      if (res?.ok) {
+        setMsg(
+          res.unlinked
+            ? `${title} unlinked successfully.`
+            : `${title} is not currently linked.`
+        );
+        await onDone();
+      } else {
+        setMsg(res?.error || "Could not unlink right now.");
+      }
+    } catch (error: unknown) {
+      setMsg(
+        isApiError(error)
+          ? error.message || "Could not unlink right now."
+          : "Could not unlink right now."
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div style={{ display: "grid", gap: 8, minWidth: 0 }}>
+      <button
+        onClick={handleUnlink}
+        disabled={busy}
+        aria-disabled={busy}
+        style={buttonStyleWithDisabledState(shellButtonSecondary(), busy)}
+      >
+        {busy ? `Unlinking ${title}...` : `Unlink ${title}`}
+      </button>
+      {msg ? (
+        <div
+          style={{
+            color: "var(--text-muted)",
+            fontSize: 13,
+            minWidth: 0,
+            overflowWrap: "anywhere",
+            wordBreak: "break-word",
+          }}
+        >
+          {msg}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+export default function ChannelsPage() {
+  const { refreshSession } = useAuth();
+
+  const { busy, load, accountId, activeNow, channelLinks } = useWorkspaceState({
+    refreshSession,
+    autoLoad: true,
+    includeAccount: true,
+    includeBilling: true,
+    includeDebug: true,
+    includeLinkStatus: true,
+    loadingMessage: "Loading channel status...",
+  });
+
+  const [limitsData, setLimitsData] = useState<WorkspaceLimitsResponse | null>(null);
+  const [limitsError, setLimitsError] = useState("");
+
+  const loadLimits = useCallback(async () => {
+    try {
+      setLimitsError("");
+      const res = await apiJson<WorkspaceLimitsResponse>("/workspace/limits", {
+        method: "GET",
+        timeoutMs: 20000,
+        useAuthToken: false,
+      });
+      setLimitsData(res);
+    } catch (error: unknown) {
+      const message = isApiError(error)
+        ? error.message || "Unable to load channel entitlements."
+        : error instanceof Error
+        ? error.message || "Unable to load channel entitlements."
+        : "Unable to load channel entitlements.";
+      setLimitsError(message);
+    }
+  }, []);
+
+  const refreshPage = useCallback(
+    async (message = "Refreshing channel status...") => {
+      await Promise.all([load(message), loadLimits()]);
+    },
+    [load, loadLimits]
+  );
+
+  useEffect(() => {
+    void loadLimits();
+  }, [loadLimits]);
+
+  const whatsappLinked = truthyValue(
+    channelLinks?.whatsapp_linked || channelLinks?.whatsapp?.linked
+  );
+  const telegramLinked = truthyValue(
+    channelLinks?.telegram_linked || channelLinks?.telegram?.linked
+  );
+
+  const whatsappVerified = truthyValue(
+    channelLinks?.whatsapp_verified ||
+      channelLinks?.whatsapp?.verified ||
+      channelLinks?.whatsapp?.is_verified
+  );
+  const telegramVerified = truthyValue(
+    channelLinks?.telegram_verified ||
+      channelLinks?.telegram?.verified ||
+      channelLinks?.telegram?.is_verified
+  );
+
+  const whatsappValue = safeText(
+    channelLinks?.whatsapp?.value ||
+      channelLinks?.whatsapp?.phone ||
+      channelLinks?.whatsapp_number ||
+      ""
+  );
+
+  const telegramValue = safeText(
+    channelLinks?.telegram?.value ||
+      channelLinks?.telegram?.username ||
+      channelLinks?.telegram_username ||
+      ""
+  );
+
+  const whatsappUpdatedAt = safeText(
+    channelLinks?.whatsapp?.updated_at || channelLinks?.whatsapp_updated_at || "",
+    ""
+  );
+
+  const telegramUpdatedAt = safeText(
+    channelLinks?.telegram?.updated_at || channelLinks?.telegram_updated_at || "",
+    ""
+  );
+
+  const planName = safeText(limitsData?.entitlements?.plan?.name || "Free", "Free");
+  const planFamily = safeText(
+    limitsData?.entitlements?.plan_family ||
+      limitsData?.entitlements?.plan?.plan_family ||
+      "free",
+    "free"
+  );
+
+  const normalizedPlanName = planName.toLowerCase();
+  const normalizedPlanFamily = planFamily.toLowerCase();
+  const isFreePlan =
+    normalizedPlanName === "free" ||
+    normalizedPlanFamily === "free" ||
+    normalizedPlanFamily === "starter-free";
+
+  const maxTotalChannels = safeNumber(
+    limitsData?.entitlements?.channel_limits?.max_total_channels,
+    0
+  );
+  const maxWhatsappChannels = safeNumber(
+    limitsData?.entitlements?.channel_limits?.max_whatsapp_channels,
+    0
+  );
+  const maxTelegramChannels = safeNumber(
+    limitsData?.entitlements?.channel_limits?.max_telegram_channels,
+    0
+  );
+
+  const usedTotalChannels = (whatsappLinked ? 1 : 0) + (telegramLinked ? 1 : 0);
+  const totalChannelsRemaining =
+    maxTotalChannels > 0 ? Math.max(maxTotalChannels - usedTotalChannels, 0) : 0;
+
+  const whatsappUsed = whatsappLinked ? 1 : 0;
+  const telegramUsed = telegramLinked ? 1 : 0;
+
+  const whatsappRemaining =
+    maxWhatsappChannels > 0 ? Math.max(maxWhatsappChannels - whatsappUsed, 0) : 0;
+  const telegramRemaining =
+    maxTelegramChannels > 0 ? Math.max(maxTelegramChannels - telegramUsed, 0) : 0;
+
+  const channelsLockedOrFull = maxTotalChannels <= 0 || totalChannelsRemaining <= 0;
+
+  const lockMessage =
+    maxTotalChannels <= 0
+      ? "Your current plan does not allow channel linking yet. Upgrade your plan to unlock channel connection."
+      : "All available channel capacity is already in use. Unlink the currently connected channel or upgrade your plan before generating any new link code.";
+
+  const topBanner = useMemo(() => {
+    if (whatsappLinked && telegramLinked) {
+      return {
+        tone: "good" as const,
+        title: "Your channels are connected",
+        subtitle: "WhatsApp and Telegram are both visible in your workspace.",
+      };
+    }
+
+    if (whatsappLinked || telegramLinked) {
+      return {
+        tone: "warn" as const,
+        title: "One channel is connected",
+        subtitle:
+          "A supported messaging channel is already linked. Because your total channel capacity is now full, both link generators stay locked until you unlink the current channel or upgrade your plan.",
+      };
+    }
+
+    return {
+      tone: "warn" as const,
+      title: "No messaging channel is connected yet",
+      subtitle:
+        "Connect WhatsApp or Telegram so your workspace can work across supported channels.",
+    };
+  }, [whatsappLinked, telegramLinked]);
+
+  const actionLimitBanner =
+    maxTotalChannels <= 0
+      ? {
+          title: "Channel linking is not available on this plan yet",
+          subtitle:
+            "Your current plan does not include any channel connections. Upgrade your plan to unlock channel connection.",
+        }
+      : {
+          title: "Channel capacity is currently full",
+          subtitle: (
+            <>
+              You are using <strong>{usedTotalChannels}</strong> of{" "}
+              <strong>{maxTotalChannels}</strong> allowed channel connection
+              {maxTotalChannels === 1 ? "" : "s"} on the <strong>{planName}</strong>.
+              Upgrade your plan to add more channels, or unlink an existing channel first.
+            </>
+          ),
+        };
+
+  const attentionBanner = !activeNow
+    ? isFreePlan
+      ? {
+          title: "Free plan limits are active",
+          subtitle:
+            "Your account can still view channel status, but some channel actions remain limited until you upgrade to a paid plan.",
+        }
+      : {
+          title: "Subscription attention needed",
+          subtitle:
+            "Your account can still view channel status, but some actions may remain limited until subscription access is active.",
+        }
+    : null;
+
+  const howItWorksSteps = channelsLockedOrFull
+    ? [
+        "1. Review your current channel capacity above.",
+        "2. Unlink the currently connected channel or upgrade your plan first.",
+        "3. Once capacity becomes available, generate a fresh code for the channel you want to connect.",
+        "4. Copy the code or open the channel link directly on the messaging platform.",
+        "5. Return here and refresh the status when needed.",
+      ]
+    : [
+        "1. Review your current channel capacity above.",
+        "2. Generate a fresh code for the channel you want to connect.",
+        "3. Copy the code or open the channel link directly.",
+        "4. Complete the step on the actual messaging platform.",
+        "5. Return here and refresh the status when needed.",
+      ];
+
+  return (
+    <AppShell
+      title="Channels"
+      subtitle="Link, verify, and manage your supported communication channels in one simple place."
+      actions={
+        <button
+          onClick={() => void refreshPage()}
+          disabled={busy}
+          aria-disabled={busy}
+          style={buttonStyleWithDisabledState(shellButtonPrimary(), busy)}
+        >
+          Refresh Status
+        </button>
+      }
+    >
+      <SectionStack>
+        {limitsError ? (
+          <Banner
+            tone="warn"
+            title="Channel entitlement check needs attention"
+            subtitle={limitsError}
+          />
+        ) : null}
+
+        {channelsLockedOrFull ? (
+          <div
+            style={{
+              borderRadius: 22,
+              border: "1px solid #fed7aa",
+              background: "linear-gradient(180deg, #fff7ed 0%, #fffbeb 100%)",
+              padding: 20,
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 240px), 1fr))",
+              gap: 16,
+              alignItems: "center",
+              minWidth: 0,
+            }}
+          >
+            <div style={{ minWidth: 0 }}>
+              <div
+                style={{
+                  fontSize: 16,
+                  fontWeight: 900,
+                  color: "#9a3412",
+                  overflowWrap: "anywhere",
+                  wordBreak: "break-word",
+                }}
+              >
+                {actionLimitBanner.title}
+              </div>
+              <div
+                style={{
+                  marginTop: 8,
+                  color: "#9a3412",
+                  lineHeight: 1.7,
+                  minWidth: 0,
+                  overflowWrap: "anywhere",
+                  wordBreak: "break-word",
+                }}
+              >
+                {actionLimitBanner.subtitle}
+              </div>
+            </div>
+
+            <div style={actionGridStyle(170)}>
+              <a
+                href="/plans"
+                style={{
+                  border: "1px solid #fdba74",
+                  borderRadius: 16,
+                  padding: "12px 18px",
+                  background: "#ea580c",
+                  color: "#ffffff",
+                  fontSize: 14,
+                  fontWeight: 800,
+                  textDecoration: "none",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  boxShadow: "0 10px 22px rgba(234, 88, 12, 0.20)",
+                  width: "100%",
+                  minWidth: 0,
+                  textAlign: "center",
+                  lineHeight: 1.35,
+                }}
+              >
+                Upgrade to add more channels
+              </a>
+
+              <a href="/billing" style={buttonStyleWithDisabledState(shellButtonSecondary(), false)}>
+                Go to Billing
+              </a>
+            </div>
+          </div>
+        ) : null}
+
+        <div style={summaryGridStyle()}>
+          <div style={summaryCardStyle()}>
+            <div style={summaryLabelStyle()}>Plan</div>
+            <div style={summaryValueStyle()}>{planName}</div>
+            <div style={summarySubStyle()}>Plan type: {planName}</div>
+          </div>
+
+          <div style={summaryCardStyle()}>
+            <div style={summaryLabelStyle()}>Channel usage</div>
+            <div style={summaryValueStyle()}>
+              {usedTotalChannels} / {maxTotalChannels}
+            </div>
+            <div style={summarySubStyle()}>Total linked channels in use</div>
+          </div>
+
+          <div style={summaryCardStyle()}>
+            <div style={summaryLabelStyle()}>WhatsApp channel capacity</div>
+            <div style={summaryValueStyle()}>
+              {whatsappUsed} / {maxWhatsappChannels}
+            </div>
+            <div style={summarySubStyle()}>
+              {whatsappRemaining > 0
+                ? `${whatsappRemaining} WhatsApp channel left`
+                : "No WhatsApp channel left"}
+            </div>
+          </div>
+
+          <div style={summaryCardStyle()}>
+            <div style={summaryLabelStyle()}>Telegram channel capacity</div>
+            <div style={summaryValueStyle()}>
+              {telegramUsed} / {maxTelegramChannels}
+            </div>
+            <div style={summarySubStyle()}>
+              {telegramRemaining > 0
+                ? `${telegramRemaining} Telegram channel left`
+                : "No Telegram channel left"}
+            </div>
+          </div>
+        </div>
+
+        <Banner tone={topBanner.tone} title={topBanner.title} subtitle={topBanner.subtitle} />
+
+        {attentionBanner ? (
+          <Banner
+            tone="warn"
+            title={attentionBanner.title}
+            subtitle={attentionBanner.subtitle}
+          />
+        ) : null}
+
+        <CardsGrid min={260}>
+          <div style={channelCardStyle()}>
+            <div style={{ display: "grid", gap: 6, minWidth: 0 }}>
+              <div style={{ fontSize: 14, color: "var(--text-muted)", fontWeight: 700 }}>
+                WhatsApp
+              </div>
+              <div
+                style={{
+                  fontSize: 26,
+                  fontWeight: 900,
+                  color: "var(--text)",
+                  lineHeight: 1.2,
+                  overflowWrap: "anywhere",
+                }}
+              >
+                {statusLabel(whatsappLinked, whatsappVerified)}
+              </div>
+              <div
+                style={{
+                  color: "var(--text-muted)",
+                  lineHeight: 1.7,
+                  minWidth: 0,
+                  overflowWrap: "anywhere",
+                  wordBreak: "break-word",
+                }}
+              >
+                {whatsappLinked
+                  ? "This channel is visible in your workspace."
+                  : "This channel is not yet linked to your workspace."}
+              </div>
+            </div>
+
+            <div style={itemStyle()}>
+              <div style={itemLabelStyle()}>Status</div>
+              <div style={itemValueStyle()}>{statusLabel(whatsappLinked, whatsappVerified)}</div>
+            </div>
+
+            <div style={itemStyle()}>
+              <div style={itemLabelStyle()}>Verification</div>
+              <div style={itemValueStyle()}>{verificationLabel(whatsappVerified)}</div>
+            </div>
+
+            <div style={itemStyle()}>
+              <div style={itemLabelStyle()}>Linked Number</div>
+              <div style={itemValueStyle()}>{whatsappValue}</div>
+            </div>
+
+            <div style={{ display: "grid", gap: 4, minWidth: 0 }}>
+              <div style={itemLabelStyle()}>Last Updated</div>
+              <div style={itemValueStyle()}>
+                {whatsappUpdatedAt ? formatDate(whatsappUpdatedAt) : "Not shown"}
+              </div>
+            </div>
+
+            {whatsappLinked ? (
+              <UnlinkButton
+                provider="wa"
+                title="WhatsApp"
+                onDone={() => refreshPage("Refreshing channel status...")}
+              />
+            ) : (
+              <div
+                style={{
+                  borderRadius: 14,
+                  border: "1px solid var(--border)",
+                  background: "var(--surface-muted, #f8fafc)",
+                  padding: 12,
+                  color: "var(--text-muted)",
+                  fontSize: 14,
+                  lineHeight: 1.6,
+                  minWidth: 0,
+                  overflowWrap: "anywhere",
+                  wordBreak: "break-word",
+                }}
+              >
+                No unlink action is needed because WhatsApp is not currently connected.
+              </div>
+            )}
+          </div>
+
+          <div style={channelCardStyle()}>
+            <div style={{ display: "grid", gap: 6, minWidth: 0 }}>
+              <div style={{ fontSize: 14, color: "var(--text-muted)", fontWeight: 700 }}>
+                Telegram
+              </div>
+              <div
+                style={{
+                  fontSize: 26,
+                  fontWeight: 900,
+                  color: "var(--text)",
+                  lineHeight: 1.2,
+                  overflowWrap: "anywhere",
+                }}
+              >
+                {statusLabel(telegramLinked, telegramVerified)}
+              </div>
+              <div
+                style={{
+                  color: "var(--text-muted)",
+                  lineHeight: 1.7,
+                  minWidth: 0,
+                  overflowWrap: "anywhere",
+                  wordBreak: "break-word",
+                }}
+              >
+                {telegramLinked
+                  ? "This channel is visible in your workspace."
+                  : "This channel is not yet linked to your workspace."}
+              </div>
+            </div>
+
+            <div style={itemStyle()}>
+              <div style={itemLabelStyle()}>Status</div>
+              <div style={itemValueStyle()}>{statusLabel(telegramLinked, telegramVerified)}</div>
+            </div>
+
+            <div style={itemStyle()}>
+              <div style={itemLabelStyle()}>Verification</div>
+              <div style={itemValueStyle()}>{verificationLabel(telegramVerified)}</div>
+            </div>
+
+            <div style={itemStyle()}>
+              <div style={itemLabelStyle()}>Linked Account</div>
+              <div style={itemValueStyle()}>{telegramValue}</div>
+            </div>
+
+            <div style={{ display: "grid", gap: 4, minWidth: 0 }}>
+              <div style={itemLabelStyle()}>Last Updated</div>
+              <div style={itemValueStyle()}>
+                {telegramUpdatedAt ? formatDate(telegramUpdatedAt) : "Not shown"}
+              </div>
+            </div>
+
+            {telegramLinked ? (
+              <UnlinkButton
+                provider="tg"
+                title="Telegram"
+                onDone={() => refreshPage("Refreshing channel status...")}
+              />
+            ) : (
+              <div
+                style={{
+                  borderRadius: 14,
+                  border: "1px solid var(--border)",
+                  background: "var(--surface-muted, #f8fafc)",
+                  padding: 12,
+                  color: "var(--text-muted)",
+                  fontSize: 14,
+                  lineHeight: 1.6,
+                  minWidth: 0,
+                  overflowWrap: "anywhere",
+                  wordBreak: "break-word",
+                }}
+              >
+                No unlink action is needed because Telegram is not currently connected.
+              </div>
+            )}
+          </div>
+        </CardsGrid>
+
+        <CardsGrid min={280}>
+          <LinkCodePanel
+            provider="wa"
+            title="WhatsApp"
+            description="Generate a temporary WhatsApp linking code for this logged-in workspace, then send that code to the official WhatsApp linking chat or open the WhatsApp link directly."
+            accountId={accountId}
+            busy={busy}
+            locked={channelsLockedOrFull}
+            lockedMessage={lockMessage}
+          />
+
+          <LinkCodePanel
+            provider="tg"
+            title="Telegram"
+            description="Generate a temporary Telegram linking code for this logged-in workspace, then send that code to the Telegram bot immediately."
+            accountId={accountId}
+            busy={busy}
+            locked={channelsLockedOrFull}
+            lockedMessage={lockMessage}
+          />
+        </CardsGrid>
+
+        <WorkspaceSectionCard
+          title="How it works"
+          subtitle={
+            channelsLockedOrFull
+              ? "Channel capacity must become available before a new channel can be linked."
+              : "Use this page to check status and complete channel linking."
+          }
+        >
+          <div
+            style={{
+              display: "grid",
+              gap: 10,
+              color: "var(--text-muted)",
+              fontSize: 14,
+              lineHeight: 1.8,
+              minWidth: 0,
+            }}
+          >
+            {howItWorksSteps.map((step) => (
+              <div
+                key={step}
+                style={{ minWidth: 0, overflowWrap: "anywhere", wordBreak: "break-word" }}
+              >
+                {step}
+              </div>
+            ))}
+          </div>
+        </WorkspaceSectionCard>
+      </SectionStack>
+    </AppShell>
+  );
 }
