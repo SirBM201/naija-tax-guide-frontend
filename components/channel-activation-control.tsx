@@ -52,6 +52,7 @@ export default function ChannelActivationControl() {
       if (!res?.ok) throw new Error(res?.error || "Could not update active channel.");
       setMessage(`${label[channel]} is now your active messaging channel. Your other connection is preserved and paused.`);
       await load();
+      window.dispatchEvent(new CustomEvent("ntg:channel-activation-changed"));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not update active channel.");
     } finally {
@@ -66,15 +67,25 @@ export default function ChannelActivationControl() {
   const paused = state.paused_channels || [];
   const max = state.max_active_channels || 0;
   const needsChoice = Boolean(state.selection_required);
+  const activeCount = state.active_count ?? active.length;
+  const connectedCount = state.connected_count ?? connected.length;
 
   return (
     <section style={{margin:"0 0 18px",padding:18,borderRadius:20,border:needsChoice?"1px solid #fdba74":"1px solid #dbeafe",background:needsChoice?"#fff7ed":"#f8fbff"}}>
       <div style={{fontWeight:900,fontSize:18,color:"#0f172a"}}>
         {needsChoice ? "Choose your active messaging channel" : "Messaging channel access"}
       </div>
-      <p style={{margin:"8px 0 14px",lineHeight:1.6,color:"#475569"}}>
+      <p style={{margin:"8px 0 8px",lineHeight:1.6,color:"#475569"}}>
         Your {state.plan_code || "current"} plan allows {max} active external messaging channel{max === 1 ? "" : "s"}. Connected channels are never deleted automatically when you downgrade.
       </p>
+      <div style={{margin:"0 0 14px",fontSize:14,fontWeight:800,color:needsChoice?"#9a3412":"#334155"}}>
+        {activeCount} / {max} active · {connectedCount} connected{paused.length ? ` · ${paused.length} paused` : ""}
+      </div>
+      {needsChoice ? (
+        <div style={{margin:"0 0 14px",padding:12,borderRadius:12,background:"#fff",border:"1px solid #fed7aa",color:"#9a3412",fontSize:14,lineHeight:1.6,fontWeight:700}}>
+          Your durable connections exceed the active limit. Choose which channel remains active. The other connection will stay saved and paused; you do not need to unlink it.
+        </div>
+      ) : null}
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(210px,1fr))",gap:12}}>
         {connected.map((channel) => {
           const isActive = active.includes(channel);
@@ -83,7 +94,7 @@ export default function ChannelActivationControl() {
             <div key={channel} style={{padding:14,borderRadius:16,border:"1px solid #e2e8f0",background:"#fff"}}>
               <div style={{fontWeight:800,color:"#0f172a"}}>{label[channel]}</div>
               <div style={{margin:"5px 0 12px",fontSize:13,color:isActive?"#047857":isPaused?"#9a3412":"#64748b"}}>
-                {isActive ? "Active" : isPaused ? "Paused — connection preserved" : "Connected"}
+                {isActive ? "Active" : isPaused ? "Connected · Paused" : "Connected · awaiting selection"}
               </div>
               {max === 1 && !isActive ? (
                 <button type="button" disabled={busy} onClick={() => void choose(channel)} style={{border:0,borderRadius:12,padding:"10px 13px",fontWeight:800,cursor:busy?"wait":"pointer",background:"#4f46e5",color:"#fff"}}>
